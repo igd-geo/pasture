@@ -315,8 +315,10 @@ mod tests {
 
     use super::*;
     use crate::layout::{attributes, PointLayout};
+    use crate::util::view_raw_bytes;
 
     #[repr(packed)]
+    #[derive(Debug, Copy, Clone)]
     struct TestPointType(u16, f64);
 
     impl PointType for TestPointType {
@@ -326,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn test_interleaved_vec_storage() {
+    fn test_interleaved_vec_storage_len() {
         let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
 
         assert_eq!(0, storage.len());
@@ -335,5 +337,134 @@ mod tests {
         storage.push_point(TestPointType(43, 0.345));
 
         assert_eq!(2, storage.len());
+    }
+
+    // In the following two tests we test for byte equality when calling the raw API of `PointBuffer`
+    // Mapping between bytes and strongly typed values is not tested here but instead in `views.rs`
+
+    #[test]
+    fn test_interleaved_vec_storage_get_point() {
+        let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
+
+        let reference_point_1 = TestPointType(42, 0.123);
+        let reference_point_2 = TestPointType(42, 0.456);
+        storage.push_point(reference_point_1);
+        storage.push_point(reference_point_2);
+
+        let reference_bytes_1 = unsafe { view_raw_bytes(&reference_point_1) };
+        let reference_bytes_2 = unsafe { view_raw_bytes(&reference_point_2) };
+        let mut reference_bytes_all = reference_bytes_1.iter().copied().collect::<Vec<_>>();
+        reference_bytes_all.extend(reference_bytes_2);
+
+        let mut buf: Vec<u8> = vec![0; reference_bytes_1.len()];
+
+        storage.get_point_by_copy(0, &mut buf[..]);
+        assert_eq!(
+            reference_bytes_1, buf,
+            "get_point_by_copy: Bytes are not equal!"
+        );
+        storage.get_point_by_copy(1, &mut buf[..]);
+        assert_eq!(
+            reference_bytes_2, buf,
+            "get_point_by_copy: Bytes are not equal!"
+        );
+
+        let mut buf_for_both_points: Vec<u8> = vec![0; reference_bytes_all.len()];
+        storage.get_points_by_copy(0..2, &mut buf_for_both_points[..]);
+        assert_eq!(
+            reference_bytes_all, buf_for_both_points,
+            "get_points_by_copy: Bytes are not equal!"
+        );
+
+        let point_1_bytes_ref = storage.get_point_by_ref(0);
+        assert_eq!(
+            reference_bytes_1, point_1_bytes_ref,
+            "get_point_by_ref: Bytes are not equal!"
+        );
+
+        let point_2_bytes_ref = storage.get_point_by_ref(1);
+        assert_eq!(
+            reference_bytes_2, point_2_bytes_ref,
+            "get_point_by_ref: Bytes are not equal!"
+        );
+
+        let both_points_bytes_ref = storage.get_points_by_ref(0..2);
+        assert_eq!(
+            reference_bytes_all, both_points_bytes_ref,
+            "get_points_by_ref: Bytes are not equal!"
+        );
+    }
+
+    #[test]
+    fn test_interleaved_vec_storage_get_attribute() {
+        let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
+
+        let reference_point_1 = TestPointType(42, 0.123);
+        let reference_point_2 = TestPointType(42, 0.456);
+        storage.push_point(reference_point_1);
+        storage.push_point(reference_point_2);
+
+        // Get the raw byte views for both attributes of both points
+        let reference_bytes_1 = unsafe { view_raw_bytes(&reference_point_1) };
+        let ref_bytes_p1_a1 = &reference_bytes_1[0..2];
+        let ref_bytes_p1_a2 = &reference_bytes_1[2..10];
+
+        let reference_bytes_2 = unsafe { view_raw_bytes(&reference_point_2) };
+        let ref_bytes_p2_a1 = &reference_bytes_2[0..2];
+        let ref_bytes_p2_a2 = &reference_bytes_2[2..10];
+
+        let mut ref_bytes_all_a1 = ref_bytes_p1_a1.iter().copied().collect::<Vec<_>>();
+        ref_bytes_all_a1.extend(ref_bytes_p2_a1);
+        let mut ref_bytes_all_a2 = ref_bytes_p1_a2.iter().copied().collect::<Vec<_>>();
+        ref_bytes_all_a2.extend(ref_bytes_p2_a2);
+
+        // Get the attribute bytes through calls to the API of `PointBuffer`
+        let mut attribute_1_buf: Vec<u8> = vec![0; 2];
+        let mut attribute_2_buf: Vec<u8> = vec![0; 8];
+
+        storage.get_attribute_by_copy(0, &attributes::INTENSITY, &mut attribute_1_buf[..]);
+        assert_eq!(
+            ref_bytes_p1_a1, attribute_1_buf,
+            "get_attribute_by_copy: Bytes are not equal"
+        );
+        storage.get_attribute_by_copy(1, &attributes::INTENSITY, &mut attribute_1_buf[..]);
+        assert_eq!(
+            ref_bytes_p2_a1, attribute_1_buf,
+            "get_attribute_by_copy: Bytes are not equal"
+        );
+
+        storage.get_attribute_by_copy(0, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
+        assert_eq!(
+            ref_bytes_p1_a2, attribute_2_buf,
+            "get_attribute_by_copy: Bytes are not equal"
+        );
+        storage.get_attribute_by_copy(1, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
+        assert_eq!(
+            ref_bytes_p2_a2, attribute_2_buf,
+            "get_attribute_by_copy: Bytes are not equal"
+        );
+
+        let mut all_attribute_1_buf: Vec<u8> = vec![0; 4];
+        let mut all_attribute_2_buf: Vec<u8> = vec![0; 16];
+
+        storage.get_attribute_range_by_copy(
+            0..2,
+            &attributes::INTENSITY,
+            &mut all_attribute_1_buf[..],
+        );
+        assert_eq!(
+            ref_bytes_all_a1, all_attribute_1_buf,
+            "get_attribute_range_by_copy: Bytes are not equal"
+        );
+
+        storage.get_attribute_range_by_copy(
+            0..2,
+            &attributes::GPS_TIME,
+            &mut all_attribute_2_buf[..],
+        );
+        assert_eq!(
+            ref_bytes_all_a2, all_attribute_2_buf,
+            "get_attribute_range_by_copy: Bytes are not equal"
+        );
     }
 }
