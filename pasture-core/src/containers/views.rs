@@ -139,6 +139,44 @@ mod iterators {
             unsafe { Some(attribute.assume_init()) }
         }
     }
+
+    pub struct PerAttributeIterator<'a, T: PrimitiveType + 'a, B: PerAttributePointBuffer + Sized> {
+        buffer: &'a B,
+        attribute_data: &'a [u8],
+        current_index: usize,
+        unused: PhantomData<T>,
+    }
+
+    impl<'a, T: PrimitiveType + 'a, B: PerAttributePointBuffer + Sized> PerAttributeIterator<'a, T, B> {
+        pub fn new(buffer: &'a B, attribute: &'a PointAttributeDefinition) -> Self {
+            Self {
+                buffer,
+                attribute_data: buffer.get_attribute_range_by_ref(0..buffer.len(), attribute),
+                current_index: 0,
+                unused: Default::default(),
+            }
+        }
+    }
+
+    impl<'a, T: PrimitiveType + 'a, B: PerAttributePointBuffer + Sized> Iterator
+        for PerAttributeIterator<'a, T, B>
+    {
+        type Item = &'a T;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.current_index == self.buffer.len() {
+                return None;
+            }
+
+            let offset_in_buffer = self.current_index * std::mem::size_of::<T>();
+            self.current_index += 1;
+            unsafe {
+                let ptr_to_current_attribute = self.attribute_data.as_ptr().add(offset_in_buffer);
+                let item = &*(ptr_to_current_attribute as *const T);
+                Some(item)
+            }
+        }
+    }
 }
 
 // TODO points() and attributes() should be macro calls. Inside a macro, we can dispatch on the actual type,
@@ -197,25 +235,25 @@ pub fn attributes<'a, T: PrimitiveType + 'a>(
 }
 
 /// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
-pub fn attributes_from_by_attribute_buffer<
+pub fn attributes_from_per_attribute_buffer<
     'a,
     T: PrimitiveType + 'a,
     B: PerAttributePointBuffer + Sized + 'a,
 >(
     buffer: &'a B,
     attribute: &'a PointAttributeDefinition,
-) -> impl Iterator<Item = T> + 'a {
+) -> impl Iterator<Item = &'a T> + 'a {
     if !buffer.point_layout().has_attribute(attribute.name()) {
         panic!("attributes_from_by_attribute_buffer: PointLayout of buffer does not contain attribute {}", attribute.name());
     }
-    iterators::DefaultAttributeIterator::new(buffer, attribute)
+    iterators::PerAttributeIterator::new(buffer, attribute)
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use crate::containers::InterleavedVecPointStorage;
+    use crate::containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage};
     use crate::layout::{attributes, PointLayout};
     use static_assertions::const_assert;
 
@@ -249,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn test_points_view() {
+    fn test_points_with_interleaved_point_storage() {
         let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
         storage.push_point(TestPointType(42, 0.123));
         storage.push_point(TestPointType(43, 0.345));
@@ -266,8 +304,58 @@ mod tests {
     }
 
     #[test]
-    fn test_attributes_view() {
+    fn test_points_with_per_attribute_point_storage() {
+        let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
+        storage.push_point(TestPointType(42, 0.123));
+        storage.push_point(TestPointType(43, 0.345));
+
+        let points_view = points::<TestPointType>(&storage);
+
+        let points_collected = points_view.collect::<Vec<_>>();
+
+        assert_eq!(2, points_collected.len());
+        assert_eq!(42, points_collected[0].0);
+        assert_eq!(0.123, points_collected[0].1);
+        assert_eq!(43, points_collected[1].0);
+        assert_eq!(0.345, points_collected[1].1);
+    }
+
+    #[test]
+    fn test_attributes_from_per_attribute_buffer() {
+        let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
+        storage.push_point(TestPointType(42, 0.123));
+        storage.push_point(TestPointType(43, 0.345));
+
+        let attributes_view = attributes_from_per_attribute_buffer::<
+            u16,
+            PerAttributeVecPointStorage,
+        >(&storage, &attributes::INTENSITY);
+
+        let attributes_collected = attributes_view.collect::<Vec<_>>();
+
+        assert_eq!(2, attributes_collected.len());
+        assert_eq!(42, *attributes_collected[0]);
+        assert_eq!(43, *attributes_collected[1]);
+    }
+
+    #[test]
+    fn test_attributes_with_interleaved_point_storage() {
         let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
+        storage.push_point(TestPointType(42, 0.123));
+        storage.push_point(TestPointType(43, 0.345));
+
+        let attributes_view = attributes::<u16>(&storage, &attributes::INTENSITY);
+
+        let attributes_collected = attributes_view.collect::<Vec<_>>();
+
+        assert_eq!(2, attributes_collected.len());
+        assert_eq!(42, attributes_collected[0]);
+        assert_eq!(43, attributes_collected[1]);
+    }
+
+    #[test]
+    fn test_attributes_with_per_attribute_point_storage() {
+        let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
         storage.push_point(TestPointType(42, 0.123));
         storage.push_point(TestPointType(43, 0.345));
 
