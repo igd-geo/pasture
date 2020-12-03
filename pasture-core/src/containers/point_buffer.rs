@@ -97,7 +97,7 @@ pub trait PerAttributePointBuffer: PointBuffer {
 pub struct InterleavedVecPointStorage {
     layout: PointLayout,
     points: Vec<u8>,
-    size_of_point_entry: usize,
+    size_of_point_entry: u64,
 }
 
 impl InterleavedVecPointStorage {
@@ -130,7 +130,7 @@ impl InterleavedVecPointStorage {
     /// ```
     pub fn with_capacity(capacity: usize, layout: PointLayout) -> Self {
         let size_of_point_entry = layout.size_of_point_entry();
-        let bytes_to_reserve = capacity * size_of_point_entry;
+        let bytes_to_reserve = capacity * size_of_point_entry as usize;
         Self {
             layout,
             points: Vec::with_capacity(bytes_to_reserve),
@@ -188,7 +188,7 @@ impl InterleavedVecPointStorage {
 
     /// Reserve capacity for at least `additional_points` new points to be inserted into this `PointBuffer`
     fn reserve(&mut self, additional_points: usize) {
-        let additional_bytes = additional_points * self.size_of_point_entry;
+        let additional_bytes = additional_points * self.size_of_point_entry as usize;
         self.points.reserve(additional_bytes);
     }
 }
@@ -202,30 +202,79 @@ impl PointBuffer for InterleavedVecPointStorage {
             );
         }
 
-        let offset_to_point_bytes = point_index * self.size_of_point_entry;
+        let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
         buf.copy_from_slice(
-            &self.points[offset_to_point_bytes..offset_to_point_bytes + self.size_of_point_entry],
+            &self.points
+                [offset_to_point_bytes..offset_to_point_bytes + self.size_of_point_entry as usize],
         );
     }
-    fn get_attribute_by_copy(&self, _: usize, _: &PointAttributeDefinition, _: &mut [u8]) {
-        todo!()
+
+    fn get_attribute_by_copy(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
+    ) {
+        if point_index >= self.len() {
+            panic!(
+                "InterleavedVecPointStorage::get_attribute_by_copy: Point index {} out of bounds!",
+                point_index
+            );
+        }
+
+        if let Some(attribute_offset) = self.layout.offset_of(attribute) {
+            let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
+            let offset_to_attribute = offset_to_point_bytes + attribute_offset as usize;
+            let attribute_size = attribute.size() as usize;
+
+            buf.copy_from_slice(
+                &self.points[offset_to_attribute..offset_to_attribute + attribute_size],
+            );
+        } else {
+            panic!("InterleavedVecPointStorage::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+        }
     }
 
-    fn get_points_by_copy(&self, _: Range<usize>, _: &mut [u8]) {
-        todo!()
+    fn get_points_by_copy(&self, point_indices: Range<usize>, buf: &mut [u8]) {
+        let points_ref = self.get_points_by_ref(point_indices);
+        buf.copy_from_slice(points_ref);
     }
 
     fn get_attribute_range_by_copy(
         &self,
-        _: Range<usize>,
-        _: &PointAttributeDefinition,
-        _: &mut [u8],
+        point_indices: Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
     ) {
-        todo!()
+        if point_indices.end > self.len() {
+            panic!(
+                "InterleavedVecPointStorage::get_attribute_range_by_copy: Point indices {:?} out of bounds!",
+                point_indices
+            );
+        }
+
+        if let Some(attribute_offset) = self.layout.offset_of(attribute) {
+            let attribute_size = attribute.size() as usize;
+            let start_index = point_indices.start;
+
+            for point_index in point_indices {
+                let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
+                let offset_to_attribute = offset_to_point_bytes + attribute_offset as usize;
+                let offset_in_target_buf = (point_index - start_index) * attribute_size;
+                let target_buf_slice =
+                    &mut buf[offset_in_target_buf..offset_in_target_buf + attribute_size];
+
+                target_buf_slice.copy_from_slice(
+                    &self.points[offset_to_attribute..offset_to_attribute + attribute_size],
+                );
+            }
+        } else {
+            panic!("InterleavedVecPointStorage::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+        }
     }
 
     fn len(&self) -> usize {
-        self.points.len() / self.layout.size_of_point_entry()
+        self.points.len() / self.size_of_point_entry as usize
     }
 
     fn point_layout(&self) -> &PointLayout {
@@ -242,8 +291,8 @@ impl InterleavedPointBuffer for InterleavedVecPointStorage {
             );
         }
 
-        let offset_to_point = point_index * self.size_of_point_entry;
-        &self.points[offset_to_point..offset_to_point + self.size_of_point_entry]
+        let offset_to_point = point_index * self.size_of_point_entry as usize;
+        &self.points[offset_to_point..offset_to_point + self.size_of_point_entry as usize]
     }
 
     fn get_points_by_ref(&self, point_indices: Range<usize>) -> &[u8] {
@@ -254,9 +303,37 @@ impl InterleavedPointBuffer for InterleavedVecPointStorage {
             );
         }
 
-        let offset_to_point = point_indices.start * self.size_of_point_entry;
+        let offset_to_point = point_indices.start * self.size_of_point_entry as usize;
         let total_bytes_of_range =
-            (point_indices.end - point_indices.start) * self.size_of_point_entry;
+            (point_indices.end - point_indices.start) * self.size_of_point_entry as usize;
         &self.points[offset_to_point..offset_to_point + total_bytes_of_range]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::layout::{attributes, PointLayout};
+
+    #[repr(packed)]
+    struct TestPointType(u16, f64);
+
+    impl PointType for TestPointType {
+        fn layout() -> PointLayout {
+            PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
+        }
+    }
+
+    #[test]
+    fn test_interleaved_vec_storage() {
+        let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
+
+        assert_eq!(0, storage.len());
+
+        storage.push_point(TestPointType(42, 0.123));
+        storage.push_point(TestPointType(43, 0.345));
+
+        assert_eq!(2, storage.len());
     }
 }

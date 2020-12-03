@@ -93,7 +93,7 @@ impl PointAttributeDefinition {
     }
 
     /// Returns the size in bytes of this attribute
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> u64 {
         match self.datatype {
             PointAttributeDataType::Bool => 1,
             PointAttributeDataType::F32 => 4,
@@ -220,7 +220,8 @@ pub mod attributes {
 /// Describes the layout of a single point in a point cloud
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PointLayout {
-    attributes: BTreeMap<&'static str, PointAttributeDefinition>,
+    attributes: Vec<PointAttributeDefinition>,
+    attribute_offsets: Vec<u64>,
 }
 
 impl PointLayout {
@@ -260,15 +261,25 @@ impl PointLayout {
     /// # assert_eq!(1, layout.attributes().count());
     /// ```
     pub fn add_attribute(&mut self, point_attribute: PointAttributeDefinition) {
-        if let Some(old_attribute) = self
-            .attributes
-            .insert(point_attribute.name(), point_attribute)
-        {
+        if let Some(old_attribute) = self.get_attribute_by_name(point_attribute.name()) {
             panic!(
                 "Point attribute {} is already present in this PointLayout!",
                 old_attribute.name()
             );
         }
+
+        // Store the offset to the start of the new attribute within this layout
+        if self.attributes.is_empty() {
+            self.attribute_offsets.push(0);
+        } else {
+            // If there are previous attributes, the offset to this attribute is equal to the offset
+            // to the previous attribute plus the previous attribute's size
+            self.attribute_offsets.push(
+                self.attribute_offsets.last().unwrap() + self.attributes.last().unwrap().size(),
+            );
+        }
+
+        self.attributes.push(point_attribute);
     }
 
     /// Returns true if an attribute with the given name is part of this PointLayout.
@@ -279,7 +290,9 @@ impl PointLayout {
     /// assert!(layout.has_attribute(attributes::POSITION_3D.name()));
     /// ```
     pub fn has_attribute(&self, attribute_name: &str) -> bool {
-        self.attributes.contains_key(attribute_name)
+        self.attributes
+            .iter()
+            .any(|attribute| attribute.name() == attribute_name)
     }
 
     /// Returns the attribute with the given name from this PointLayout. Returns None if no such attribute exists.
@@ -292,7 +305,9 @@ impl PointLayout {
     /// assert_eq!(attributes::POSITION_3D, *attribute.unwrap());
     /// ```
     pub fn get_attribute_by_name(&self, attribute_name: &str) -> Option<&PointAttributeDefinition> {
-        self.attributes.get(attribute_name)
+        self.attributes
+            .iter()
+            .find(|attribute| attribute.name() == attribute_name)
     }
 
     /// Returns an iterator over all attributes in this PointLayout.
@@ -303,21 +318,56 @@ impl PointLayout {
     /// layout.add_attribute(attributes::INTENSITY);
     /// # let attributes = layout.attributes().collect::<Vec<_>>();
     /// # assert_eq!(2, attributes.len());
-    /// # // TODO Order of attributes?
-    /// # assert_eq!(attributes::INTENSITY, *attributes[0]);
-    /// # assert_eq!(attributes::POSITION_3D, *attributes[1]);
+    /// # assert_eq!(attributes::POSITION_3D, *attributes[0]);
+    /// # assert_eq!(attributes::INTENSITY, *attributes[1]);
     /// for attribute in layout.attributes() {
     ///    println!("{:?}", attribute);
     /// }
     /// ```
     pub fn attributes<'a>(&'a self) -> impl Iterator<Item = &'a PointAttributeDefinition> + 'a {
-        self.attributes.values()
+        self.attributes.iter()
     }
 
-    /// Returns the size in bytes of a single point entry with this layout
-    pub fn size_of_point_entry(&self) -> usize {
+    /// Returns the size in bytes of a single point entry with the associated `PointLayout`.
+    /// ```
+    /// # use pasture_core::layout::*;
+    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
+    /// let size_of_point = layout.size_of_point_entry();
+    /// assert_eq!(26, size_of_point);
+    /// ```
+    pub fn size_of_point_entry(&self) -> u64 {
         self.attributes
-            .values()
+            .iter()
             .fold(0, |acc, attribute| acc + attribute.size())
+    }
+
+    /// Returns the offset in bytes to the start of the given attribute within this layout. This assumes tight packing of
+    /// the attributes. Returns `None` if the given attribute is not part of the associated `PointLayout`.
+    ///
+    /// ```
+    /// # use pasture_core::layout::*;
+    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
+    /// let intensity_offset = layout.offset_of(&attributes::INTENSITY).unwrap();
+    /// assert_eq!(attributes::POSITION_3D.size(), intensity_offset);
+    /// ```
+    pub fn offset_of(&self, attribute: &PointAttributeDefinition) -> Option<u64> {
+        self.index_of(attribute)
+            .map(|idx| self.attribute_offsets[idx])
+    }
+
+    /// Returns the index of the given attribute within the associated `PointLayout`, or `None` if the attribute is not
+    /// part of the `PointLayout`. The index depends on the order in which the attributes have been added to the associated
+    /// `PointLayout`:
+    /// ```
+    /// # use pasture_core::layout::*;
+    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
+    /// assert_eq!(Some(0), layout.index_of(&attributes::POSITION_3D));
+    /// assert_eq!(Some(1), layout.index_of(&attributes::INTENSITY));
+    /// assert_eq!(None, layout.index_of(&attributes::CLASSIFICATION));
+    /// ```
+    pub fn index_of(&self, attribute: &PointAttributeDefinition) -> Option<usize> {
+        self.attributes
+            .iter()
+            .position(|this_attribute| this_attribute == attribute)
     }
 }
