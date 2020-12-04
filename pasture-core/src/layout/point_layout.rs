@@ -1,6 +1,5 @@
 use nalgebra::Vector3;
 use static_assertions::const_assert;
-use std::collections::BTreeMap;
 
 /// Possible data types for individual point attributes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -202,6 +201,12 @@ pub mod attributes {
     pub const GPS_TIME: PointAttributeDefinition = PointAttributeDefinition {
         name: "GpsTime",
         datatype: PointAttributeDataType::F64,
+    };
+
+    /// Attribute definition for near-infrared records (NIR). Default datatype is U16
+    pub const NIR: PointAttributeDefinition = PointAttributeDefinition {
+        name: "NIR",
+        datatype: PointAttributeDataType::U16,
     };
 
     /// Attribute definition for a point ID. Default datatype is U64

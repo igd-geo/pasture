@@ -173,14 +173,35 @@ impl InterleavedVecPointStorage {
             );
         }
 
+        self.push_point_unchecked(point);
+    }
+
+    /// Pushes a single point into the associated `InterleavedVecPointStorage`. *Note:* This method performs no checks
+    /// regarding the point type `T`, so it is very unsafe! Only call this method if you know the point type matches
+    /// the `PointLayout` of the associated `InterleavedVecPointStorage`!
+    ///
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    ///
+    /// struct MyPointType(u16);
+    ///
+    /// impl PointType for MyPointType {
+    ///   fn layout() -> PointLayout {
+    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
+    ///   }
+    /// }
+    ///
+    /// {
+    ///   let mut storage = InterleavedVecPointStorage::new(MyPointType::layout());
+    ///   storage.push_point_unchecked(MyPointType(42));
+    /// }
+    /// ```
+    pub fn push_point_unchecked<T: PointType>(&mut self, point: T) {
         self.reserve(1);
         let point_bytes_and_size = unsafe { view_raw_bytes(&point) };
 
         self.points.extend_from_slice(point_bytes_and_size);
-    }
-
-    pub fn push_point_unchecked<T: PointType>(&mut self, _point: T) {
-        todo!("implement")
     }
 
     pub fn push_points<T: PointType>(&mut self, _points: &[T]) {
@@ -444,8 +465,8 @@ impl PerAttributeVecPointStorage {
             for point in points {
                 let point_bytes = unsafe { view_raw_bytes(point) };
                 let point_slice = &point_bytes[offset_to_attribute_in_point
-                ..offset_to_attribute_in_point + attribute.size() as usize];
-                
+                    ..offset_to_attribute_in_point + attribute.size() as usize];
+
                 attribute_buffer.extend_from_slice(point_slice);
             }
         }

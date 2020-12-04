@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 pasture-core = { path = "../pasture-core" }
+anyhow = "1.0.34"
+las = { version = "0.7.3", features = ["laz"] }
