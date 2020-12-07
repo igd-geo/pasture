@@ -209,6 +209,36 @@ pub mod attributes {
         datatype: PointAttributeDataType::U16,
     };
 
+    /// Attribute definition for the wave packet descriptor index in the LAS format. Default datatype is U8
+    pub const WAVE_PACKET_DESCRIPTOR_INDEX: PointAttributeDefinition = PointAttributeDefinition {
+        name: "WavePacketDescriptorIndex",
+        datatype: PointAttributeDataType::U8,
+    };
+
+    /// Attribute definition for the offset to the waveform data in the LAS format. Default datatype is U64
+    pub const WAVEFORM_DATA_OFFSET: PointAttributeDefinition = PointAttributeDefinition {
+        name: "WaveformDataOffset",
+        datatype: PointAttributeDataType::U64,
+    };
+
+    /// Attribute definition for the size of a waveform data packet in the LAS format. Default datatype is U32
+    pub const WAVEFORM_PACKET_SIZE: PointAttributeDefinition = PointAttributeDefinition {
+        name: "WaveformPacketSize",
+        datatype: PointAttributeDataType::U32,
+    };
+
+    /// Attribute definition for the return point waveform location in the LAS format. Default datatype is F32
+    pub const RETURN_POINT_WAVEFORM_LOCATION: PointAttributeDefinition = PointAttributeDefinition {
+        name: "ReturnPointWaveformLocation",
+        datatype: PointAttributeDataType::F32,
+    };
+
+    /// Attribute definition for the waveform parameters in the LAS format. Default datatype is Vector3<f32>
+    pub const WAVEFORM_PARAMETERS: PointAttributeDefinition = PointAttributeDefinition {
+        name: "WaveformParameters",
+        datatype: PointAttributeDataType::Vec3f32,
+    };
+
     /// Attribute definition for a point ID. Default datatype is U64
     pub const POINT_ID: PointAttributeDefinition = PointAttributeDefinition {
         name: "PointID",
