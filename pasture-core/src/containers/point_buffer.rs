@@ -511,7 +511,7 @@ impl PerAttributeVecPointStorage {
     ) {
         match self.attributes.get_mut(attribute.name()) {
             None => panic!("PerAttributeVecPointStorage::push_attribute: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
-            Some(attribute_buffer) => {                
+            Some(attribute_buffer) => {
                 let value_bytes = unsafe { view_raw_bytes(&value) };
                 attribute_buffer.extend_from_slice(value_bytes);
             },
@@ -557,7 +557,7 @@ impl PerAttributeVecPointStorage {
     ) {
         match self.attributes.get_mut(attribute.name()) {
             None => panic!("PerAttributeVecPointStorage::push_attributes: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
-            Some(attribute_buffer) => {                
+            Some(attribute_buffer) => {
                 let value_bytes = unsafe { &*(values as *const [T] as *const [u8]) };
                 attribute_buffer.extend_from_slice(value_bytes);
             },

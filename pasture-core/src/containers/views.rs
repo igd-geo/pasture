@@ -280,10 +280,10 @@ mod tests {
         let points_collected = points_view.collect::<Vec<_>>();
 
         assert_eq!(2, points_collected.len());
-        assert_eq!(42, points_collected[0].0);
-        assert_eq!(0.123, points_collected[0].1);
-        assert_eq!(43, points_collected[1].0);
-        assert_eq!(0.345, points_collected[1].1);
+        assert_eq!(42, {points_collected[0].0});
+        assert_eq!(0.123, {points_collected[0].1});
+        assert_eq!(43, {points_collected[1].0});
+        assert_eq!(0.345, {points_collected[1].1});
     }
 
     #[test]
@@ -297,10 +297,10 @@ mod tests {
         let points_collected = points_view.collect::<Vec<_>>();
 
         assert_eq!(2, points_collected.len());
-        assert_eq!(42, points_collected[0].0);
-        assert_eq!(0.123, points_collected[0].1);
-        assert_eq!(43, points_collected[1].0);
-        assert_eq!(0.345, points_collected[1].1);
+        assert_eq!(42, {points_collected[0].0});
+        assert_eq!(0.123, {points_collected[0].1});
+        assert_eq!(43, {points_collected[1].0});
+        assert_eq!(0.345, {points_collected[1].1});
     }
 
     #[test]
@@ -314,10 +314,10 @@ mod tests {
         let points_collected = points_view.collect::<Vec<_>>();
 
         assert_eq!(2, points_collected.len());
-        assert_eq!(42, points_collected[0].0);
-        assert_eq!(0.123, points_collected[0].1);
-        assert_eq!(43, points_collected[1].0);
-        assert_eq!(0.345, points_collected[1].1);
+        assert_eq!(42, {points_collected[0].0});
+        assert_eq!(0.123, {points_collected[0].1});
+        assert_eq!(43, {points_collected[1].0});
+        assert_eq!(0.345, {points_collected[1].1});
     }
 
     #[test]

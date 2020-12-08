@@ -5,11 +5,12 @@ use pasture_core::{
     layout::{attributes, PointLayout, PointType},
     nalgebra::Vector3,
 };
-use std::convert::From;
 use static_assertions::const_assert_eq;
+use std::convert::From;
 
 /// Point type for LAS point format 0
 #[repr(packed)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LasPointFormat0 {
     pub position: Vector3<f64>,
     pub intensity: u16,
@@ -66,6 +67,7 @@ impl From<Point> for LasPointFormat0 {
 
 /// Point type for LAS point format 1
 #[repr(packed)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LasPointFormat1 {
     pub position: Vector3<f64>,
     pub intensity: u16,
@@ -116,15 +118,14 @@ impl From<Point> for LasPointFormat1 {
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
             point_source_id: las_point.point_source_id,
-            gps_time: las_point
-                .gps_time
-                .expect("Conversion from las::Point to LASPoint_Format1: gps_time was None"),
+            gps_time: las_point.gps_time.unwrap_or(0.0),
         }
     }
 }
 
 /// Point type for LAS point format 2
 #[repr(packed)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LasPointFormat2 {
     pub position: Vector3<f64>,
     pub intensity: u16,
@@ -185,6 +186,7 @@ impl From<Point> for LasPointFormat2 {
 
 /// Point type for LAS point format 3
 #[repr(packed)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LasPointFormat3 {
     pub position: Vector3<f64>,
     pub intensity: u16,
@@ -240,9 +242,7 @@ impl From<Point> for LasPointFormat3 {
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
             point_source_id: las_point.point_source_id,
-            gps_time: las_point
-                .gps_time
-                .expect("Conversion from las::Point to LASPoint_Format1: gps_time was None"),
+            gps_time: las_point.gps_time.unwrap_or(0.0),
             color_rgb: Vector3::new(color.red, color.green, color.blue),
         }
     }
@@ -250,6 +250,7 @@ impl From<Point> for LasPointFormat3 {
 
 /// Point type for LAS point format 4
 #[repr(packed)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LasPointFormat4 {
     pub position: Vector3<f64>,
     pub intensity: u16,
@@ -311,9 +312,7 @@ impl From<Point> for LasPointFormat4 {
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
             point_source_id: las_point.point_source_id,
-            gps_time: las_point
-                .gps_time
-                .expect("Conversion from las::Point to LASPoint_Format1: gps_time was None"),
+            gps_time: las_point.gps_time.unwrap_or(0.0),
             wave_packet_descriptor_index: waveform.wave_packet_descriptor_index,
             byte_offset_to_waveform_data: waveform.byte_offset_to_waveform_data,
             waveform_packet_size: waveform.waveform_packet_size_in_bytes,
@@ -325,6 +324,7 @@ impl From<Point> for LasPointFormat4 {
 
 /// Point type for LAS point format 5
 #[repr(packed)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LasPointFormat5 {
     pub position: Vector3<f64>,
     pub intensity: u16,
@@ -389,9 +389,7 @@ impl From<Point> for LasPointFormat5 {
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
             point_source_id: las_point.point_source_id,
-            gps_time: las_point
-                .gps_time
-                .expect("Conversion from las::Point to LASPoint_Format1: gps_time was None"),
+            gps_time: las_point.gps_time.unwrap_or(0.0),
             color_rgb: Vector3::new(color.red, color.green, color.blue),
             wave_packet_descriptor_index: waveform.wave_packet_descriptor_index,
             byte_offset_to_waveform_data: waveform.byte_offset_to_waveform_data,

@@ -2,93 +2,23 @@ use std::convert::From;
 use std::{fmt::Debug, io::SeekFrom, path::Path};
 
 use anyhow::{bail, Result};
-use las::{point::Format, Read, Reader};
+use las::{Read, Reader};
 
 use crate::base::{PointReader, SeekToPoint};
-use pasture_core::math::AABB;
-use pasture_core::nalgebra::Point3;
 use pasture_core::{
-    containers::{InterleavedPointBuffer, InterleavedVecPointStorage, PointBuffer},
+    containers::{InterleavedVecPointStorage, PointBuffer},
     layout::PointLayout,
     meta::Metadata,
 };
+use pasture_core::{layout::PointType};
 
-use super::{LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3, LasPointFormat4, LasPointFormat5, point_layout_from_las_point_format};
+use super::{
+    point_layout_from_las_point_format, LASMetadata, LasPointFormat0, LasPointFormat1,
+    LasPointFormat2, LasPointFormat3, LasPointFormat4, LasPointFormat5,
+};
 
-/// `Metadata` implementation for LAS/LAZ files
-#[derive(Debug, Clone)]
-pub struct LASMetadata {
-    bounds: AABB<f64>,
-    point_count: usize,
-    point_format: u8,
-}
-
-impl LASMetadata {
-    /// Creates a new `LASMetadata` with the given `bounds` and `point_count`
-    ///
-    /// Example:
-    /// ```
-    /// use pasture_io::las::LASMetadata;
-    /// use pasture_core::{
-    ///     math::AABB,
-    ///     nalgebra::Point3,
-    /// };
-    ///
-    /// let las_meta = LASMetadata::new(
-    ///     AABB::from_min_max(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0)),
-    ///     1024,
-    ///     0,
-    /// );
-    /// ```
-    pub fn new(bounds: AABB<f64>, point_count: usize, point_format: u8) -> Self {
-        Self {
-            bounds,
-            point_count,
-            point_format,
-        }
-    }
-}
-
-impl Metadata for LASMetadata {
-    fn bounds(&self) -> Option<AABB<f64>> {
-        Some(self.bounds)
-    }
-
-    fn get_named_field(&self, field_name: &str) -> Option<&dyn std::any::Any> {
-        todo!()
-    }
-}
-
-impl From<&las::Header> for LASMetadata {
-    fn from(header: &las::Header) -> Self {
-        let min_point = Point3::new(
-            header.bounds().min.x,
-            header.bounds().min.y,
-            header.bounds().min.z,
-        );
-        let max_point = Point3::new(
-            header.bounds().max.x,
-            header.bounds().max.y,
-            header.bounds().max.z,
-        );
-        Self {
-            bounds: AABB::from_min_max_unchecked(min_point, max_point),
-            point_count: header.number_of_points() as usize,
-            point_format: header
-                .point_format()
-                .to_u8()
-                .expect("Invalid LAS point format"),
-        }
-    }
-}
-
-impl From<las::Header> for LASMetadata {
-    fn from(header: las::Header) -> Self {
-        (&header).into()
-    }
-}
-
-struct LASReader {
+/// `PointReader` implementation for LAS/LAZ files
+pub struct LASReader {
     reader: Reader,
     metadata: LASMetadata,
     layout: PointLayout,
@@ -140,92 +70,25 @@ impl LASReader {
 
     /// Returns the number of remaining points that can be read from this `LASReader`
     pub fn remaining_points(&self) -> usize {
-        self.metadata.point_count - self.current_point_index
+        self.metadata.point_count() - self.current_point_index
     }
 
-    /// Read points in LAS point format 0
-    fn do_read_format_0(
+    /// Read points using the given `PointType`
+    fn do_read<T: From<las::Point> + PointType>(
         &mut self,
         count: usize,
         buffer: &mut InterleavedVecPointStorage,
     ) -> Result<()> {
-        assert_eq!(buffer.point_layout().size_of_point_entry(), std::mem::size_of::<LasPointFormat0>() as u64);
+        assert_eq!(
+            buffer.point_layout().size_of_point_entry(),
+            std::mem::size_of::<T>() as u64
+        );
         for _ in 0..count {
             let las_point = self
                 .reader
                 .read()
-                .expect("LASReader:do_read_format_0: las::Reader::read returned None")?;
-            let typed_point: LasPointFormat0 = las_point.into();
-            buffer.push_point_unchecked(typed_point);
-        }
-
-        Ok(())
-    }
-
-    fn do_read_format_1(&mut self, count: usize, buffer: &mut InterleavedVecPointStorage) -> Result<()> {
-        assert_eq!(buffer.point_layout().size_of_point_entry(), std::mem::size_of::<LasPointFormat1>() as u64);
-        for _ in 0..count {
-            let las_point = self
-                .reader
-                .read()
-                .expect("LASReader:do_read_format_1: las::Reader::read returned None")?;
-            let typed_point: LasPointFormat1 = las_point.into();
-            buffer.push_point_unchecked(typed_point);
-        }
-
-        Ok(())
-    }
-
-    fn do_read_format_2(&mut self, count: usize, buffer: &mut InterleavedVecPointStorage) -> Result<()> {
-        assert_eq!(buffer.point_layout().size_of_point_entry(), std::mem::size_of::<LasPointFormat2>() as u64);
-        for _ in 0..count {
-            let las_point = self
-                .reader
-                .read()
-                .expect("LASReader:do_read_format_2: las::Reader::read returned None")?;
-            let typed_point: LasPointFormat2 = las_point.into();
-            buffer.push_point_unchecked(typed_point);
-        }
-
-        Ok(())
-    }
-
-    fn do_read_format_3(&mut self, count: usize, buffer: &mut InterleavedVecPointStorage) -> Result<()> {
-        assert_eq!(buffer.point_layout().size_of_point_entry(), std::mem::size_of::<LasPointFormat3>() as u64);
-        for _ in 0..count {
-            let las_point = self
-                .reader
-                .read()
-                .expect("LASReader:do_read_format_3: las::Reader::read returned None")?;
-            let typed_point: LasPointFormat3 = las_point.into();
-            buffer.push_point_unchecked(typed_point);
-        }
-
-        Ok(())
-    }
-
-    fn do_read_format_4(&mut self, count: usize, buffer: &mut InterleavedVecPointStorage) -> Result<()> {
-        assert_eq!(buffer.point_layout().size_of_point_entry(), std::mem::size_of::<LasPointFormat4>() as u64);
-        for _ in 0..count {
-            let las_point = self
-                .reader
-                .read()
-                .expect("LASReader:do_read_format_4: las::Reader::read returned None")?;
-            let typed_point: LasPointFormat4 = las_point.into();
-            buffer.push_point_unchecked(typed_point);
-        }
-
-        Ok(())
-    }
-
-    fn do_read_format_5(&mut self, count: usize, buffer: &mut InterleavedVecPointStorage) -> Result<()> {
-        assert_eq!(buffer.point_layout().size_of_point_entry(), std::mem::size_of::<LasPointFormat5>() as u64);
-        for _ in 0..count {
-            let las_point = self
-                .reader
-                .read()
-                .expect("LASReader:do_read_format_5: las::Reader::read returned None")?;
-            let typed_point: LasPointFormat5 = las_point.into();
+                .expect("LASReader:do_read: las::Reader::read returned None")?;
+            let typed_point: T = las_point.into();
             buffer.push_point_unchecked(typed_point);
         }
 
@@ -246,16 +109,16 @@ impl PointReader for LASReader {
         //           from the different LAS attributes into the memory regions inside the buffer as defined by self.layout
 
         // This is option 1:
-        match self.metadata.point_format {
-            0 => self.do_read_format_0(num_points_to_read, &mut buffer)?,
-            1 => self.do_read_format_1(num_points_to_read, &mut buffer)?,
-            2 => self.do_read_format_2(num_points_to_read, &mut buffer)?,
-            3 => self.do_read_format_3(num_points_to_read, &mut buffer)?,
-            4 => self.do_read_format_4(num_points_to_read, &mut buffer)?,
-            5 => self.do_read_format_5(num_points_to_read, &mut buffer)?,
+        match self.metadata.point_format() {
+            0 => self.do_read::<LasPointFormat0>(num_points_to_read, &mut buffer)?,
+            1 => self.do_read::<LasPointFormat1>(num_points_to_read, &mut buffer)?,
+            2 => self.do_read::<LasPointFormat2>(num_points_to_read, &mut buffer)?,
+            3 => self.do_read::<LasPointFormat3>(num_points_to_read, &mut buffer)?,
+            4 => self.do_read::<LasPointFormat4>(num_points_to_read, &mut buffer)?,
+            5 => self.do_read::<LasPointFormat5>(num_points_to_read, &mut buffer)?,
             _ => panic!(
                 "Currently unsupported point format {}",
-                self.metadata.point_format
+                self.metadata.point_format()
             ),
         }
 
@@ -283,7 +146,7 @@ impl SeekToPoint for LASReader {
             SeekFrom::Current(offset_from_current) => {
                 self.current_point_index as i64 + offset_from_current
             }
-            SeekFrom::End(offset_from_end) => self.metadata.point_count as i64 + offset_from_end,
+            SeekFrom::End(offset_from_end) => self.metadata.point_count() as i64 + offset_from_end,
             SeekFrom::Start(offset_from_start) => offset_from_start as i64,
         };
 
@@ -294,9 +157,9 @@ impl SeekToPoint for LASReader {
             ));
         }
 
-        let actual_index = usize::min(index_from_start as usize, self.metadata.point_count);
+        let actual_index = usize::min(index_from_start as usize, self.metadata.point_count());
         self.reader.seek(actual_index as u64)?;
-        Ok(actual_index) 
+        Ok(actual_index)
     }
 }
 
@@ -305,9 +168,9 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use pasture_core::{nalgebra::Vector3, containers::*, layout::attributes};
+    use pasture_core::{containers::*, layout::attributes, nalgebra::Vector3};
 
-    fn format_has_gps_times(format : u8) -> bool {
+    fn format_has_gps_times(format: u8) -> bool {
         match format {
             1 => true,
             3..=10 => true,
@@ -315,7 +178,7 @@ mod tests {
         }
     }
 
-    fn format_has_colors(format : u8) -> bool {
+    fn format_has_colors(format: u8) -> bool {
         match format {
             2..=3 => true,
             5 => true,
@@ -336,59 +199,59 @@ mod tests {
             Vector3::new(6.0, 6.0, 6.0),
             Vector3::new(7.0, 7.0, 7.0),
             Vector3::new(8.0, 8.0, 8.0),
-            Vector3::new(9.0, 9.0, 9.0)
+            Vector3::new(9.0, 9.0, 9.0),
         ]
     }
-    
+
     fn expected_intensities() -> Vec<u16> {
         vec![
             0,
             255,
-            2*255,
-            3*255,
-            4*255,
-            5*255,
-            6*255,
-            7*255,
-            8*255,
-            9*255
+            2 * 255,
+            3 * 255,
+            4 * 255,
+            5 * 255,
+            6 * 255,
+            7 * 255,
+            8 * 255,
+            9 * 255,
         ]
     }
 
     fn expected_return_numbers() -> Vec<u8> {
-        vec![
-            0,1,2,3,4,5,6,7,0,1
-        ]
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 0, 1]
     }
 
     fn expected_number_of_returns() -> Vec<u8> {
-        vec![
-            0,1,2,3,4,5,6,7,0,1
-        ]
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 0, 1]
     }
 
     fn expected_scan_direction_flags() -> Vec<bool> {
-        vec![false, true, false, true, false, true, false, true, false, true]
+        vec![
+            false, true, false, true, false, true, false, true, false, true,
+        ]
     }
 
     fn expected_edge_of_flight_lines() -> Vec<bool> {
-        vec![false, true, false, true, false, true, false, true, false, true]
+        vec![
+            false, true, false, true, false, true, false, true, false, true,
+        ]
     }
 
     fn expected_classifications() -> Vec<u8> {
-        vec![0,1,2,3,4,5,6,7,8,9]
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     }
 
     fn expected_scan_angle_ranks() -> Vec<i8> {
-        vec![0,1,2,3,4,5,6,7,8,9]
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     }
 
     fn expected_user_data() -> Vec<u8> {
-        vec![0,1,2,3,4,5,6,7,8,9]
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     }
 
     fn expected_point_source_ids() -> Vec<u16> {
-        vec![0,1,2,3,4,5,6,7,8,9]
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     }
 
     fn expected_gps_times() -> Vec<f64> {
@@ -411,34 +274,41 @@ mod tests {
     }
 
     fn test_las_reader_data(points: &dyn PointBuffer, point_format: u8) {
-        let positions = attributes::<Vector3<f64>>(points, &attributes::POSITION_3D).collect::<Vec<_>>();
+        let positions =
+            attributes::<Vector3<f64>>(points, &attributes::POSITION_3D).collect::<Vec<_>>();
         assert_eq!(expected_positions(), positions);
 
         let intensities = attributes::<u16>(points, &attributes::INTENSITY).collect::<Vec<_>>();
         assert_eq!(expected_intensities(), intensities);
 
-        let return_numbers = attributes::<u8>(points, &attributes::RETURN_NUMBER).collect::<Vec<_>>();
+        let return_numbers =
+            attributes::<u8>(points, &attributes::RETURN_NUMBER).collect::<Vec<_>>();
         assert_eq!(expected_return_numbers(), return_numbers);
 
-        let number_of_returns = attributes::<u8>(points, &attributes::NUMBER_OF_RETURNS).collect::<Vec<_>>();
+        let number_of_returns =
+            attributes::<u8>(points, &attributes::NUMBER_OF_RETURNS).collect::<Vec<_>>();
         assert_eq!(expected_number_of_returns(), number_of_returns);
 
-        let scan_direction_flags = attributes::<bool>(points, &attributes::SCAN_DIRECTION_FLAG).collect::<Vec<_>>();
+        let scan_direction_flags =
+            attributes::<bool>(points, &attributes::SCAN_DIRECTION_FLAG).collect::<Vec<_>>();
         assert_eq!(expected_scan_direction_flags(), scan_direction_flags);
 
         let eof = attributes::<bool>(points, &attributes::EDGE_OF_FLIGHT_LINE).collect::<Vec<_>>();
         assert_eq!(expected_edge_of_flight_lines(), eof);
 
-        let classifications = attributes::<u8>(points, &attributes::CLASSIFICATION).collect::<Vec<_>>();
+        let classifications =
+            attributes::<u8>(points, &attributes::CLASSIFICATION).collect::<Vec<_>>();
         assert_eq!(expected_classifications(), classifications);
 
-        let scan_angle_ranks = attributes::<i8>(points, &attributes::SCAN_ANGLE_RANK).collect::<Vec<_>>();
+        let scan_angle_ranks =
+            attributes::<i8>(points, &attributes::SCAN_ANGLE_RANK).collect::<Vec<_>>();
         assert_eq!(expected_scan_angle_ranks(), scan_angle_ranks);
 
         let user_data = attributes::<u8>(points, &attributes::USER_DATA).collect::<Vec<_>>();
         assert_eq!(expected_user_data(), user_data);
 
-        let point_source_ids = attributes::<u16>(points, &attributes::POINT_SOURCE_ID).collect::<Vec<_>>();
+        let point_source_ids =
+            attributes::<u16>(points, &attributes::POINT_SOURCE_ID).collect::<Vec<_>>();
         assert_eq!(expected_point_source_ids(), point_source_ids);
 
         if format_has_gps_times(point_format) {
@@ -447,14 +317,15 @@ mod tests {
         }
 
         if format_has_colors(point_format) {
-            let colors = attributes::<Vector3<u16>>(points, &attributes::COLOR_RGB).collect::<Vec<_>>();
+            let colors =
+                attributes::<Vector3<u16>>(points, &attributes::COLOR_RGB).collect::<Vec<_>>();
             assert_eq!(expected_colors(), colors);
         }
     }
 
     #[test]
     fn test_read_las_with_format_0() -> Result<()> {
-        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo 
+        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("resources/test/10_points_format_0.las");
 
@@ -470,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_read_las_with_format_1() -> Result<()> {
-        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo 
+        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("resources/test/10_points_format_1.las");
 
@@ -486,7 +357,7 @@ mod tests {
 
     #[test]
     fn test_read_las_with_format_2() -> Result<()> {
-        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo 
+        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("resources/test/10_points_format_2.las");
 
@@ -502,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_read_las_with_format_3() -> Result<()> {
-        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo 
+        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("resources/test/10_points_format_3.las");
 
@@ -518,7 +389,7 @@ mod tests {
 
     #[test]
     fn test_read_las_with_format_4() -> Result<()> {
-        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo 
+        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("resources/test/10_points_format_4.las");
 
@@ -534,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_read_las_with_format_5() -> Result<()> {
-        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo 
+        // From https://stackoverflow.com/questions/30003921/how-can-i-locate-resources-for-testing-with-cargo
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("resources/test/10_points_format_5.las");
 
@@ -547,5 +418,4 @@ mod tests {
 
         Ok(())
     }
-
 }
