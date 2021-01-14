@@ -1,12 +1,12 @@
 use std::{fs::File, io::BufWriter, path::Path};
 
 use anyhow::{anyhow, Result};
-use las::{Color, raw::point::Waveform, Write, Writer};
+use las::{raw::point::Waveform, Color, Write, Writer};
 use pasture_core::{
     containers::PointBuffer,
     layout::{attributes, PointLayout},
     nalgebra::Vector3,
-    util::{view_raw_bytes_mut},
+    util::view_raw_bytes_mut,
 };
 
 use crate::base::PointWriter;
@@ -138,13 +138,29 @@ impl<T: std::io::Write + std::io::Seek + std::fmt::Debug + Send + 'static> Point
                 .point_layout()
                 .has_attribute(attributes::COLOR_RGB.name());
 
-        let self_requires_waveform = self.layout.has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name());
-        let has_waveform_packet_descriptor_index = self_requires_waveform &&
-            points.point_layout().has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name());
-        let has_waveform_data_offset = self_requires_waveform && points.point_layout().has_attribute(attributes::WAVEFORM_DATA_OFFSET.name());
-        let has_waveform_packet_size = self_requires_waveform && points.point_layout().has_attribute(attributes::WAVEFORM_PACKET_SIZE.name());
-        let has_return_point_waveform_location = self_requires_waveform && points.point_layout().has_attribute(attributes::RETURN_POINT_WAVEFORM_LOCATION.name());
-        let has_waveform_parameters = self_requires_waveform && points.point_layout().has_attribute(attributes::WAVEFORM_PARAMETERS.name());
+        let self_requires_waveform = self
+            .layout
+            .has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name());
+        let has_waveform_packet_descriptor_index = self_requires_waveform
+            && points
+                .point_layout()
+                .has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name());
+        let has_waveform_data_offset = self_requires_waveform
+            && points
+                .point_layout()
+                .has_attribute(attributes::WAVEFORM_DATA_OFFSET.name());
+        let has_waveform_packet_size = self_requires_waveform
+            && points
+                .point_layout()
+                .has_attribute(attributes::WAVEFORM_PACKET_SIZE.name());
+        let has_return_point_waveform_location = self_requires_waveform
+            && points
+                .point_layout()
+                .has_attribute(attributes::RETURN_POINT_WAVEFORM_LOCATION.name());
+        let has_waveform_parameters = self_requires_waveform
+            && points
+                .point_layout()
+                .has_attribute(attributes::WAVEFORM_PARAMETERS.name());
 
         // TODO other attributes of extended formats (6-10)
         // TODO This seems quite inefficient and it doesn't even support format conversion. Maybe we can enforce
@@ -276,36 +292,60 @@ impl<T: std::io::Write + std::io::Seek + std::fmt::Debug + Send + 'static> Point
                 points.get_attribute_by_copy(point_idx, &attributes::COLOR_RGB, color_bytes);
                 las_point.color = Some(Color::new(color.x, color.y, color.z));
             } else if self_requires_colors {
-                las_point.color = Some(Color::new(0,0,0));
+                las_point.color = Some(Color::new(0, 0, 0));
             }
 
             if self_requires_waveform {
-                let mut waveform : Waveform = Default::default();
+                let mut waveform: Waveform = Default::default();
 
                 if has_waveform_packet_descriptor_index {
-                    let index_bytes = unsafe { view_raw_bytes_mut(&mut waveform.wave_packet_descriptor_index)};
-                    points.get_attribute_by_copy(point_idx, &attributes::WAVE_PACKET_DESCRIPTOR_INDEX, index_bytes);                    
+                    let index_bytes =
+                        unsafe { view_raw_bytes_mut(&mut waveform.wave_packet_descriptor_index) };
+                    points.get_attribute_by_copy(
+                        point_idx,
+                        &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
+                        index_bytes,
+                    );
                 }
 
                 if has_waveform_data_offset {
-                    let offset_bytes = unsafe { view_raw_bytes_mut(&mut waveform.byte_offset_to_waveform_data) };
-                    points.get_attribute_by_copy(point_idx, &attributes::WAVEFORM_DATA_OFFSET, offset_bytes);
+                    let offset_bytes =
+                        unsafe { view_raw_bytes_mut(&mut waveform.byte_offset_to_waveform_data) };
+                    points.get_attribute_by_copy(
+                        point_idx,
+                        &attributes::WAVEFORM_DATA_OFFSET,
+                        offset_bytes,
+                    );
                 }
 
                 if has_waveform_packet_size {
-                    let packet_size_bytes = unsafe { view_raw_bytes_mut(&mut waveform.waveform_packet_size_in_bytes)};
-                    points.get_attribute_by_copy(point_idx, &attributes::WAVEFORM_PACKET_SIZE, packet_size_bytes);
+                    let packet_size_bytes =
+                        unsafe { view_raw_bytes_mut(&mut waveform.waveform_packet_size_in_bytes) };
+                    points.get_attribute_by_copy(
+                        point_idx,
+                        &attributes::WAVEFORM_PACKET_SIZE,
+                        packet_size_bytes,
+                    );
                 }
 
                 if has_return_point_waveform_location {
-                    let return_bytes = unsafe { view_raw_bytes_mut(&mut waveform.return_point_waveform_location)};
-                    points.get_attribute_by_copy(point_idx, &attributes::RETURN_POINT_WAVEFORM_LOCATION, return_bytes);
+                    let return_bytes =
+                        unsafe { view_raw_bytes_mut(&mut waveform.return_point_waveform_location) };
+                    points.get_attribute_by_copy(
+                        point_idx,
+                        &attributes::RETURN_POINT_WAVEFORM_LOCATION,
+                        return_bytes,
+                    );
                 }
 
                 if has_waveform_parameters {
-                    let mut parameters : Vector3<f32> = Default::default();
-                    let parameters_bytes = unsafe { view_raw_bytes_mut(&mut parameters)};
-                    points.get_attribute_by_copy(point_idx, &attributes::WAVEFORM_PARAMETERS, parameters_bytes);
+                    let mut parameters: Vector3<f32> = Default::default();
+                    let parameters_bytes = unsafe { view_raw_bytes_mut(&mut parameters) };
+                    points.get_attribute_by_copy(
+                        point_idx,
+                        &attributes::WAVEFORM_PARAMETERS,
+                        parameters_bytes,
+                    );
                     waveform.x_t = parameters.x;
                     waveform.y_t = parameters.y;
                     waveform.z_t = parameters.z;
@@ -328,14 +368,22 @@ impl<T: std::io::Write + std::io::Seek + std::fmt::Debug + Send + 'static> Point
 }
 
 #[cfg(test)]
-mod tests{ 
-    use std::{path::PathBuf};
+mod tests {
+    use std::path::PathBuf;
 
-    use las::{Builder, point::Format};
-    use pasture_core::{containers::InterleavedVecPointStorage, layout::PointType, containers::points};
+    use las::{point::Format, Builder};
+    use pasture_core::{
+        containers::points, containers::InterleavedVecPointStorage, layout::PointType,
+    };
     use scopeguard::defer;
 
-    use crate::{base::PointReader, las::{LASReader, LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3, LasPointFormat4, LasPointFormat5}};
+    use crate::{
+        base::PointReader,
+        las::{
+            LASReader, LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3,
+            LasPointFormat4, LasPointFormat5,
+        },
+    };
 
     use super::*;
 
@@ -353,18 +401,21 @@ mod tests{
     }
 
     fn get_test_points_custom_format() -> Vec<TestPoint> {
-        vec![TestPoint {
-            position: Vector3::new(1.0, 2.0, 3.0),
-            color: Vector3::new(128, 129, 130),
-        }, TestPoint{
-            position: Vector3::new(4.0, 5.0, 6.0),
-            color: Vector3::new(1024, 1025, 1026),
-        }]
+        vec![
+            TestPoint {
+                position: Vector3::new(1.0, 2.0, 3.0),
+                color: Vector3::new(128, 129, 130),
+            },
+            TestPoint {
+                position: Vector3::new(4.0, 5.0, 6.0),
+                color: Vector3::new(1024, 1025, 1026),
+            },
+        ]
     }
 
     fn get_test_points_las_format_0() -> Vec<LasPointFormat0> {
         vec![
-            LasPointFormat0{
+            LasPointFormat0 {
                 classification: 1,
                 edge_of_flight_line: false,
                 intensity: 1,
@@ -376,7 +427,7 @@ mod tests{
                 scan_direction_flag: false,
                 user_data: 1,
             },
-            LasPointFormat0{
+            LasPointFormat0 {
                 classification: 2,
                 edge_of_flight_line: true,
                 intensity: 2,
@@ -387,13 +438,13 @@ mod tests{
                 scan_angle_rank: 2,
                 scan_direction_flag: true,
                 user_data: 2,
-            }
+            },
         ]
     }
 
     fn get_test_points_las_format_1() -> Vec<LasPointFormat1> {
         vec![
-            LasPointFormat1{
+            LasPointFormat1 {
                 classification: 1,
                 edge_of_flight_line: false,
                 intensity: 1,
@@ -406,7 +457,7 @@ mod tests{
                 user_data: 1,
                 gps_time: 1234.0,
             },
-            LasPointFormat1{
+            LasPointFormat1 {
                 classification: 2,
                 edge_of_flight_line: true,
                 intensity: 2,
@@ -418,13 +469,13 @@ mod tests{
                 scan_direction_flag: true,
                 user_data: 2,
                 gps_time: 5678.0,
-            }
+            },
         ]
     }
 
     fn get_test_points_las_format_2() -> Vec<LasPointFormat2> {
         vec![
-            LasPointFormat2{
+            LasPointFormat2 {
                 classification: 1,
                 edge_of_flight_line: false,
                 intensity: 1,
@@ -437,7 +488,7 @@ mod tests{
                 user_data: 1,
                 color_rgb: Vector3::new(128, 129, 130),
             },
-            LasPointFormat2{
+            LasPointFormat2 {
                 classification: 2,
                 edge_of_flight_line: true,
                 intensity: 2,
@@ -449,13 +500,13 @@ mod tests{
                 scan_direction_flag: true,
                 user_data: 2,
                 color_rgb: Vector3::new(1024, 1025, 1026),
-            }
+            },
         ]
     }
 
     fn get_test_points_las_format_3() -> Vec<LasPointFormat3> {
         vec![
-            LasPointFormat3{
+            LasPointFormat3 {
                 classification: 1,
                 edge_of_flight_line: false,
                 intensity: 1,
@@ -469,7 +520,7 @@ mod tests{
                 color_rgb: Vector3::new(128, 129, 130),
                 gps_time: 1234.0,
             },
-            LasPointFormat3{
+            LasPointFormat3 {
                 classification: 2,
                 edge_of_flight_line: true,
                 intensity: 2,
@@ -482,13 +533,13 @@ mod tests{
                 user_data: 2,
                 color_rgb: Vector3::new(1024, 1025, 1026),
                 gps_time: 5678.0,
-            }
+            },
         ]
     }
 
     fn get_test_points_las_format_4() -> Vec<LasPointFormat4> {
         vec![
-            LasPointFormat4{
+            LasPointFormat4 {
                 classification: 1,
                 edge_of_flight_line: false,
                 intensity: 1,
@@ -506,7 +557,7 @@ mod tests{
                 waveform_packet_size: 40,
                 waveform_parameters: Vector3::new(1.0, 2.0, 3.0),
             },
-            LasPointFormat4{
+            LasPointFormat4 {
                 classification: 2,
                 edge_of_flight_line: true,
                 intensity: 2,
@@ -523,13 +574,13 @@ mod tests{
                 wave_packet_descriptor_index: 33,
                 waveform_packet_size: 44,
                 waveform_parameters: Vector3::new(4.0, 5.0, 6.0),
-            }
+            },
         ]
     }
 
     fn get_test_points_las_format_5() -> Vec<LasPointFormat5> {
         vec![
-            LasPointFormat5{
+            LasPointFormat5 {
                 classification: 1,
                 edge_of_flight_line: false,
                 intensity: 1,
@@ -548,7 +599,7 @@ mod tests{
                 waveform_packet_size: 40,
                 waveform_parameters: Vector3::new(1.0, 2.0, 3.0),
             },
-            LasPointFormat5{
+            LasPointFormat5 {
                 classification: 2,
                 edge_of_flight_line: true,
                 intensity: 2,
@@ -566,14 +617,15 @@ mod tests{
                 wave_packet_descriptor_index: 33,
                 waveform_packet_size: 44,
                 waveform_parameters: Vector3::new(4.0, 5.0, 6.0),
-            }
+            },
         ]
     }
 
-    fn prepare_point_buffer<T : PointType + Clone>(test_points: &[T]) -> InterleavedVecPointStorage {
-        let layout = T::layout();        
-        let mut source_point_buffer = InterleavedVecPointStorage::with_capacity(test_points.len(), layout);
-        
+    fn prepare_point_buffer<T: PointType + Clone>(test_points: &[T]) -> InterleavedVecPointStorage {
+        let layout = T::layout();
+        let mut source_point_buffer =
+            InterleavedVecPointStorage::with_capacity(test_points.len(), layout);
+
         for point in test_points.iter().cloned() {
             source_point_buffer.push_point(point);
         }
@@ -587,7 +639,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_0.las");
 
@@ -595,21 +647,25 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(0)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat0>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat0>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             assert_eq!(read_points, source_points);
-        }        
+        }
 
         Ok(())
     }
@@ -620,7 +676,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_0_different_layout.las");
 
@@ -628,29 +684,63 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(0)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat0>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat0>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
-                assert_eq!({source.position}, {read.position}, "Position of read point is different than of source point!");
-                assert_eq!(0, read.classification, "Classification of read point was not zero!");
-                assert_eq!(false, read.edge_of_flight_line, "Edge of flight line of read point was not false!");
-                assert_eq!(0, {read.intensity}, "Intensity of read point was not zero!");
-                assert_eq!(0, read.number_of_returns, "Number of returns of read point was not zero!");
-                assert_eq!(0, {read.point_source_id}, "Point source ID of read point was not zero!");
-                assert_eq!(0, read.return_number, "Return number of read point was not zero!");
-                assert_eq!(0, read.scan_angle_rank, "Scan angle rank of read point was not zero!");
-                assert_eq!(false, read.scan_direction_flag, "Scan direction flag of read point was not false!");
+                assert_eq!(
+                    { source.position },
+                    { read.position },
+                    "Position of read point is different than of source point!"
+                );
+                assert_eq!(
+                    0, read.classification,
+                    "Classification of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.edge_of_flight_line,
+                    "Edge of flight line of read point was not false!"
+                );
+                assert_eq!(
+                    0,
+                    { read.intensity },
+                    "Intensity of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.number_of_returns,
+                    "Number of returns of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.point_source_id },
+                    "Point source ID of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.return_number,
+                    "Return number of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.scan_angle_rank,
+                    "Scan angle rank of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.scan_direction_flag,
+                    "Scan direction flag of read point was not false!"
+                );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
             }
         }
@@ -664,7 +754,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_1.las");
 
@@ -672,21 +762,25 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(1)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat1>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat1>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             assert_eq!(read_points, source_points);
-        }        
+        }
 
         Ok(())
     }
@@ -697,7 +791,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_1_different_layout.las");
 
@@ -705,31 +799,69 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(1)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat1>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat1>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
-                assert_eq!({source.position}, {read.position}, "Position of read point is different than of source point!");
-                assert_eq!(0, read.classification, "Classification of read point was not zero!");
-                assert_eq!(false, read.edge_of_flight_line, "Edge of flight line of read point was not false!");
-                assert_eq!(0, {read.intensity}, "Intensity of read point was not zero!");
-                assert_eq!(0, read.number_of_returns, "Number of returns of read point was not zero!");
-                assert_eq!(0, {read.point_source_id}, "Point source ID of read point was not zero!");
-                assert_eq!(0, read.return_number, "Return number of read point was not zero!");
-                assert_eq!(0, read.scan_angle_rank, "Scan angle rank of read point was not zero!");
-                assert_eq!(false, read.scan_direction_flag, "Scan direction flag of read point was not false!");
+                assert_eq!(
+                    { source.position },
+                    { read.position },
+                    "Position of read point is different than of source point!"
+                );
+                assert_eq!(
+                    0, read.classification,
+                    "Classification of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.edge_of_flight_line,
+                    "Edge of flight line of read point was not false!"
+                );
+                assert_eq!(
+                    0,
+                    { read.intensity },
+                    "Intensity of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.number_of_returns,
+                    "Number of returns of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.point_source_id },
+                    "Point source ID of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.return_number,
+                    "Return number of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.scan_angle_rank,
+                    "Scan angle rank of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.scan_direction_flag,
+                    "Scan direction flag of read point was not false!"
+                );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
-                assert_eq!(0.0, {read.gps_time}, "GPS time of read point was not zero!");
+                assert_eq!(
+                    0.0,
+                    { read.gps_time },
+                    "GPS time of read point was not zero!"
+                );
             }
         }
 
@@ -742,7 +874,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_2.las");
 
@@ -750,21 +882,25 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(2)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat2>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat2>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             assert_eq!(read_points, source_points);
-        }        
+        }
 
         Ok(())
     }
@@ -775,7 +911,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_2_different_layout.las");
 
@@ -783,30 +919,68 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(2)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat2>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat2>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
-                assert_eq!({source.position}, {read.position}, "Position of read point is different than of source point!");
-                assert_eq!({source.color}, {read.color_rgb}, "Color of read point is different than of source point!");
-                assert_eq!(0, read.classification, "Classification of read point was not zero!");
-                assert_eq!(false, read.edge_of_flight_line, "Edge of flight line of read point was not false!");
-                assert_eq!(0, {read.intensity}, "Intensity of read point was not zero!");
-                assert_eq!(0, read.number_of_returns, "Number of returns of read point was not zero!");
-                assert_eq!(0, {read.point_source_id}, "Point source ID of read point was not zero!");
-                assert_eq!(0, read.return_number, "Return number of read point was not zero!");
-                assert_eq!(0, read.scan_angle_rank, "Scan angle rank of read point was not zero!");
-                assert_eq!(false, read.scan_direction_flag, "Scan direction flag of read point was not false!");
+                assert_eq!(
+                    { source.position },
+                    { read.position },
+                    "Position of read point is different than of source point!"
+                );
+                assert_eq!(
+                    { source.color },
+                    { read.color_rgb },
+                    "Color of read point is different than of source point!"
+                );
+                assert_eq!(
+                    0, read.classification,
+                    "Classification of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.edge_of_flight_line,
+                    "Edge of flight line of read point was not false!"
+                );
+                assert_eq!(
+                    0,
+                    { read.intensity },
+                    "Intensity of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.number_of_returns,
+                    "Number of returns of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.point_source_id },
+                    "Point source ID of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.return_number,
+                    "Return number of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.scan_angle_rank,
+                    "Scan angle rank of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.scan_direction_flag,
+                    "Scan direction flag of read point was not false!"
+                );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
             }
         }
@@ -820,7 +994,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_3.las");
 
@@ -828,21 +1002,25 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(3)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat3>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat3>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             assert_eq!(read_points, source_points);
-        }        
+        }
 
         Ok(())
     }
@@ -853,7 +1031,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_3_different_layout.las");
 
@@ -861,32 +1039,74 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(3)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat3>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat3>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
-                assert_eq!({source.position}, {read.position}, "Position of read point is not equal to position of source point!");
-                assert_eq!({source.color}, {read.color_rgb}, "Color of read point is not equal to color of source point!");
-                assert_eq!(0, read.classification, "Classification of read point was not zero!");
-                assert_eq!(false, read.edge_of_flight_line, "Edge of flight line of read point was not false!");
-                assert_eq!(0, {read.intensity}, "Intensity of read point was not zero!");
-                assert_eq!(0, read.number_of_returns, "Number of returns of read point was not zero!");
-                assert_eq!(0, {read.point_source_id}, "Point source ID of read point was not zero!");
-                assert_eq!(0, read.return_number, "Return number of read point was not zero!");
-                assert_eq!(0, read.scan_angle_rank, "Scan angle rank of read point was not zero!");
-                assert_eq!(false, read.scan_direction_flag, "Scan direction flag of read point was not false!");
+                assert_eq!(
+                    { source.position },
+                    { read.position },
+                    "Position of read point is not equal to position of source point!"
+                );
+                assert_eq!(
+                    { source.color },
+                    { read.color_rgb },
+                    "Color of read point is not equal to color of source point!"
+                );
+                assert_eq!(
+                    0, read.classification,
+                    "Classification of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.edge_of_flight_line,
+                    "Edge of flight line of read point was not false!"
+                );
+                assert_eq!(
+                    0,
+                    { read.intensity },
+                    "Intensity of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.number_of_returns,
+                    "Number of returns of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.point_source_id },
+                    "Point source ID of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.return_number,
+                    "Return number of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.scan_angle_rank,
+                    "Scan angle rank of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.scan_direction_flag,
+                    "Scan direction flag of read point was not false!"
+                );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
-                assert_eq!(0.0, {read.gps_time}, "GPS time of read point was not zero!");
+                assert_eq!(
+                    0.0,
+                    { read.gps_time },
+                    "GPS time of read point was not zero!"
+                );
             }
         }
 
@@ -899,7 +1119,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_4.las");
 
@@ -907,21 +1127,25 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(4)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat4>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat4>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             assert_eq!(read_points, source_points);
-        }        
+        }
 
         Ok(())
     }
@@ -932,7 +1156,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_4_different_layout.las");
 
@@ -940,35 +1164,88 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(4)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat4>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat4>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
-                assert_eq!({source.position}, {read.position}, "Position of read point is different than of source point!");
-                assert_eq!(0, read.classification, "Classification of read point was not zero!");
-                assert_eq!(false, read.edge_of_flight_line, "Edge of flight line of read point was not false!");
-                assert_eq!(0, {read.intensity}, "Intensity of read point was not zero!");
-                assert_eq!(0, read.number_of_returns, "Number of returns of read point was not zero!");
-                assert_eq!(0, {read.point_source_id}, "Point source ID of read point was not zero!");
-                assert_eq!(0, read.return_number, "Return number of read point was not zero!");
-                assert_eq!(0, read.scan_angle_rank, "Scan angle rank of read point was not zero!");
-                assert_eq!(false, read.scan_direction_flag, "Scan direction flag of read point was not false!");
+                assert_eq!(
+                    { source.position },
+                    { read.position },
+                    "Position of read point is different than of source point!"
+                );
+                assert_eq!(
+                    0, read.classification,
+                    "Classification of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.edge_of_flight_line,
+                    "Edge of flight line of read point was not false!"
+                );
+                assert_eq!(
+                    0,
+                    { read.intensity },
+                    "Intensity of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.number_of_returns,
+                    "Number of returns of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.point_source_id },
+                    "Point source ID of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.return_number,
+                    "Return number of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.scan_angle_rank,
+                    "Scan angle rank of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.scan_direction_flag,
+                    "Scan direction flag of read point was not false!"
+                );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
-                assert_eq!(0, {read.byte_offset_to_waveform_data}, "Byte offset to waveform data of read point was not zero!");
-                assert_eq!(0.0, {read.return_point_waveform_location}, "Return point waveform location of read point was not zero!");
-                assert_eq!(0, read.wave_packet_descriptor_index, "Wave packet descriptor index of read point was not zero!");
-                assert_eq!(0, {read.waveform_packet_size}, "Waveform packet size of read point was not zero!");
-                assert_eq!({Vector3::<f32>::new(0.0,0.0,0.0)}, {read.waveform_parameters}, "Waveform parameters of read point were not zero!");
+                assert_eq!(
+                    0,
+                    { read.byte_offset_to_waveform_data },
+                    "Byte offset to waveform data of read point was not zero!"
+                );
+                assert_eq!(
+                    0.0,
+                    { read.return_point_waveform_location },
+                    "Return point waveform location of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.wave_packet_descriptor_index,
+                    "Wave packet descriptor index of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.waveform_packet_size },
+                    "Waveform packet size of read point was not zero!"
+                );
+                assert_eq!(
+                    { Vector3::<f32>::new(0.0, 0.0, 0.0) },
+                    { read.waveform_parameters },
+                    "Waveform parameters of read point were not zero!"
+                );
             }
         }
 
@@ -981,7 +1258,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_5.las");
 
@@ -989,21 +1266,25 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(5)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat5>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat5>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             assert_eq!(read_points, source_points);
-        }        
+        }
 
         Ok(())
     }
@@ -1014,7 +1295,7 @@ mod tests{
         let source_point_buffer = prepare_point_buffer(&source_points);
 
         //Write, then read, then check for equality
-        
+
         let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file_path.push("test_write_las_format_5_different_layout.las");
 
@@ -1022,37 +1303,98 @@ mod tests{
             std::fs::remove_file(&test_file_path).expect("Removing test file failed!");
         }
 
-        let mut las_header_builder = Builder::from((1,4));
+        let mut las_header_builder = Builder::from((1, 4));
         las_header_builder.point_format = Format::new(5)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(&test_file_path, las_header_builder.into_header().unwrap())?;
+            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+                &test_file_path,
+                las_header_builder.into_header().unwrap(),
+            )?;
             writer.write(&source_point_buffer)?;
         }
 
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points = points::<LasPointFormat5>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points =
+                points::<LasPointFormat5>(read_points_buffer.as_ref()).collect::<Vec<_>>();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
-                assert_eq!({source.position}, {read.position}, "Position of read point is different than of source point!");
-                assert_eq!({source.color}, {read.color_rgb}, "Colors of read point are different from colors in source point!");
-                assert_eq!(0, read.classification, "Classification of read point was not zero!");
-                assert_eq!(false, read.edge_of_flight_line, "Edge of flight line of read point was not false!");
-                assert_eq!(0, {read.intensity}, "Intensity of read point was not zero!");
-                assert_eq!(0, read.number_of_returns, "Number of returns of read point was not zero!");
-                assert_eq!(0, {read.point_source_id}, "Point source ID of read point was not zero!");
-                assert_eq!(0, read.return_number, "Return number of read point was not zero!");
-                assert_eq!(0, read.scan_angle_rank, "Scan angle rank of read point was not zero!");
-                assert_eq!(false, read.scan_direction_flag, "Scan direction flag of read point was not false!");
+                assert_eq!(
+                    { source.position },
+                    { read.position },
+                    "Position of read point is different than of source point!"
+                );
+                assert_eq!(
+                    { source.color },
+                    { read.color_rgb },
+                    "Colors of read point are different from colors in source point!"
+                );
+                assert_eq!(
+                    0, read.classification,
+                    "Classification of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.edge_of_flight_line,
+                    "Edge of flight line of read point was not false!"
+                );
+                assert_eq!(
+                    0,
+                    { read.intensity },
+                    "Intensity of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.number_of_returns,
+                    "Number of returns of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.point_source_id },
+                    "Point source ID of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.return_number,
+                    "Return number of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.scan_angle_rank,
+                    "Scan angle rank of read point was not zero!"
+                );
+                assert_eq!(
+                    false, read.scan_direction_flag,
+                    "Scan direction flag of read point was not false!"
+                );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
-                assert_eq!(0.0, {read.gps_time}, "GPS time of read point was not zero!");
-                assert_eq!(0, {read.byte_offset_to_waveform_data}, "Byte offset to waveform data of read point was not zero!");
-                assert_eq!(0.0, {read.return_point_waveform_location}, "Return point waveform location of read point was not zero!");
-                assert_eq!(0, read.wave_packet_descriptor_index, "Wave packet descriptor index of read point was not zero!");
-                assert_eq!(0, {read.waveform_packet_size}, "Waveform packet size of read point was not zero!");
-                assert_eq!({Vector3::<f32>::new(0.0,0.0,0.0)}, {read.waveform_parameters}, "Waveform parameters of read point were not zero!");
+                assert_eq!(
+                    0.0,
+                    { read.gps_time },
+                    "GPS time of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.byte_offset_to_waveform_data },
+                    "Byte offset to waveform data of read point was not zero!"
+                );
+                assert_eq!(
+                    0.0,
+                    { read.return_point_waveform_location },
+                    "Return point waveform location of read point was not zero!"
+                );
+                assert_eq!(
+                    0, read.wave_packet_descriptor_index,
+                    "Wave packet descriptor index of read point was not zero!"
+                );
+                assert_eq!(
+                    0,
+                    { read.waveform_packet_size },
+                    "Waveform packet size of read point was not zero!"
+                );
+                assert_eq!(
+                    { Vector3::<f32>::new(0.0, 0.0, 0.0) },
+                    { read.waveform_parameters },
+                    "Waveform parameters of read point were not zero!"
+                );
             }
         }
 

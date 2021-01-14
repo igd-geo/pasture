@@ -2,7 +2,7 @@ use nalgebra::Vector3;
 use static_assertions::const_assert;
 
 /// Possible data types for individual point attributes
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PointAttributeDataType {
     U8,
     I8,
@@ -15,6 +15,7 @@ pub enum PointAttributeDataType {
     F32,
     F64,
     Bool,
+    //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
     Vec3u8,
     Vec3u16,
     Vec3f32,
@@ -22,23 +23,86 @@ pub enum PointAttributeDataType {
 }
 
 /// Marker trait for all types that can be used as primitive types within a PointAttributeDefinition
-pub trait PrimitiveType {}
+pub trait PrimitiveType {
+    /// Returns the corresponding `PointAttributeDataType` for the implementing type
+    fn data_type() -> PointAttributeDataType;
+}
 
-impl PrimitiveType for u8 {}
-impl PrimitiveType for u16 {}
-impl PrimitiveType for u32 {}
-impl PrimitiveType for u64 {}
-impl PrimitiveType for i8 {}
-impl PrimitiveType for i16 {}
-impl PrimitiveType for i32 {}
-impl PrimitiveType for i64 {}
-impl PrimitiveType for f32 {}
-impl PrimitiveType for f64 {}
-impl PrimitiveType for bool {}
-impl PrimitiveType for Vector3<u8> {}
-impl PrimitiveType for Vector3<u16> {}
-impl PrimitiveType for Vector3<f32> {}
-impl PrimitiveType for Vector3<f64> {}
+impl PrimitiveType for u8 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::U8
+    }
+}
+impl PrimitiveType for u16 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::U16
+    }
+}
+impl PrimitiveType for u32 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::U32
+    }
+}
+impl PrimitiveType for u64 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::U64
+    }
+}
+impl PrimitiveType for i8 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::I8
+    }
+}
+impl PrimitiveType for i16 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::I16
+    }
+}
+impl PrimitiveType for i32 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::I32
+    }
+}
+impl PrimitiveType for i64 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::I64
+    }
+}
+impl PrimitiveType for f32 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::F32
+    }
+}
+impl PrimitiveType for f64 {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::F64
+    }
+}
+impl PrimitiveType for bool {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Bool
+    }
+}
+impl PrimitiveType for Vector3<u8> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3u8
+    }
+}
+impl PrimitiveType for Vector3<u16> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3u16
+    }
+}
+impl PrimitiveType for Vector3<f32> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3f32
+    }
+}
+impl PrimitiveType for Vector3<f64> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3f64
+    }
+}
 
 // Assert sizes of vector types are as we expect. Primitive types always are the same size, but we don't know
 // what nalgebra does with the Vector3 types on the target machine...
@@ -63,7 +127,7 @@ impl PointAttributeDefinition {
     /// # use pasture_core::layout::*;
     /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
     /// # assert_eq!(custom_attribute.name(), "Custom");
-    /// # assert_eq!(*custom_attribute.datatype(), PointAttributeDataType::F32);
+    /// # assert_eq!(custom_attribute.datatype(), PointAttributeDataType::F32);
     /// ```
     pub fn custom(name: &'static str, datatype: PointAttributeDataType) -> Self {
         Self { name, datatype }
@@ -85,10 +149,10 @@ impl PointAttributeDefinition {
     /// # use pasture_core::layout::*;
     /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
     /// let datatype = custom_attribute.datatype();
-    /// # assert_eq!(*datatype, PointAttributeDataType::F32);
+    /// # assert_eq!(datatype, PointAttributeDataType::F32);
     /// ```
-    pub fn datatype(&self) -> &PointAttributeDataType {
-        &self.datatype
+    pub fn datatype(&self) -> PointAttributeDataType {
+        self.datatype
     }
 
     /// Returns the size in bytes of this attribute
@@ -117,7 +181,7 @@ impl PointAttributeDefinition {
     /// # use pasture_core::layout::*;
     /// let custom_position_attribute = attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32);
     /// # assert_eq!(custom_position_attribute.name(), attributes::POSITION_3D.name());
-    /// # assert_eq!(*custom_position_attribute.datatype(), PointAttributeDataType::Vec3f32);
+    /// # assert_eq!(custom_position_attribute.datatype(), PointAttributeDataType::Vec3f32);
     /// ```
     pub fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
         Self {
@@ -404,5 +468,30 @@ impl PointLayout {
         self.attributes
             .iter()
             .position(|this_attribute| this_attribute == attribute)
+    }
+
+    /// Returns a new `PointLayout` that contains only the attributes that are present in both `layout_a` and `layout_b` with
+    /// the exact same types
+    /// ```
+    /// # use pasture_core::layout::*;
+    /// let layout_a = PointLayout::from_attributes(&[attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32), attributes::INTENSITY, attributes::RETURN_NUMBER]);
+    /// let layout_b = PointLayout::from_attributes(&[attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f64), attributes::INTENSITY]);
+    /// let expected_common_layout = PointLayout::from_attributes(&[attributes::INTENSITY]);
+    /// assert_eq!(PointLayout::common_layout(&layout_a, &layout_b), expected_common_layout);
+    /// ```
+    pub fn common_layout(layout_a: &PointLayout, layout_b: &PointLayout) -> PointLayout {
+        let mut common = PointLayout::new();
+        for attribute_a in layout_a.attributes() {
+            let attribute_in_layout_b = layout_b
+                .get_attribute_by_name(attribute_a.name())
+                .map(|attribute_b| attribute_a.datatype() == attribute_b.datatype())
+                .unwrap_or(false);
+            if !attribute_in_layout_b {
+                continue;
+            }
+
+            common.add_attribute(attribute_a.clone());
+        }
+        return common;
     }
 }

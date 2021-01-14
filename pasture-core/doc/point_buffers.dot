@@ -1,0 +1,60 @@
+digraph G {
+
+    pointbuffer [shape=box, label="PointBuffer"];
+    pointbuffermut [shape=box, label="PointBufferWriteable"];
+    interleavedpointbuffer [shape=box, label="InterleavedPointBuffer"];
+    interleavedpointbuffermut [shape=box, label="InterleavedPointBufferMut"];
+    perattributepointbuffer [shape=box, label="PerAttributePointBuffer"];
+    perattributepointbuffermut [shape=box, label="PerAttributePointBufferMut"];
+    
+    interleavedvecpointstorage [label="InterleavedVecPointStorage"];
+    perattributevecpointstorage [label="PerAttributeVecPointStorage"];
+    
+    interleavedpointbufferslice [label="InterleavedPointBufferSlice"];
+    interleavedpointbufferslicemut [label="InterleavedPointBufferSliceMut"];
+    perattributepointbufferslice [label="PerAttributePointBufferSlice"];
+    perattributepointbufferslicemut [label="PerAttributePointBufferSliceMut"];
+    
+    iterpoint [label="Iterator<Item = T: PointType>"];
+    iterpointref [label="Iterator<Item = &T: PointType>"];
+    iterpointmut [label="Iterator<Item = &mutT: PointType>"];
+    iter1attrib [label="Iterator<Item = T: PrimitiveType>"];
+    iter1attribref [label="Iterator<Item = &T: PrimitiveType>"];
+    iter1attribmut [label="Iterator<Item = &mut T: PrimitiveType>"];
+    itermultiattrib [label="Iterator<Item = (T1 : PrimitiveType, T2: PrimitiveType, ...)>"];
+    itermultiattribref [label="Iterator<Item = (&T1 : PrimitiveType, &T2: PrimitiveType, ...)>"];
+    itermultiattribmut [label="Iterator<Item = (&mut T1 : PrimitiveType, &mut T2: PrimitiveType, ...)>"];
+    
+    pointbuffermut -> pointbuffer;
+    interleavedpointbuffer -> pointbuffer;
+    interleavedpointbuffermut -> interleavedpointbuffer;
+    
+    perattributepointbuffer -> pointbuffer;
+    perattributepointbuffermut -> perattributepointbuffer;
+    
+    interleavedvecpointstorage -> pointbuffermut;
+    interleavedvecpointstorage -> interleavedpointbuffermut;
+    
+    perattributevecpointstorage -> pointbuffermut;
+    perattributevecpointstorage -> perattributepointbuffermut;
+    
+    interleavedpointbufferslice -> interleavedpointbuffer;
+    interleavedpointbufferslicemut -> interleavedpointbuffermut;
+    
+    perattributepointbufferslice -> perattributepointbuffer;
+    perattributepointbufferslicemut -> perattributepointbuffermut;
+    
+    pointbuffer -> iterpoint [style=dotted,label="supports"];
+    pointbuffer -> iter1attrib [style=dotted,label="supports"];
+    pointbuffer -> itermultiattrib [style=dotted,label="supports"];
+    
+    interleavedpointbuffer -> iterpointref [style=dotted,label="supports"];
+    interleavedpointbuffermut -> iterpointmut [style=dotted,label="supports"];
+    
+    perattributepointbuffer -> iter1attribref [style=dotted,label="supports"];
+    perattributepointbuffer -> itermultiattribref [style=dotted,label="supports"];
+    
+    perattributepointbuffermut -> iter1attribmut [style=dotted,label="supports"];
+    perattributepointbuffermut -> itermultiattribmut [style=dotted,label="supports"];
+  
+}

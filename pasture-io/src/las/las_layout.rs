@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Result};
 use las::point::Format;
-use pasture_core::{layout::attributes, layout::{PointLayout, PointType}};
+use pasture_core::{
+    layout::attributes,
+    layout::{PointLayout, PointType},
+};
 
 use super::{
     LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3, LasPointFormat4,
@@ -36,29 +39,30 @@ pub fn point_layout_from_las_point_format(format: &Format) -> Result<PointLayout
 /// Returns the best matching LAS point format for the given `PointLayout`. This method tries to match as many attributes
 /// as possible in the given `PointLayout` to attributes that are supported by the LAS format (v1.4) natively. Attributes
 /// that do not have a corresponding LAS attribute are ignored. If no matching attributes are found, LAS point format 0 is
-/// returned, as it is the most basic format. 
+/// returned, as it is the most basic format.
 /// ```
 /// # use pasture_io::las::*;
 /// # use pasture_core::layout::*;
-/// 
+///
 /// let layout_a = PointLayout::from_attributes(&[attributes::POSITION_3D]);
 /// let las_format_a = las_point_format_from_point_layout(&layout_a);
 /// assert_eq!(las_format_a, las::point::Format::new(0).unwrap());
-/// 
+///
 /// let layout_b = PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::GPS_TIME]);
 /// let las_format_b = las_point_format_from_point_layout(&layout_b);
 /// assert_eq!(las_format_b, las::point::Format::new(1).unwrap());
 /// ```
-pub fn las_point_format_from_point_layout(point_layout : &PointLayout) -> Format {
+pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format {
     // TODO Explicit support for extended size formats (6-10)
-    
+
     let has_gps_time = point_layout.has_attribute(attributes::GPS_TIME.name());
     let has_colors = point_layout.has_attribute(attributes::COLOR_RGB.name());
-    let has_any_waveform_attribute = point_layout.has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name()) ||
-        point_layout.has_attribute(attributes::WAVEFORM_DATA_OFFSET.name()) ||
-        point_layout.has_attribute(attributes::WAVEFORM_PACKET_SIZE.name()) ||
-        point_layout.has_attribute(attributes::RETURN_POINT_WAVEFORM_LOCATION.name()) ||
-        point_layout.has_attribute(attributes::WAVEFORM_PARAMETERS.name());
+    let has_any_waveform_attribute = point_layout
+        .has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name())
+        || point_layout.has_attribute(attributes::WAVEFORM_DATA_OFFSET.name())
+        || point_layout.has_attribute(attributes::WAVEFORM_PACKET_SIZE.name())
+        || point_layout.has_attribute(attributes::RETURN_POINT_WAVEFORM_LOCATION.name())
+        || point_layout.has_attribute(attributes::WAVEFORM_PARAMETERS.name());
     let has_nir = point_layout.has_attribute(attributes::NIR.name());
 
     let mut format = Format::new(0).unwrap();

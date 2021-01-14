@@ -1,3 +1,4 @@
+use float_ord::FloatOrd;
 use nalgebra::{ClosedSub, Point3, Scalar, Vector3};
 
 /// 3D axis-aligned bounding box
@@ -161,6 +162,86 @@ impl<T: Scalar + ClosedSub + PartialOrd + Copy> AABB<T> {
         Self {
             min: Point3::new(min_x, min_y, min_z),
             max: Point3::new(max_x, max_y, max_z),
+        }
+    }
+}
+
+impl AABB<f32> {
+    /// Returns the center point of this AABB.
+    /// ```
+    /// # use pasture_core::math::AABB;
+    /// let bounds = AABB::<f32>::from_min_max_unchecked(nalgebra::Point3::new(0.0, 0.0, 0.0), nalgebra::Point3::new(1.0, 2.0, 3.0));
+    /// assert_eq!(bounds.center(), nalgebra::Point3::new(0.5, 1.0, 1.5));
+    /// ```
+    pub fn center(&self) -> Point3<f32> {
+        Point3::new(
+            (self.min.x + self.max.x) / 2.0,
+            (self.min.y + self.max.y) / 2.0,
+            (self.min.z + self.max.z) / 2.0,
+        )
+    }
+
+    /// Returns a cubic version of the associated `AABB`. For this, the shortest two axes of the bounds
+    /// are elongated symmetrically from the center of the bounds so that all axis are of equal length
+    /// ```
+    /// # use pasture_core::math::AABB;
+    /// let bounds = AABB::<f32>::from_min_max_unchecked(nalgebra::Point3::new(0.0, 0.0, 0.0), nalgebra::Point3::new(1.0, 2.0, 4.0));
+    /// let cubic_bounds = AABB::<f32>::from_min_max_unchecked(nalgebra::Point3::new(-1.5, -1.0, 0.0), nalgebra::Point3::new(2.5, 3.0, 4.0));
+    /// assert_eq!(bounds.as_cubic().min(), cubic_bounds.min());
+    /// assert_eq!(bounds.as_cubic().max(), cubic_bounds.max());
+    /// ```
+    pub fn as_cubic(&self) -> AABB<f32> {
+        let extent = self.extent();
+        let max_axis = std::cmp::max(
+            FloatOrd(extent.x),
+            std::cmp::max(FloatOrd(extent.y), FloatOrd(extent.z)),
+        )
+        .0;
+        let max_axis_half = max_axis / 2.0;
+        let center = self.center();
+        Self {
+            min: center - Vector3::new(max_axis_half, max_axis_half, max_axis_half),
+            max: center + Vector3::new(max_axis_half, max_axis_half, max_axis_half),
+        }
+    }
+}
+
+impl AABB<f64> {
+    /// Returns the center point of this AABB.
+    /// ```
+    /// # use pasture_core::math::AABB;
+    /// let bounds = AABB::<f64>::from_min_max_unchecked(nalgebra::Point3::new(0.0, 0.0, 0.0), nalgebra::Point3::new(1.0, 2.0, 3.0));
+    /// assert_eq!(bounds.center(), nalgebra::Point3::new(0.5, 1.0, 1.5));
+    /// ```
+    pub fn center(&self) -> Point3<f64> {
+        Point3::new(
+            (self.min.x + self.max.x) / 2.0,
+            (self.min.y + self.max.y) / 2.0,
+            (self.min.z + self.max.z) / 2.0,
+        )
+    }
+
+    /// Returns a cubic version of the associated `AABB`. For this, the shortest two axes of the bounds
+    /// are elongated symmetrically from the center of the bounds so that all axis are of equal length
+    /// ```
+    /// # use pasture_core::math::AABB;
+    /// let bounds = AABB::<f64>::from_min_max_unchecked(nalgebra::Point3::new(0.0, 0.0, 0.0), nalgebra::Point3::new(1.0, 2.0, 4.0));
+    /// let cubic_bounds = AABB::<f64>::from_min_max_unchecked(nalgebra::Point3::new(-1.5, -1.0, 0.0), nalgebra::Point3::new(2.5, 3.0, 4.0));
+    /// assert_eq!(bounds.as_cubic().min(), cubic_bounds.min());
+    /// assert_eq!(bounds.as_cubic().max(), cubic_bounds.max());
+    /// ```
+    pub fn as_cubic(&self) -> AABB<f64> {
+        let extent = self.extent();
+        let max_axis = std::cmp::max(
+            FloatOrd(extent.x),
+            std::cmp::max(FloatOrd(extent.y), FloatOrd(extent.z)),
+        )
+        .0;
+        let max_axis_half = max_axis / 2.0;
+        let center = self.center();
+        Self {
+            min: center - Vector3::new(max_axis_half, max_axis_half, max_axis_half),
+            max: center + Vector3::new(max_axis_half, max_axis_half, max_axis_half),
         }
     }
 }

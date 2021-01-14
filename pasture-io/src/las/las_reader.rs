@@ -6,11 +6,16 @@ use las::{Read, Reader};
 
 use crate::base::{PointReader, SeekToPoint};
 use pasture_core::{
-    containers::{InterleavedVecPointStorage, PointBuffer},
+    containers::{
+        InterleavedPointView, InterleavedVecPointStorage, PointBuffer, PointBufferWriteable,
+    },
     layout::PointLayout,
     meta::Metadata,
 };
-use pasture_core::{layout::PointType};
+use pasture_core::{
+    layout::{conversion::RawPointConverter, PointType},
+    util::view_raw_bytes,
+};
 
 use super::{
     point_layout_from_las_point_format, LASMetadata, LasPointFormat0, LasPointFormat1,
@@ -94,6 +99,34 @@ impl LASReader {
 
         Ok(())
     }
+
+    fn do_convert<T: From<las::Point> + PointType>(
+        &mut self,
+        count: usize,
+        buffer: &mut [u8],
+        converter: &RawPointConverter,
+        target_layout: &PointLayout,
+    ) -> Result<()> {
+        let target_stride = target_layout.size_of_point_entry() as usize;
+        assert_eq!(buffer.len(), count * target_stride);
+
+        for point_index in 0..count {
+            let las_point = self
+                .reader
+                .read()
+                .expect("LASReader:do_read: las::Reader::read returned None")?;
+            let typed_point: T = las_point.into();
+
+            let buffer_start = point_index * target_stride;
+            let buffer_end = (point_index + 1) * target_stride;
+            unsafe {
+                let typed_point_bytes = view_raw_bytes(&typed_point);
+                converter.convert(typed_point_bytes, &mut buffer[buffer_start..buffer_end]);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl PointReader for LASReader {
@@ -125,10 +158,83 @@ impl PointReader for LASReader {
         Ok(Box::new(buffer))
     }
 
-    fn read_into(&mut self, point_buffer: &mut dyn PointBuffer, _count: usize) -> Result<usize> {
-        let _target_layout = point_buffer.point_layout();
+    fn read_into(
+        &mut self,
+        point_buffer: &mut dyn PointBufferWriteable,
+        count: usize,
+    ) -> Result<usize> {
+        let num_points_to_read = usize::min(count, self.remaining_points());
 
-        todo!()
+        let target_point_size = point_buffer.point_layout().size_of_point_entry() as usize;
+        let converter = RawPointConverter::from_to(&self.layout, point_buffer.point_layout());
+
+        // TODO This is a first working version of read_into, but it is not fast because it does two conversions
+        // (one from las::Point into LasPointFormatX and then from LasPointFormatX into target_layout)
+        // If we write a custom reader for LAS data (not using las::Point but instead the raw point bytes), we can
+        // circumvent this in the future and only read the bytes that we care about
+
+        // Read in chunks of `chunk_size` point, this way we don't have to call PointBuffer::push_raw_points once for
+        // every point. At the same time, a reasonable `chunk_size` keeps the memory overhead low!
+        let chunk_size: usize = 50000;
+        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
+        let mut chunk_buffer: Vec<u8> = vec![0; chunk_size * target_point_size];
+        for chunk_index in 0..num_chunks {
+            let num_points_in_chunk =
+                usize::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
+            let buffer_end = num_points_in_chunk * target_point_size;
+            let buffer_slice = &mut chunk_buffer[0..buffer_end];
+
+            match self.metadata.point_format() {
+                0 => self.do_convert::<LasPointFormat0>(
+                    num_points_to_read,
+                    buffer_slice,
+                    &converter,
+                    point_buffer.point_layout(),
+                )?,
+                1 => self.do_convert::<LasPointFormat1>(
+                    num_points_to_read,
+                    buffer_slice,
+                    &converter,
+                    point_buffer.point_layout(),
+                )?,
+                2 => self.do_convert::<LasPointFormat2>(
+                    num_points_to_read,
+                    buffer_slice,
+                    &converter,
+                    point_buffer.point_layout(),
+                )?,
+                3 => self.do_convert::<LasPointFormat3>(
+                    num_points_to_read,
+                    buffer_slice,
+                    &converter,
+                    point_buffer.point_layout(),
+                )?,
+                4 => self.do_convert::<LasPointFormat4>(
+                    num_points_to_read,
+                    buffer_slice,
+                    &converter,
+                    point_buffer.point_layout(),
+                )?,
+                5 => self.do_convert::<LasPointFormat5>(
+                    num_points_to_read,
+                    buffer_slice,
+                    &converter,
+                    point_buffer.point_layout(),
+                )?,
+                _ => panic!(
+                    "Currently unsupported point format {}",
+                    self.metadata.point_format()
+                ),
+            }
+
+            let chunk_view = InterleavedPointView::from_raw_slice(
+                buffer_slice,
+                point_buffer.point_layout().clone(),
+            );
+            point_buffer.push_points_interleaved(&chunk_view);
+        }
+
+        Ok(num_points_to_read)
     }
 
     fn get_metadata(&self) -> &dyn Metadata {
