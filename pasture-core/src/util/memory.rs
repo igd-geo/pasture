@@ -34,6 +34,14 @@ pub unsafe fn view_raw_bytes_mut<T>(val: &mut T) -> &mut [u8] {
     std::slice::from_raw_parts_mut(val as *mut T as *mut u8, std::mem::size_of::<T>())
 }
 
+/// Push the raw bytes for `val` into `vec` in the endianess of the current machine
+pub fn push_raw_bytes<T>(val: &T, vec: &mut Vec<u8>) {
+    unsafe {
+        let raw_bytes = view_raw_bytes(val);
+        vec.extend_from_slice(raw_bytes);
+    }
+}
+
 /// Sorts a slice containing binary untyped data as if it did contain typed data. Sorting is performed using the given `permutation`. `stride` defines the
 /// offset between two consecutive elements within `slice`.
 ///
@@ -82,6 +90,76 @@ pub fn sort_untyped_slice_by_permutation(slice: &mut [u8], permutation: &[usize]
                 let new_region = slice.as_mut_ptr().offset((new_idx * stride) as isize);
                 std::ptr::swap_nonoverlapping(old_region, new_region, stride);
             }
+
+            done_indices[new_idx] = true;
+            prev_idx = new_idx;
+            new_idx = permutation[new_idx];
+        }
+    }
+}
+
+/// Sorts a slice using the given index permutation. An index permutation is any permutation of the range `0..n`, where
+/// `n` is equal to `slice.len()`
+///
+/// # Example
+/// ```
+/// # use pasture_core::util::*;
+/// let mut data : Vec<u32> = vec![10,20,30,40,50,60];
+/// let permutation = vec![1,0,3,2,5,4];
+///
+/// sort_by_permutation(data.as_mut_slice(), permutation.as_slice());
+/// assert_eq!(vec![20,10,40,30,60,50], data);
+/// ```
+///
+/// # Panics
+///
+/// If `permutation.len() != slice.len()` or if any index within `permutation` is `>= slice.len()`. If you are absolutely sure that
+/// your permutation is correct, consider using `sort_by_permutation_unchecked`
+pub fn sort_by_permutation<T>(slice: &mut [T], permutation: &[usize]) {
+    if permutation.len() != slice.len() {
+        panic!("sort_by_permutation: Slice length does not match permutation length!");
+    }
+
+    let num_typed_elements = permutation.len();
+    let mut done_indices = vec![false; num_typed_elements];
+    for idx in 0..num_typed_elements {
+        if done_indices[idx] {
+            continue;
+        }
+        done_indices[idx] = true;
+
+        let mut prev_idx = idx;
+        let mut new_idx = permutation[idx];
+
+        if new_idx >= num_typed_elements {
+            panic!("sort_untyped_slice_by_permutation: Encountered out-of-bounds value in `permutation`!");
+        }
+
+        while idx != new_idx {
+            slice.swap(prev_idx, new_idx);
+
+            done_indices[new_idx] = true;
+            prev_idx = new_idx;
+            new_idx = permutation[new_idx];
+        }
+    }
+}
+
+/// Unchecked version of `sort_by_permutation`
+pub fn sort_by_permutation_unchecked<T>(slice: &mut [T], permutation: &[usize]) {
+    let num_typed_elements = permutation.len();
+    let mut done_indices = vec![false; num_typed_elements];
+    for idx in 0..num_typed_elements {
+        if done_indices[idx] {
+            continue;
+        }
+        done_indices[idx] = true;
+
+        let mut prev_idx = idx;
+        let mut new_idx = permutation[idx];
+
+        while idx != new_idx {
+            slice.swap(prev_idx, new_idx);
 
             done_indices[new_idx] = true;
             prev_idx = new_idx;

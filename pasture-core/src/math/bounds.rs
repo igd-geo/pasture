@@ -1,8 +1,10 @@
 use float_ord::FloatOrd;
 use nalgebra::{ClosedSub, Point3, Scalar, Vector3};
 
+use serde::Serialize;
+
 /// 3D axis-aligned bounding box
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
 pub struct AABB<T: Scalar + PartialOrd> {
     min: Point3<T>,
     max: Point3<T>,

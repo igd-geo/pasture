@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use nalgebra::Vector3;
 use static_assertions::const_assert;
 
@@ -20,6 +22,28 @@ pub enum PointAttributeDataType {
     Vec3u16,
     Vec3f32,
     Vec3f64,
+}
+
+impl Display for PointAttributeDataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PointAttributeDataType::U8 => write!(f, "U8"),
+            PointAttributeDataType::I8 => write!(f, "I8"),
+            PointAttributeDataType::U16 => write!(f, "U16"),
+            PointAttributeDataType::I16 => write!(f, "I16"),
+            PointAttributeDataType::U32 => write!(f, "U32"),
+            PointAttributeDataType::I32 => write!(f, "I32"),
+            PointAttributeDataType::U64 => write!(f, "U64"),
+            PointAttributeDataType::I64 => write!(f, "I64"),
+            PointAttributeDataType::F32 => write!(f, "F32"),
+            PointAttributeDataType::F64 => write!(f, "F64"),
+            PointAttributeDataType::Bool => write!(f, "Bool"),
+            PointAttributeDataType::Vec3u8 => write!(f, "Vec3<u8>"),
+            PointAttributeDataType::Vec3u16 => write!(f, "Vec3<u16>"),
+            PointAttributeDataType::Vec3f32 => write!(f, "Vec3<f32>"),
+            PointAttributeDataType::Vec3f64 => write!(f, "Vec3<f64>"),
+        }
+    }
 }
 
 /// Marker trait for all types that can be used as primitive types within a PointAttributeDefinition
@@ -191,6 +215,12 @@ impl PointAttributeDefinition {
     }
 }
 
+impl Display for PointAttributeDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{};{}]", self.name, self.datatype)
+    }
+}
+
 /// Module containing default attribute definitions
 pub mod attributes {
     use super::{PointAttributeDataType, PointAttributeDefinition};
@@ -219,6 +249,18 @@ pub mod attributes {
         datatype: PointAttributeDataType::U8,
     };
 
+    /// Attribute definition for the classification flags. Default datatype is U8
+    pub const CLASSIFICATION_FLAGS: PointAttributeDefinition = PointAttributeDefinition {
+        name: "ClassificationFlags",
+        datatype: PointAttributeDataType::U8,
+    };
+
+    /// Attribute definition for the scanner channel. Default datatype is U8
+    pub const SCANNER_CHANNEL: PointAttributeDefinition = PointAttributeDefinition {
+        name: "ScannerChannel",
+        datatype: PointAttributeDataType::U8,
+    };
+
     /// Attribute definition for a scan direction flag. Default datatype is Bool
     pub const SCAN_DIRECTION_FLAG: PointAttributeDefinition = PointAttributeDefinition {
         name: "ScanDirectionFlag",
@@ -241,6 +283,12 @@ pub mod attributes {
     pub const SCAN_ANGLE_RANK: PointAttributeDefinition = PointAttributeDefinition {
         name: "ScanAngleRank",
         datatype: PointAttributeDataType::I8,
+    };
+
+    /// Attribute definition for a scan angle rank with extended precision (like in LAS format 1.4). Default datatype is I16
+    pub const SCAN_ANGLE_RANK_EXTENDED: PointAttributeDefinition = PointAttributeDefinition {
+        name: "ScanAngleRank",
+        datatype: PointAttributeDataType::I16,
     };
 
     /// Attribute definition for a user data field. Default datatype is U8
@@ -268,6 +316,8 @@ pub mod attributes {
     };
 
     /// Attribute definition for near-infrared records (NIR). Default datatype is U16
+    /// TODO NIR semantically belongs to the color attributes, so there should be a separate
+    /// attribute for 4-channel color that includes NIR!
     pub const NIR: PointAttributeDefinition = PointAttributeDefinition {
         name: "NIR",
         datatype: PointAttributeDataType::U16,
@@ -320,6 +370,9 @@ pub mod attributes {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PointLayout {
     attributes: Vec<PointAttributeDefinition>,
+    // TODO The lookup for attribute offsets happens through a linear search. Might be better to store the offset in the PointAttributeDefinition itself
+    // This raises the question of what equality means for PointAttributeDefinitions. Should the offset within the layout be included or not? Maybe it is
+    // better to have two types, one for an isolated attribute and one for an attribute within a layout
     attribute_offsets: Vec<u64>,
 }
 
@@ -409,19 +462,17 @@ impl PointLayout {
             .find(|attribute| attribute.name() == attribute_name)
     }
 
-    /// Returns an iterator over all attributes in this PointLayout.
+    /// Returns an iterator over all attributes in this `PointLayout`. The attributes are returned in the order
+    /// in which they were added to this `PointLayout`:
     /// ```
     /// # use pasture_core::layout::*;
     /// let mut layout = PointLayout::new();
     /// layout.add_attribute(attributes::POSITION_3D);
     /// layout.add_attribute(attributes::INTENSITY);
-    /// # let attributes = layout.attributes().collect::<Vec<_>>();
+    /// let attributes = layout.attributes().collect::<Vec<_>>();
     /// # assert_eq!(2, attributes.len());
-    /// # assert_eq!(attributes::POSITION_3D, *attributes[0]);
-    /// # assert_eq!(attributes::INTENSITY, *attributes[1]);
-    /// for attribute in layout.attributes() {
-    ///    println!("{:?}", attribute);
-    /// }
+    /// assert_eq!(attributes::POSITION_3D, *attributes[0]);
+    /// assert_eq!(attributes::INTENSITY, *attributes[1]);
     /// ```
     pub fn attributes<'a>(&'a self) -> impl Iterator<Item = &'a PointAttributeDefinition> + 'a {
         self.attributes.iter()
@@ -493,5 +544,20 @@ impl PointLayout {
             common.add_attribute(attribute_a.clone());
         }
         return common;
+    }
+}
+
+impl Display for PointLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "PointLayout {{")?;
+
+        for attribute in self.attributes() {
+            let offset = self.offset_of(attribute).expect(
+                "PointLayout::fmt: No attribute offset found for existing attribute definition!",
+            );
+            writeln!(f, "\t{} @ {} bytes", attribute, offset)?;
+        }
+
+        writeln!(f, "}}")
     }
 }

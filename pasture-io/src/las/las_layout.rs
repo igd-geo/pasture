@@ -6,8 +6,9 @@ use pasture_core::{
 };
 
 use super::{
-    LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3, LasPointFormat4,
-    LasPointFormat5,
+    LasPointFormat0, LasPointFormat1, LasPointFormat10, LasPointFormat2, LasPointFormat3,
+    LasPointFormat4, LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8,
+    LasPointFormat9,
 };
 
 /// Returns the default `PointLayout` for the given LAS point format. This layout mirrors the binary layout
@@ -32,6 +33,11 @@ pub fn point_layout_from_las_point_format(format: &Format) -> Result<PointLayout
         3 => Ok(LasPointFormat3::layout()),
         4 => Ok(LasPointFormat4::layout()),
         5 => Ok(LasPointFormat5::layout()),
+        6 => Ok(LasPointFormat6::layout()),
+        7 => Ok(LasPointFormat7::layout()),
+        8 => Ok(LasPointFormat8::layout()),
+        9 => Ok(LasPointFormat9::layout()),
+        10 => Ok(LasPointFormat10::layout()),
         _ => Err(anyhow!("Unsupported LAS point format {}", format_number)),
     }
 }

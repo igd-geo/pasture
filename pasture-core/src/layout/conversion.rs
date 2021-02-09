@@ -13,7 +13,7 @@
 /// The conversion then operates on these two buffers. As this is a *highly* unsafe operation where all sorts of things
 /// could go wrong, any conversion is only valid together with the *exact* `PointLayout` of both `A` and `B`!
 use lazy_static::lazy_static;
-use nalgebra::Vector3;
+use nalgebra::{Scalar, Vector3};
 use std::{collections::HashMap, ops::Range};
 
 use crate::layout::{PointAttributeDataType, PointAttributeDefinition, PointLayout};
@@ -105,7 +105,11 @@ pub type AttributeConversionFn = unsafe fn(&[u8], &mut [u8]) -> ();
 /// Returns a conversion function for converting from `from_attribute` into `to_attribute`. Both attributes must have the
 /// same name but can have different datatypes. Conversion functions operate on raw byte buffers, where the first argument
 /// is a buffer that represents a single value of `from_attribute` and the second buffer is a single mutable value of
-/// `to_attribute`. If no valid conversion exists, `None` is returned.
+/// `to_attribute`. If both attributes are equal, `None` is returned.
+///
+/// # Panics
+///
+/// If no conversion from `from_attribute` into `to_attribute` is possible
 pub fn get_converter_for_attributes(
     from_attribute: &PointAttributeDefinition,
     to_attribute: &PointAttributeDefinition,
@@ -113,17 +117,14 @@ pub fn get_converter_for_attributes(
     if from_attribute.name() != to_attribute.name() {
         panic!("get_converter_for_attributes: from and to attributes must have the same name!");
     }
+    if from_attribute.datatype() == to_attribute.datatype() {
+        return None;
+    }
 
     match from_attribute.name() {
         "Position3D" => get_position_converter(from_attribute.datatype(), to_attribute.datatype()),
         "ColorRGB" => get_color_rgb_converter(from_attribute.datatype(), to_attribute.datatype()),
-        _ => {
-            if from_attribute.datatype() == to_attribute.datatype() {
-                Some(convert_unit)
-            } else {
-                None
-            }
-        }
+        _ => get_generic_converter(from_attribute.datatype(), to_attribute.datatype()),
     }
 }
 
@@ -131,10 +132,6 @@ fn get_position_converter(
     from_type: PointAttributeDataType,
     to_type: PointAttributeDataType,
 ) -> Option<AttributeConversionFn> {
-    if from_type == to_type {
-        return Some(convert_unit);
-    }
-
     lazy_static! {
         static ref POSITION_CONVERTERS: HashMap<(PointAttributeDataType, PointAttributeDataType), AttributeConversionFn> = {
             let mut converters = HashMap::<
@@ -167,10 +164,6 @@ fn get_color_rgb_converter(
     from_type: PointAttributeDataType,
     to_type: PointAttributeDataType,
 ) -> Option<AttributeConversionFn> {
-    if from_type == to_type {
-        return Some(convert_unit);
-    }
-
     lazy_static! {
         static ref COLOR_RGB_CONVERTERS: HashMap<(PointAttributeDataType, PointAttributeDataType), AttributeConversionFn> = {
             let mut converters = HashMap::<
@@ -197,6 +190,51 @@ fn get_color_rgb_converter(
 
     let key = (from_type, to_type);
     COLOR_RGB_CONVERTERS.get(&key).map(|&fptr| fptr)
+}
+
+macro_rules! insert_converter {
+    ($prim_from:ident, $prim_to:ident, $type_from:ident, $type_to:ident, $map:expr) => {
+        ($map).insert(
+            (
+                PointAttributeDataType::$type_from,
+                PointAttributeDataType::$type_to,
+            ),
+            convert_generic_primitive::<$prim_from, $prim_to>,
+        )
+    };
+}
+
+fn get_generic_converter(
+    from_type: PointAttributeDataType,
+    to_type: PointAttributeDataType,
+) -> Option<AttributeConversionFn> {
+    lazy_static! {
+        static ref GENERIC_CONVERTERS: HashMap<(PointAttributeDataType, PointAttributeDataType), AttributeConversionFn> = {
+            let mut converters = HashMap::<
+                (PointAttributeDataType, PointAttributeDataType),
+                AttributeConversionFn,
+            >::new();
+            insert_converter!(u8, u16, U8, U16, converters);
+            insert_converter!(u8, u32, U8, U32, converters);
+            insert_converter!(u8, u64, U8, U64, converters);
+            insert_converter!(u16, u32, U16, U32, converters);
+            insert_converter!(u16, u64, U16, U64, converters);
+            insert_converter!(u32, u64, U32, U64, converters);
+
+            insert_converter!(i8, i16, I8, I16, converters);
+            insert_converter!(i8, i32, I8, I32, converters);
+            insert_converter!(i8, i64, I8, I64, converters);
+            insert_converter!(i16, i32, I16, I32, converters);
+            insert_converter!(i16, i64, I16, I64, converters);
+            insert_converter!(i32, i64, I32, I64, converters);
+
+            converters
+        };
+    }
+
+    let key = (from_type, to_type);
+    let f = GENERIC_CONVERTERS.get(&key).expect("Invalid conversion");
+    Some(*f)
 }
 
 /// Unit conversion function (when from and to represent the same datatype)
@@ -238,8 +276,8 @@ unsafe fn convert_unit(from: &[u8], to: &mut [u8]) {
 /// assert_eq!(3.0 as f32, dest.z);
 /// ```
 unsafe fn convert_position_from_vec3f64_to_vec3f32(from: &[u8], to: &mut [u8]) {
-    let from_vec = *(from.as_ptr() as *const Vector3<f64>);
-    let mut to_vec = *(to.as_mut_ptr() as *mut Vector3<f32>);
+    let from_vec = &*(from.as_ptr() as *const Vector3<f64>);
+    let mut to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<f32>);
 
     to_vec.x = from_vec.x as f32;
     to_vec.y = from_vec.y as f32;
@@ -264,8 +302,8 @@ unsafe fn convert_position_from_vec3f64_to_vec3f32(from: &[u8], to: &mut [u8]) {
 /// assert_eq!(3.0, dest.z);
 /// ```
 unsafe fn convert_position_from_vec3f32_to_vec3f64(from: &[u8], to: &mut [u8]) {
-    let from_vec = *(from.as_ptr() as *const Vector3<f32>);
-    let mut to_vec = *(to.as_mut_ptr() as *mut Vector3<f64>);
+    let from_vec = &*(from.as_ptr() as *const Vector3<f32>);
+    let mut to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<f64>);
 
     to_vec.x = from_vec.x as f64;
     to_vec.y = from_vec.y as f64;
@@ -291,8 +329,8 @@ unsafe fn convert_position_from_vec3f32_to_vec3f64(from: &[u8], to: &mut [u8]) {
 /// assert_eq!(0x80 as u8, dest.z);
 /// ```
 unsafe fn convert_color_rgb_from_vec3u16_to_vec3u8(from: &[u8], to: &mut [u8]) {
-    let from_vec = *(from.as_ptr() as *const Vector3<u16>);
-    let mut to_vec = *(to.as_mut_ptr() as *mut Vector3<u8>);
+    let from_vec = &*(from.as_ptr() as *const Vector3<u16>);
+    let mut to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<u8>);
 
     to_vec.x = (from_vec.x >> 8) as u8;
     to_vec.y = (from_vec.y >> 8) as u8;
@@ -318,10 +356,34 @@ unsafe fn convert_color_rgb_from_vec3u16_to_vec3u8(from: &[u8], to: &mut [u8]) {
 /// assert_eq!(0x8000 as u16, dest.z);
 /// ```
 unsafe fn convert_color_rgb_from_vec3u8_to_vec3u16(from: &[u8], to: &mut [u8]) {
-    let from_vec = *(from.as_ptr() as *const Vector3<u8>);
-    let mut to_vec = *(to.as_mut_ptr() as *mut Vector3<u16>);
+    let from_vec = &*(from.as_ptr() as *const Vector3<u8>);
+    let to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<u16>);
 
     to_vec.x = ((from_vec.x as u16) << 8) as u16;
     to_vec.y = ((from_vec.y as u16) << 8) as u16;
     to_vec.z = ((from_vec.z as u16) << 8) as u16;
+}
+
+unsafe fn convert_generic_vec3<F, T>(from: &[u8], to: &mut [u8])
+where
+    F: Into<T> + Copy + Scalar,
+    T: Copy + Scalar,
+{
+    let from_typed = &*(from.as_ptr() as *const Vector3<F>);
+    let to_typed = &mut *(to.as_mut_ptr() as *mut Vector3<T>);
+
+    to_typed.x = from_typed.x.into();
+    to_typed.y = from_typed.y.into();
+    to_typed.z = from_typed.z.into();
+}
+
+unsafe fn convert_generic_primitive<F, T>(from: &[u8], to: &mut [u8])
+where
+    F: Into<T> + Copy,
+    T: Copy,
+{
+    let from_typed = *(from.as_ptr() as *const F);
+    let to_typed = &mut *(to.as_mut_ptr() as *mut T);
+
+    *to_typed = from_typed.into();
 }

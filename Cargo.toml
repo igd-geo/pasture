@@ -1,2 +1,2 @@
 [workspace]
-members = ["pasture-core", "pasture-io"]
+members = ["pasture-core", "pasture-io", "pasture-tools", "pasture-derive"]

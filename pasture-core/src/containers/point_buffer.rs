@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ops::Index;
+
 use std::ops::Range;
 
 use crate::util::view_raw_bytes;
@@ -9,6 +9,9 @@ use crate::{
 };
 
 use super::{InterleavedPointView, PerAttributePointView};
+
+use itertools::Itertools;
+use rayon::prelude::*;
 
 /**
  * TODOs
@@ -151,9 +154,12 @@ pub trait PerAttributePointBuffer: PointBuffer {
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
     ) -> &[u8];
+
+    /// Returns a read-only slice of the associated `PerAttributePointBuffer`
+    fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_>;
 }
 
-pub trait PerAttributePointBufferMut: PerAttributePointBuffer {
+pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
     /// Mutable version of [get_attribute_ref](PerAttributePointBuffer::get_attribute_ref)
     fn get_attribute_mut(
         &mut self,
@@ -166,6 +172,53 @@ pub trait PerAttributePointBufferMut: PerAttributePointBuffer {
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
     ) -> &mut [u8];
+    /// Returns a mutable slice of the associated `PerAttributePointBufferMut`
+    fn slice_mut(&'b mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'b>;
+
+    /// Splits the associated `PerAttributePointBufferMut` into multiple disjoint mutable slices, based on the given disjoint `ranges`. This
+    /// function is similar to Vec::split_as_mut, but can split into more than two regions.
+    ///
+    /// # Note
+    ///
+    /// The lifetime bounds seem a bit weird for this function, but they are necessary. The lifetime of this `'b` of this trait determines
+    /// how long the underlying buffer (i.e. whatever stores the point data) lives. The lifetime `'p` of this function enables nested
+    /// slicing of buffers, because it is bounded to live *at most* as long as `'b`. If `'b` and `'p` were a single lifetime, then it would
+    /// require that any buffer *reference* from which we want to obtain a slice lives as long as the buffer itself. This is restrictive in
+    /// a way that is not necessary. Consider the following scenario in pseudo-code, annotated with lifetimes:
+    ///
+    /// ```ignore
+    /// 'x: {
+    /// // Assume 'buffer' contains some data
+    /// let mut buffer : PerAttributeVecPointStorage = ...;
+    ///     'y: {
+    ///         // Obtain two slices to the lower and upper half of the buffer
+    ///         let mut half_slices = buffer.disjunct_slices_mut(&[0..(buffer.len()/2), (buffer.len()/2)..buffer.len()]);
+    ///         // ... do something with the slices ...
+    ///         'z: {
+    ///             // Split the half slices in half again
+    ///             let quarter_len = buffer.len() / 4;
+    ///             let half_len = buffer.len() / 2;
+    ///             let mut lower_quarter_slices = half_slices[0].disjunct_slices_mut(&[0..quarter_len, quarter_len..half_len]);
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    /// In this scenario, `buffer` lives for `'x`, while `half_slices` only lives for `'y`. The underlying data in `half_slices` however lives
+    /// as long as `buffer`. The separate lifetime bound `'p` on this function is what allows calling `disjunct_slices_mut` on `half_slices[0]`,
+    /// even though `half_slices` only lives for `'y`.
+    ///
+    /// # Panics
+    ///
+    /// If any two ranges in `ranges` overlap, or if any range in `ranges` is out of bounds
+    fn disjunct_slices_mut<'p>(
+        &'p mut self,
+        ranges: &[Range<usize>],
+    ) -> Vec<PerAttributePointBufferSliceMut<'b>>
+    where
+        'b: 'p;
+
+    /// Helper method to access this `PerAttributePointBufferMut` as a `PerAttributePointBuffer`
+    fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer;
 }
 
 /// PointBuffer type that uses interleaved Vec-based storage for the points
@@ -726,7 +779,7 @@ impl PerAttributeVecPointStorage {
     ///
     /// {
     ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
-    ///   storage.push_attribute(&attributes::INTENSITY, 42);
+    ///   storage.push_attribute(&attributes::INTENSITY, 42_u16);
     ///   storage.push_attribute(&attributes::GPS_TIME, 0.123);
     /// }
     /// ```
@@ -735,6 +788,9 @@ impl PerAttributeVecPointStorage {
         attribute: &PointAttributeDefinition,
         value: T,
     ) {
+        if T::data_type() != attribute.datatype() {
+            panic!("PerAttributeVecPointStorage::push_attribute: Was called with generic argument {} but the datatype in the PointAttributeDefinition is {}!", T::data_type(), attribute.datatype());
+        }
         match self.attributes.get_mut(attribute.name()) {
             None => panic!("PerAttributeVecPointStorage::push_attribute: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
             Some(attribute_buffer) => {
@@ -772,7 +828,7 @@ impl PerAttributeVecPointStorage {
     ///
     /// {
     ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
-    ///   storage.push_attribute_range(&attributes::INTENSITY, &[42, 43, 44]);
+    ///   storage.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16, 44_u16]);
     ///   storage.push_attribute_range(&attributes::GPS_TIME, &[0.123, 0.456, 0.789]);
     /// }
     /// ```
@@ -781,18 +837,16 @@ impl PerAttributeVecPointStorage {
         attribute: &PointAttributeDefinition,
         values: &[T],
     ) {
+        if T::data_type() != attribute.datatype() {
+            panic!("PerAttributeVecPointStorage::push_attribute: Was called with generic argument {} but the datatype in the PointAttributeDefinition is {}!", T::data_type(), attribute.datatype());
+        }
         match self.attributes.get_mut(attribute.name()) {
             None => panic!("PerAttributeVecPointStorage::push_attributes: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
             Some(attribute_buffer) => {
-                let value_bytes = unsafe { &*(values as *const [T] as *const [u8]) };
+                let value_bytes = unsafe { std::slice::from_raw_parts(values.as_ptr() as *const u8, values.len() * std::mem::size_of::<T>()) };
                 attribute_buffer.extend_from_slice(value_bytes);
             },
         }
-    }
-
-    /// Returns a read-only slice of the associated `PerAttributePointBuffer`
-    pub fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_> {
-        PerAttributePointBufferSlice::new(self, range)
     }
 
     /// Sorts all points in the associated `PerAttributePointBuffer` using the order of the `PointType` `T`.
@@ -835,13 +889,69 @@ impl PerAttributeVecPointStorage {
             });
     }
 
+    /// Like `sort_by_attribute`, but sorts each attribute in parallel
+    pub fn par_sort_by_attribute<T: PrimitiveType + Ord>(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+    ) {
+        let typed_attribute = self.attributes.get(attribute.name()).map(|untyped_attribute| {
+            return unsafe {
+                std::slice::from_raw_parts(untyped_attribute.as_ptr() as *const T, self.len())
+            };
+        }).expect(&format!("PerAttributePointBuffer:sort_by_attribute: Attribute {:?} not contained in this buffers PointLayout!", attribute));
+
+        let mut indices = (0..self.len()).collect::<Vec<_>>();
+        indices.sort_by(|&idx_a, &idx_b| typed_attribute[idx_a].cmp(&typed_attribute[idx_b]));
+
+        let attribute_sizes = self
+            .attributes
+            .keys()
+            .map(|&key| {
+                (
+                    key.to_owned(),
+                    self.layout.get_attribute_by_name(key).unwrap().size(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        self.attributes
+            .par_iter_mut()
+            .for_each(|(&key, untyped_attribute)| {
+                let size = *attribute_sizes.get(key).unwrap();
+                sort_untyped_slice_by_permutation(
+                    untyped_attribute.as_mut_slice(),
+                    indices.as_slice(),
+                    size as usize,
+                );
+            });
+    }
+
     /// Reserves space for at least `additional_points` additional points in the associated `PerAttributeVecPointStorage`
-    fn reserve(&mut self, additional_points: usize) {
+    pub fn reserve(&mut self, additional_points: usize) {
         for attribute in self.layout.attributes() {
             let attribute_buffer = self.attributes.get_mut(attribute.name()).unwrap();
             let additional_bytes = additional_points * attribute.size() as usize;
             attribute_buffer.reserve(additional_bytes);
         }
+    }
+
+    /// Returns mutable references to the attribute buffers of the associated `PerAttributeVecPointStorage` in the same order
+    /// as defined in the point layout. This is a convenience method that simplifies data transpose operations
+    fn get_attribute_buffers_in_order_mut(&mut self) -> Vec<&mut Vec<u8>> {
+        let mut references = vec![];
+
+        unsafe {
+            for attribute in self.point_layout().clone().attributes() {
+                let ptr = self
+                    .attributes
+                    .get_mut(attribute.name())
+                    .expect("Could not get attribute buffer")
+                    as *mut Vec<u8>;
+                references.push(ptr.as_mut().expect("Ptr was null"));
+            }
+        }
+
+        references
     }
 }
 
@@ -965,7 +1075,29 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
     }
 
     fn extend_from_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
-        todo!()
+        if points.point_layout() != self.point_layout() {
+            panic!(
+                "PerAttributeVecPointStorage::extend_from_interleaved: Point layouts do not match!"
+            );
+        }
+
+        let points_range = points.get_points_ref(0..points.len());
+        let point_stride = self.point_layout().size_of_point_entry() as usize;
+        let attribute_sizes = self
+            .point_layout()
+            .attributes()
+            .map(|attribute| attribute.size())
+            .collect::<Vec<_>>();
+        let mut attribute_buffers = self.get_attribute_buffers_in_order_mut();
+
+        for mut point in &points_range.iter().chunks(point_stride) {
+            for (attribute_index, &attribute_size) in attribute_sizes.iter().enumerate() {
+                let attribute_data = &mut attribute_buffers[attribute_index];
+                for _ in 0..attribute_size {
+                    attribute_data.push(*point.next().expect("Can't get next point byte"));
+                }
+            }
+        }
     }
 
     fn extend_from_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
@@ -1029,9 +1161,13 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
             + (index_range.end - index_range.start) * attribute.size() as usize;
         &attribute_buffer[start_offset_in_attribute_buffer..end_offset_in_attribute_buffer]
     }
+
+    fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_> {
+        PerAttributePointBufferSlice::new(self, range)
+    }
 }
 
-impl PerAttributePointBufferMut for PerAttributeVecPointStorage {
+impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
     fn get_attribute_mut(
         &mut self,
         point_index: usize,
@@ -1077,6 +1213,29 @@ impl PerAttributePointBufferMut for PerAttributeVecPointStorage {
             + (index_range.end - index_range.start) * attribute.size() as usize;
         &mut attribute_buffer[start_offset_in_attribute_buffer..end_offset_in_attribute_buffer]
     }
+
+    fn slice_mut(&'p mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'p> {
+        PerAttributePointBufferSliceMut::new(self, range)
+    }
+
+    fn disjunct_slices_mut<'b>(
+        &'b mut self,
+        ranges: &[Range<usize>],
+    ) -> Vec<PerAttributePointBufferSliceMut<'p>>
+    where
+        'p: 'b,
+    {
+        let self_ptr = self as *mut dyn PerAttributePointBufferMut<'p>;
+
+        ranges
+            .iter()
+            .map(|range| PerAttributePointBufferSliceMut::from_raw_ptr(self_ptr, range.clone()))
+            .collect()
+    }
+
+    fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer {
+        self
+    }
 }
 
 /// Non-owning, read-only slice of the data of an `InterleavedPointBuffer`
@@ -1084,14 +1243,6 @@ pub struct InterleavedPointBufferSlice<'p> {
     buffer: &'p dyn InterleavedPointBuffer,
     range_in_buffer: Range<usize>,
 }
-
-// impl <'p> Index<Range<usize>> for InterleavedPointBuffer {
-//     type Output = InterleavedPointBufferSlice<'p>;
-
-//     fn index(&self, index: Idx) -> &Self::Output {
-//         // Cannot return Self::Output instead of &Self::Output :(
-//     }
-// }
 
 impl<'p> InterleavedPointBufferSlice<'p> {
     /// Creates a new `InterleavedPointBufferSlice` pointing to the given range within the given buffer
@@ -1248,6 +1399,248 @@ impl<'p> PerAttributePointBuffer for PerAttributePointBufferSlice<'p> {
         self.buffer
             .get_attribute_range_ref(range_in_buffer, attribute)
     }
+
+    fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_> {
+        PerAttributePointBufferSlice::new(self, range)
+    }
+}
+
+pub struct PerAttributePointBufferSliceMut<'p> {
+    buffer: &'p mut (dyn PerAttributePointBufferMut<'p> + 'p),
+    range_in_buffer: Range<usize>,
+}
+
+unsafe impl<'a> Send for PerAttributePointBufferSliceMut<'a> {}
+
+impl<'p> PerAttributePointBufferSliceMut<'p> {
+    /// Creates a new `PerAttributePointBufferSlice` pointing to the given range within the given buffer
+    pub fn new(
+        buffer: &'p mut dyn PerAttributePointBufferMut<'p>,
+        range_in_buffer: Range<usize>,
+    ) -> Self {
+        if range_in_buffer.end > buffer.len() {
+            panic!(
+                "PerAttributePointBufferSliceMut::new: Range {:?} is out of bounds!",
+                range_in_buffer
+            );
+        }
+        Self {
+            buffer,
+            range_in_buffer,
+        }
+    }
+
+    fn from_raw_ptr(
+        buffer: *mut dyn PerAttributePointBufferMut<'p>,
+        range_in_buffer: Range<usize>,
+    ) -> Self {
+        unsafe {
+            Self {
+                buffer: &mut *buffer,
+                range_in_buffer,
+            }
+        }
+    }
+
+    fn from_raw_slice(
+        slice: *mut PerAttributePointBufferSliceMut<'p>,
+        range_in_buffer: Range<usize>,
+    ) -> Self {
+        unsafe {
+            Self {
+                buffer: &mut *slice,
+                range_in_buffer,
+            }
+        }
+    }
+}
+
+impl<'p> PointBuffer for PerAttributePointBufferSliceMut<'p> {
+    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+        let point_index_in_buffer = point_index + self.range_in_buffer.start;
+        self.buffer.get_point_by_copy(point_index_in_buffer, buf);
+    }
+
+    fn get_attribute_by_copy(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
+    ) {
+        let point_index_in_buffer = point_index + self.range_in_buffer.start;
+        self.buffer
+            .get_attribute_by_copy(point_index_in_buffer, attribute, buf);
+    }
+
+    fn get_points_by_copy(&self, index_range: Range<usize>, buf: &mut [u8]) {
+        let range_in_buffer = index_range.start + self.range_in_buffer.start
+            ..index_range.end + self.range_in_buffer.start;
+        self.buffer.get_points_by_copy(range_in_buffer, buf);
+    }
+
+    fn get_attribute_range_by_copy(
+        &self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
+    ) {
+        let range_in_buffer = index_range.start + self.range_in_buffer.start
+            ..index_range.end + self.range_in_buffer.start;
+        self.buffer
+            .get_attribute_range_by_copy(range_in_buffer, attribute, buf);
+    }
+
+    fn len(&self) -> usize {
+        self.range_in_buffer.end - self.range_in_buffer.start
+    }
+
+    fn point_layout(&self) -> &PointLayout {
+        self.buffer.point_layout()
+    }
+}
+
+impl<'p> PerAttributePointBuffer for PerAttributePointBufferSliceMut<'p> {
+    fn get_attribute_ref(&self, point_index: usize, attribute: &PointAttributeDefinition) -> &[u8] {
+        let point_index_in_buffer = point_index + self.range_in_buffer.start;
+        self.buffer
+            .get_attribute_ref(point_index_in_buffer, attribute)
+    }
+
+    fn get_attribute_range_ref(
+        &self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+    ) -> &[u8] {
+        let range_in_buffer = index_range.start + self.range_in_buffer.start
+            ..index_range.end + self.range_in_buffer.start;
+        self.buffer
+            .get_attribute_range_ref(range_in_buffer, attribute)
+    }
+
+    fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_> {
+        PerAttributePointBufferSlice::new(self, range)
+    }
+}
+
+impl<'p> PerAttributePointBufferMut<'p> for PerAttributePointBufferSliceMut<'p> {
+    fn get_attribute_mut(
+        &mut self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &mut [u8] {
+        let point_index_in_buffer = point_index + self.range_in_buffer.start;
+        self.buffer
+            .get_attribute_mut(point_index_in_buffer, attribute)
+    }
+
+    fn get_attribute_range_mut(
+        &mut self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+    ) -> &mut [u8] {
+        let range_in_buffer = index_range.start + self.range_in_buffer.start
+            ..index_range.end + self.range_in_buffer.start;
+        self.buffer
+            .get_attribute_range_mut(range_in_buffer, attribute)
+    }
+
+    fn slice_mut(&'p mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'p> {
+        PerAttributePointBufferSliceMut::new(self, range)
+    }
+
+    fn disjunct_slices_mut<'b>(
+        &'b mut self,
+        ranges: &[Range<usize>],
+    ) -> Vec<PerAttributePointBufferSliceMut<'p>>
+    where
+        'p: 'b,
+    {
+        let self_ptr = self as *mut PerAttributePointBufferSliceMut<'p>;
+
+        ranges
+            .iter()
+            .map(|range| PerAttributePointBufferSliceMut::from_raw_slice(self_ptr, range.clone()))
+            .collect()
+    }
+
+    fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer {
+        self
+    }
+}
+
+/// Returns a slice of the given attribute data in the associated `PerAttributePointBuffer`
+///
+/// # Example
+/// ```
+/// # use pasture_core::containers::*;
+/// # use pasture_core::layout::*;
+///
+/// #[repr(packed)]
+/// struct MyPointType(u16, f64);
+///
+/// impl PointType for MyPointType {
+///   fn layout() -> PointLayout {
+///     PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
+///   }
+/// }
+///
+///
+/// let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
+/// storage.push_points(&[MyPointType(42, 0.123), MyPointType(43, 0.456)]);
+///
+/// let slice = attribute_slice::<u16>(&storage, 0..2, &attributes::INTENSITY);
+/// assert_eq!(2, slice.len());
+/// assert_eq!(42, slice[0]);
+/// assert_eq!(43, slice[1]);
+///
+/// ```
+pub fn attribute_slice<'a, T: PrimitiveType>(
+    buffer: &'a dyn PerAttributePointBuffer,
+    range: Range<usize>,
+    attribute: &PointAttributeDefinition,
+) -> &'a [T] {
+    let range_size = range.end - range.start;
+    let slice = buffer.get_attribute_range_ref(range, attribute);
+    unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const T, range_size) }
+}
+
+/// Returns a mutable slice of the given attribute data in the associated `PerAttributeVecPointStorage`
+///
+/// # Example
+/// ```
+/// # use pasture_core::containers::*;
+/// # use pasture_core::layout::*;
+///
+/// #[repr(packed)]
+/// struct MyPointType(u16, f64);
+///
+/// impl PointType for MyPointType {
+///   fn layout() -> PointLayout {
+///     PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
+///   }
+/// }
+///
+///
+/// let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
+/// storage.push_points(&[MyPointType(42, 0.123), MyPointType(42, 0.456)]);
+///
+/// {
+///     let mut_slice = attribute_slice_mut::<u16>(&mut storage, 0..2, &attributes::INTENSITY);
+///     mut_slice[0] = 84;
+/// }
+///
+/// let slice = attribute_slice::<u16>(&storage, 0..2, &attributes::INTENSITY);
+/// assert_eq!(84, slice[0]);
+///
+/// ```
+pub fn attribute_slice_mut<'a, T: PrimitiveType>(
+    buffer: &'a mut dyn PerAttributePointBufferMut,
+    range: Range<usize>,
+    attribute: &PointAttributeDefinition,
+) -> &'a mut [T] {
+    let range_size = range.end - range.start;
+    let slice = buffer.get_attribute_range_mut(range, attribute);
+    unsafe { std::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut T, range_size) }
 }
 
 #[cfg(test)]
@@ -1285,8 +1678,8 @@ mod tests {
     trait OpqaueInterleavedBuffer: InterleavedPointBufferMut + PointBufferWriteable {}
     impl OpqaueInterleavedBuffer for InterleavedVecPointStorage {}
 
-    trait OpqauePerAttributeBuffer: PerAttributePointBufferMut + PointBufferWriteable {}
-    impl OpqauePerAttributeBuffer for PerAttributeVecPointStorage {}
+    trait OpqauePerAttributeBuffer<'b>: PerAttributePointBufferMut<'b> + PointBufferWriteable {}
+    impl<'b> OpqauePerAttributeBuffer<'b> for PerAttributeVecPointStorage {}
 
     fn get_empty_interleaved_point_buffer(layout: PointLayout) -> Box<dyn OpqaueInterleavedBuffer> {
         Box::new(InterleavedVecPointStorage::new(layout))
@@ -1302,7 +1695,7 @@ mod tests {
 
     fn get_empty_per_attribute_point_buffer(
         layout: PointLayout,
-    ) -> Box<dyn OpqauePerAttributeBuffer> {
+    ) -> Box<dyn OpqauePerAttributeBuffer<'static>> {
         Box::new(PerAttributeVecPointStorage::new(layout))
     }
 
@@ -2295,5 +2688,74 @@ mod tests {
     fn test_per_attribute_vec_storage_push_points_invalid_format() {
         let mut buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
         buffer.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+    }
+
+    #[test]
+    fn test_per_attribute_vec_storage_extend_from_interleaved() {
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        let mut interleaved_buffer = InterleavedVecPointStorage::new(TestPointType::layout());
+        interleaved_buffer.push_points(&[TestPointType(42, 0.123), TestPointType(43, 0.456)]);
+
+        per_attribute_buffer.extend_from_interleaved(&interleaved_buffer);
+
+        assert_eq!(2, per_attribute_buffer.len());
+        let attrib1 = attribute_slice::<u16>(&per_attribute_buffer, 0..2, &attributes::INTENSITY);
+        assert_eq!(attrib1, &[42, 43]);
+
+        let attrib2 = attribute_slice::<f64>(&per_attribute_buffer, 0..2, &attributes::GPS_TIME);
+        assert_eq!(attrib2, &[0.123, 0.456]);
+    }
+
+    #[test]
+    fn test_per_attribute_vec_storage_push_attribute() {
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        per_attribute_buffer.push_attribute(&attributes::INTENSITY, 42_u16);
+        per_attribute_buffer.push_attribute(&attributes::GPS_TIME, 0.123);
+
+        assert_eq!(1, per_attribute_buffer.len());
+
+        let attrib1 = attribute_slice::<u16>(&per_attribute_buffer, 0..1, &attributes::INTENSITY);
+        assert_eq!(attrib1, &[42]);
+
+        let attrib2 = attribute_slice::<f64>(&per_attribute_buffer, 0..1, &attributes::GPS_TIME);
+        assert_eq!(attrib2, &[0.123]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_per_attribute_vec_storage_push_attribute_wrong_type() {
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        // This is a subtle bug that absolutely has to be caught by pasture: The attribute INTENSITY has default datatype U16,
+        // however integer literals are i32 by default. Since we don't specify the generic argument of 'push_attribute' it is
+        // deduced as 'i32', which doesn't match the datatype of the INTENSITY attribute!
+        per_attribute_buffer.push_attribute(&attributes::INTENSITY, 42);
+    }
+
+    #[test]
+    fn test_per_attribute_vec_storage_push_attribute_range() {
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        per_attribute_buffer.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16]);
+        per_attribute_buffer.push_attribute_range(&attributes::GPS_TIME, &[0.123, 0.456]);
+
+        assert_eq!(2, per_attribute_buffer.len());
+
+        let attrib1 = attribute_slice::<u16>(&per_attribute_buffer, 0..2, &attributes::INTENSITY);
+        assert_eq!(attrib1, &[42, 43]);
+
+        let attrib2 = attribute_slice::<f64>(&per_attribute_buffer, 0..2, &attributes::GPS_TIME);
+        assert_eq!(attrib2, &[0.123, 0.456]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_per_attribute_vec_storage_push_attribute_range_wrong_type() {
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        // See comment in test_per_attribute_vec_storage_push_attribute_wrong_type()
+        per_attribute_buffer.push_attribute_range(&attributes::INTENSITY, &[42, 43]);
     }
 }

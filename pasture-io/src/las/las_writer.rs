@@ -362,6 +362,10 @@ impl<T: std::io::Write + std::io::Seek + std::fmt::Debug + Send + 'static> Point
         Ok(())
     }
 
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     fn get_default_point_layout(&self) -> &PointLayout {
         &self.layout
     }

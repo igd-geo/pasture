@@ -12,3 +12,15 @@ pub(crate) use self::las_types::*;
 
 mod las_metadata;
 pub use self::las_metadata::*;
+
+mod raw_readers;
+pub(crate) use self::raw_readers::*;
+
+mod raw_writers;
+pub(crate) use self::raw_writers::*;
+
+mod test_util;
+pub(crate) use self::test_util::*;
+
+mod read_helpers;
+pub(crate) use self::read_helpers::*;

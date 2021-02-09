@@ -42,10 +42,10 @@ impl<'data> InterleavedPointView<'data> {
     }
 
     /// Creates a new `InterleavedPointView` referencing the given slice of untyped point data
-    pub fn from_raw_slice(points: &'data [u8], layout : PointLayout) -> Self {
+    pub fn from_raw_slice(points: &'data [u8], layout: PointLayout) -> Self {
         let size_of_single_point = layout.size_of_point_entry() as usize;
         if points.len() % size_of_single_point != 0 {
-            panic!("InterleavedPointView::from_raw_slice: points.len() is not multiple of point entry size in PointLayout!");
+            panic!("InterleavedPointView::from_raw_slice: points.len() is no multiple of point entry size in PointLayout!");
         }
         let num_points = points.len() / size_of_single_point;
         Self {
