@@ -20,8 +20,8 @@ use pasture_core::{
 };
 
 use super::{
-    point_layout_from_las_point_format, BitAttributes, BitAttributesExtended, BitAttributesRegular,
-    LASMetadata,
+    map_laz_err, point_layout_from_las_point_format, BitAttributes, BitAttributesExtended,
+    BitAttributesRegular, LASMetadata,
 };
 use crate::base::{PointReader, SeekToPoint};
 
@@ -32,10 +32,6 @@ fn is_laszip_vlr(vlr: &Vlr) -> bool {
     } else {
         false
     }
-}
-
-fn map_laz_err(laz_err: laz::LasZipError) -> anyhow::Error {
-    anyhow!("LasZip error: {}", laz_err.to_string())
 }
 
 pub(crate) trait LASReaderBase {

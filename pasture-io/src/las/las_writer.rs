@@ -1,7 +1,7 @@
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{fs::File, io::BufWriter, io::Seek, io::Write, path::Path};
 
 use anyhow::{anyhow, Result};
-use las::{raw::point::Waveform, Color, Write, Writer};
+use las::{raw::point::Waveform, Color};
 use pasture_core::{
     containers::PointBuffer,
     layout::{attributes, PointLayout},
@@ -11,363 +11,50 @@ use pasture_core::{
 
 use crate::base::PointWriter;
 
-use super::{point_layout_from_las_point_format, LASMetadata};
+use super::{
+    path_is_compressed_las_file, point_layout_from_las_point_format, LASMetadata, RawLASWriter,
+    RawLAZWriter,
+};
 
 /// `PointWriter` implementation for LAS/LAZ files
-pub struct LASWriter<T: std::io::Write + std::io::Seek + std::fmt::Debug + Send + 'static> {
-    writer: Writer<T>,
-    metadata: LASMetadata,
-    layout: PointLayout,
-    current_point_index: usize,
+pub struct LASWriter {
+    writer: Box<dyn PointWriter>,
 }
 
-impl<T: std::io::Write + std::io::Seek + std::fmt::Debug + Send + 'static> LASWriter<T> {
+impl LASWriter {
     /// Creates a new 'LASWriter` from the given path and LAS header
-    pub fn from_path_and_header<P: AsRef<Path>>(
-        path: P,
-        header: las::Header,
-    ) -> Result<LASWriter<BufWriter<File>>> {
+    pub fn from_path_and_header<P: AsRef<Path>>(path: P, header: las::Header) -> Result<Self> {
+        let is_compressed = path_is_compressed_las_file(path.as_ref())?;
         let writer = BufWriter::new(File::create(path)?);
-        LASWriter::<BufWriter<File>>::from_writer_and_header(writer, header)
+        Self::from_writer_and_header(writer, header, is_compressed)
     }
 
     /// Creates a new 'LASWriter` from the given writer and LAS header
-    pub fn from_writer_and_header(writer: T, header: las::Header) -> Result<Self> {
-        let metadata: LASMetadata = header.clone().into();
-        let point_layout = point_layout_from_las_point_format(header.point_format())?;
-        let las_writer = Writer::new(writer, header)?;
-        Ok(Self {
-            writer: las_writer,
-            metadata,
-            layout: point_layout,
-            current_point_index: 0,
-        })
+    pub fn from_writer_and_header<T: Write + Seek + Send + 'static>(
+        writer: T,
+        header: las::Header,
+        is_compressed: bool,
+    ) -> Result<Self> {
+        let raw_writer: Box<dyn PointWriter> = if is_compressed {
+            Box::new(RawLAZWriter::from_write_and_header(writer, header)?)
+        } else {
+            Box::new(RawLASWriter::from_write_and_header(writer, header)?)
+        };
+        Ok(Self { writer: raw_writer })
     }
 }
 
-impl<T: std::io::Write + std::io::Seek + std::fmt::Debug + Send + 'static> PointWriter
-    for LASWriter<T>
-{
+impl PointWriter for LASWriter {
     fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
-        // TODO Support conversions of attributes with the same name, but different datatypes
-        let supported_attributes = points
-            .point_layout()
-            .attributes()
-            .filter(|&attribute| {
-                if let Some(self_attribute) = self.layout.get_attribute_by_name(attribute.name()) {
-                    self_attribute.datatype() == attribute.datatype()
-                } else {
-                    false
-                }
-            })
-            .collect::<Vec<_>>();
-
-        if supported_attributes.is_empty() {
-            return Err(anyhow!("LASWriter::write: No attributes in the given PointBuffer are supported by LASWriter!"));
-        }
-
-        let has_positions = self.layout.has_attribute(attributes::POSITION_3D.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::POSITION_3D.name());
-
-        let has_intensities = self.layout.has_attribute(attributes::INTENSITY.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::INTENSITY.name());
-
-        let has_return_numbers = self.layout.has_attribute(attributes::RETURN_NUMBER.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::RETURN_NUMBER.name());
-
-        let has_number_of_returns = self
-            .layout
-            .has_attribute(attributes::NUMBER_OF_RETURNS.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::NUMBER_OF_RETURNS.name());
-
-        let has_scan_direction_flags = self
-            .layout
-            .has_attribute(attributes::SCAN_DIRECTION_FLAG.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::SCAN_DIRECTION_FLAG.name());
-
-        let has_edge_of_flight_lines = self
-            .layout
-            .has_attribute(attributes::EDGE_OF_FLIGHT_LINE.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::EDGE_OF_FLIGHT_LINE.name());
-
-        let has_classifications = self.layout.has_attribute(attributes::CLASSIFICATION.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::CLASSIFICATION.name());
-
-        let has_scan_angle_ranks = self
-            .layout
-            .has_attribute(attributes::SCAN_ANGLE_RANK.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::SCAN_ANGLE_RANK.name());
-
-        let has_user_data = self.layout.has_attribute(attributes::USER_DATA.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::USER_DATA.name());
-
-        let has_point_source_ids = self
-            .layout
-            .has_attribute(attributes::POINT_SOURCE_ID.name())
-            && points
-                .point_layout()
-                .has_attribute(attributes::POINT_SOURCE_ID.name());
-
-        let self_requires_gps_times = self.layout.has_attribute(attributes::GPS_TIME.name());
-        let has_gps_times = self_requires_gps_times
-            && points
-                .point_layout()
-                .has_attribute(attributes::GPS_TIME.name());
-
-        let self_requires_colors = self.layout.has_attribute(attributes::COLOR_RGB.name());
-        let has_colors = self_requires_colors
-            && points
-                .point_layout()
-                .has_attribute(attributes::COLOR_RGB.name());
-
-        let self_requires_waveform = self
-            .layout
-            .has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name());
-        let has_waveform_packet_descriptor_index = self_requires_waveform
-            && points
-                .point_layout()
-                .has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name());
-        let has_waveform_data_offset = self_requires_waveform
-            && points
-                .point_layout()
-                .has_attribute(attributes::WAVEFORM_DATA_OFFSET.name());
-        let has_waveform_packet_size = self_requires_waveform
-            && points
-                .point_layout()
-                .has_attribute(attributes::WAVEFORM_PACKET_SIZE.name());
-        let has_return_point_waveform_location = self_requires_waveform
-            && points
-                .point_layout()
-                .has_attribute(attributes::RETURN_POINT_WAVEFORM_LOCATION.name());
-        let has_waveform_parameters = self_requires_waveform
-            && points
-                .point_layout()
-                .has_attribute(attributes::WAVEFORM_PARAMETERS.name());
-
-        // TODO other attributes of extended formats (6-10)
-        // TODO This seems quite inefficient and it doesn't even support format conversion. Maybe we can enforce
-        // that the passed in buffer has a format that exactly matches the format of this writer. If the user wants
-        // to write different formats, we could then enforce a buffer conversion into the target format. Maybe this
-        // is cleaner?
-
-        for point_idx in 0..points.len() {
-            //TODO las-rs has a bug in its writer implementation where writing a default point fails in all but format 0
-            let mut las_point: las::Point = Default::default();
-
-            if has_positions {
-                let mut pos: Vector3<f64> = Default::default();
-                let pos_bytes = unsafe { view_raw_bytes_mut(&mut pos) };
-                points.get_attribute_by_copy(point_idx, &attributes::POSITION_3D, pos_bytes);
-                las_point.x = pos.x;
-                las_point.y = pos.y;
-                las_point.z = pos.z;
-            }
-
-            if has_intensities {
-                let mut intensity: u16 = Default::default();
-                let intensity_bytes = unsafe { view_raw_bytes_mut(&mut intensity) };
-                points.get_attribute_by_copy(point_idx, &attributes::INTENSITY, intensity_bytes);
-                las_point.intensity = intensity;
-            }
-
-            if has_return_numbers {
-                let mut return_number: u8 = Default::default();
-                let return_number_bytes = unsafe { view_raw_bytes_mut(&mut return_number) };
-                points.get_attribute_by_copy(
-                    point_idx,
-                    &attributes::RETURN_NUMBER,
-                    return_number_bytes,
-                );
-                las_point.return_number = return_number;
-            }
-
-            if has_number_of_returns {
-                let mut number_of_returns: u8 = Default::default();
-                let number_of_returns_bytes = unsafe { view_raw_bytes_mut(&mut number_of_returns) };
-                points.get_attribute_by_copy(
-                    point_idx,
-                    &attributes::NUMBER_OF_RETURNS,
-                    number_of_returns_bytes,
-                );
-                las_point.number_of_returns = number_of_returns;
-            }
-
-            if has_scan_direction_flags {
-                let mut scan_direction_flag: bool = Default::default();
-                let scan_direction_flag_bytes =
-                    unsafe { view_raw_bytes_mut(&mut scan_direction_flag) };
-                points.get_attribute_by_copy(
-                    point_idx,
-                    &attributes::SCAN_DIRECTION_FLAG,
-                    scan_direction_flag_bytes,
-                );
-                las_point.scan_direction = if scan_direction_flag {
-                    las::point::ScanDirection::LeftToRight
-                } else {
-                    las::point::ScanDirection::RightToLeft
-                };
-            }
-
-            if has_edge_of_flight_lines {
-                let mut eof: bool = Default::default();
-                let eof_bytes = unsafe { view_raw_bytes_mut(&mut eof) };
-                points.get_attribute_by_copy(
-                    point_idx,
-                    &attributes::EDGE_OF_FLIGHT_LINE,
-                    eof_bytes,
-                );
-                las_point.is_edge_of_flight_line = eof;
-            }
-
-            if has_classifications {
-                let mut classification: u8 = Default::default();
-                let classification_bytes = unsafe { view_raw_bytes_mut(&mut classification) };
-                points.get_attribute_by_copy(
-                    point_idx,
-                    &attributes::CLASSIFICATION,
-                    classification_bytes,
-                );
-                las_point.classification = las::point::Classification::new(classification)?;
-            }
-
-            if has_scan_angle_ranks {
-                let mut scan_angle_rank: i8 = Default::default();
-                let scan_angle_rank_bytes = unsafe { view_raw_bytes_mut(&mut scan_angle_rank) };
-                points.get_attribute_by_copy(
-                    point_idx,
-                    &attributes::SCAN_ANGLE_RANK,
-                    scan_angle_rank_bytes,
-                );
-                las_point.scan_angle = scan_angle_rank as f32;
-            }
-
-            if has_user_data {
-                let mut user_data: u8 = Default::default();
-                let user_data_bytes = unsafe { view_raw_bytes_mut(&mut user_data) };
-                points.get_attribute_by_copy(point_idx, &attributes::USER_DATA, user_data_bytes);
-                las_point.user_data = user_data;
-            }
-
-            if has_point_source_ids {
-                let mut source_id: u16 = Default::default();
-                let source_id_bytes = unsafe { view_raw_bytes_mut(&mut source_id) };
-                points.get_attribute_by_copy(
-                    point_idx,
-                    &attributes::POINT_SOURCE_ID,
-                    source_id_bytes,
-                );
-                las_point.point_source_id = source_id;
-            }
-
-            if has_gps_times {
-                let mut gps_time: f64 = Default::default();
-                let gps_time_bytes = unsafe { view_raw_bytes_mut(&mut gps_time) };
-                points.get_attribute_by_copy(point_idx, &attributes::GPS_TIME, gps_time_bytes);
-                las_point.gps_time = Some(gps_time);
-            } else if self_requires_gps_times {
-                las_point.gps_time = Some(0.0);
-            }
-
-            if has_colors {
-                let mut color: Vector3<u16> = Default::default();
-                let color_bytes = unsafe { view_raw_bytes_mut(&mut color) };
-                points.get_attribute_by_copy(point_idx, &attributes::COLOR_RGB, color_bytes);
-                las_point.color = Some(Color::new(color.x, color.y, color.z));
-            } else if self_requires_colors {
-                las_point.color = Some(Color::new(0, 0, 0));
-            }
-
-            if self_requires_waveform {
-                let mut waveform: Waveform = Default::default();
-
-                if has_waveform_packet_descriptor_index {
-                    let index_bytes =
-                        unsafe { view_raw_bytes_mut(&mut waveform.wave_packet_descriptor_index) };
-                    points.get_attribute_by_copy(
-                        point_idx,
-                        &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
-                        index_bytes,
-                    );
-                }
-
-                if has_waveform_data_offset {
-                    let offset_bytes =
-                        unsafe { view_raw_bytes_mut(&mut waveform.byte_offset_to_waveform_data) };
-                    points.get_attribute_by_copy(
-                        point_idx,
-                        &attributes::WAVEFORM_DATA_OFFSET,
-                        offset_bytes,
-                    );
-                }
-
-                if has_waveform_packet_size {
-                    let packet_size_bytes =
-                        unsafe { view_raw_bytes_mut(&mut waveform.waveform_packet_size_in_bytes) };
-                    points.get_attribute_by_copy(
-                        point_idx,
-                        &attributes::WAVEFORM_PACKET_SIZE,
-                        packet_size_bytes,
-                    );
-                }
-
-                if has_return_point_waveform_location {
-                    let return_bytes =
-                        unsafe { view_raw_bytes_mut(&mut waveform.return_point_waveform_location) };
-                    points.get_attribute_by_copy(
-                        point_idx,
-                        &attributes::RETURN_POINT_WAVEFORM_LOCATION,
-                        return_bytes,
-                    );
-                }
-
-                if has_waveform_parameters {
-                    let mut parameters: Vector3<f32> = Default::default();
-                    let parameters_bytes = unsafe { view_raw_bytes_mut(&mut parameters) };
-                    points.get_attribute_by_copy(
-                        point_idx,
-                        &attributes::WAVEFORM_PARAMETERS,
-                        parameters_bytes,
-                    );
-                    waveform.x_t = parameters.x;
-                    waveform.y_t = parameters.y;
-                    waveform.z_t = parameters.z;
-                }
-
-                las_point.waveform = Some(waveform);
-            }
-
-            // TODO Extract the rest of the attributes
-
-            self.writer.write(las_point)?;
-        }
-
-        Ok(())
+        self.writer.write(points)
     }
 
     fn flush(&mut self) -> Result<()> {
-        Ok(())
+        self.writer.flush()
     }
 
     fn get_default_point_layout(&self) -> &PointLayout {
-        &self.layout
+        self.writer.get_default_point_layout()
     }
 }
 
@@ -652,7 +339,7 @@ mod tests {
         las_header_builder.point_format = Format::new(0)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -689,7 +376,7 @@ mod tests {
         las_header_builder.point_format = Format::new(0)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -767,7 +454,7 @@ mod tests {
         las_header_builder.point_format = Format::new(1)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -804,7 +491,7 @@ mod tests {
         las_header_builder.point_format = Format::new(1)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -887,7 +574,7 @@ mod tests {
         las_header_builder.point_format = Format::new(2)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -924,7 +611,7 @@ mod tests {
         las_header_builder.point_format = Format::new(2)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -1007,7 +694,7 @@ mod tests {
         las_header_builder.point_format = Format::new(3)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -1044,7 +731,7 @@ mod tests {
         las_header_builder.point_format = Format::new(3)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -1132,7 +819,7 @@ mod tests {
         las_header_builder.point_format = Format::new(4)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -1169,7 +856,7 @@ mod tests {
         las_header_builder.point_format = Format::new(4)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -1271,7 +958,7 @@ mod tests {
         las_header_builder.point_format = Format::new(5)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;
@@ -1308,7 +995,7 @@ mod tests {
         las_header_builder.point_format = Format::new(5)?;
 
         {
-            let mut writer = LASWriter::<BufWriter<File>>::from_path_and_header(
+            let mut writer = LASWriter::from_path_and_header(
                 &test_file_path,
                 las_header_builder.into_header().unwrap(),
             )?;

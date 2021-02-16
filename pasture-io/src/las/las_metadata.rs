@@ -1,3 +1,6 @@
+use std::path::Path;
+
+use anyhow::{anyhow, Result};
 use las::{Bounds, Header};
 use las_rs::Vector;
 use pasture_core::{math::AABB, meta::Metadata, nalgebra::Point3};
@@ -23,6 +26,17 @@ pub fn pasture_bounds_to_las_bounds(bounds: &AABB<f64>) -> Bounds {
             z: bounds.max().z,
         },
     }
+}
+
+/// Tries to determine whether the given `path` represents a compressed LAZ file or an uncompressed LAS file
+pub fn path_is_compressed_las_file<P: AsRef<Path>>(path: P) -> Result<bool> {
+    path.as_ref()
+        .extension()
+        .map(|extension| extension == "laz")
+        .ok_or(anyhow!(
+            "Could not determine file extension of file {}",
+            path.as_ref().display()
+        ))
 }
 
 /// `Metadata` implementation for LAS/LAZ files

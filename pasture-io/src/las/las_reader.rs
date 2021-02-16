@@ -9,17 +9,7 @@ use anyhow::{anyhow, Result};
 use crate::base::{PointReader, SeekToPoint};
 use pasture_core::{containers::PointBufferWriteable, layout::PointLayout, meta::Metadata};
 
-use super::{LASReaderBase, RawLASReader, RawLAZReader};
-
-fn path_is_compressed_las_file<P: AsRef<Path>>(path: P) -> Result<bool> {
-    path.as_ref()
-        .extension()
-        .map(|extension| extension == "laz")
-        .ok_or(anyhow!(
-            "Could not determine file extension of file {}",
-            path.as_ref().display()
-        ))
-}
+use super::{path_is_compressed_las_file, LASReaderBase, RawLASReader, RawLAZReader};
 
 trait AnyLASReader: PointReader + SeekToPoint + LASReaderBase {}
 

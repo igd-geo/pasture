@@ -42,8 +42,10 @@ Rust library for point cloud processing
         - [ ] SeekToPoint
             - [ ] Tests
     - [ ] Writer
-        - [ ] Migrate `LASWriter` to use `RawLASWriter`
+        - [ ] Migrate `LASWriter` to use `RawLASWriter` and `RawLAZWriter`
             - [ ] Implement `RawLAZWriter`
+                - [x] Default format
+                - [ ] Custom format
         - [x] Format 0
         - [x] Format 1
         - [x] Format 2
