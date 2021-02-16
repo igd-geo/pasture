@@ -16,7 +16,11 @@ Rust library for point cloud processing
     - [ ] Performance checks on views for different PointBuffers
 - [ ] PointType
     - [x] Basic `PointType` structure
-    - [ ] Procedural macro for implementing `PointType` for a type
+    - [x] Procedural macro for implementing `PointType` for a type
+        - [ ] Check robustness on types that are `#[repr(packed)]` but not `#[repr(C)]`
+        - [ ] Documentation of the `BUILTIN_...` and `attribute = "..."` syntax
+        - [ ] Get rid of warnings, clean up code
+- [ ] Examples of usage
 
 ## I/O
 
@@ -28,15 +32,18 @@ Rust library for point cloud processing
         - [x] Format 3
         - [x] Format 4
         - [x] Format 5
-        - [ ] Format 6
-        - [ ] Format 7
-        - [ ] Format 8
-        - [ ] Format 9
-        - [ ] Format 10
-        - [ ] Attribute conversions (e.g. positions as I32, F32, F64)
+        - [x] Format 6
+        - [x] Format 7
+        - [x] Format 8
+        - [x] Format 9
+        - [x] Format 10
+        - [x] Attribute conversions (e.g. positions as I32, F32, F64)
+            - [ ] Works in principle, but requires many more tests to be robust 
         - [ ] SeekToPoint
             - [ ] Tests
     - [ ] Writer
+        - [ ] Migrate `LASWriter` to use `RawLASWriter`
+            - [ ] Implement `RawLAZWriter`
         - [x] Format 0
         - [x] Format 1
         - [x] Format 2
@@ -56,6 +63,8 @@ Rust library for point cloud processing
         - [ ] Support for additional attributes in header
         - [ ] Support for VLRs
             - [ ] Define how VLRs should be represented 
+    - [ ] Benchmarks
+    - [ ] Examples
 - [ ] 3D Tiles
     - [ ] Reader
     - [ ] Writer

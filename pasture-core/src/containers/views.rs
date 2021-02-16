@@ -605,9 +605,8 @@ mod tests {
 
     use super::*;
     use crate::containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage};
-    use crate::layout::{attributes, PointLayout};
+    use crate::layout::attributes;
     use pasture_derive::PointType;
-    use static_assertions::const_assert;
 
     // We need this, otherwise we can't use the derive(PointType) macro from within pasture_core because the macro
     // doesn't recognize the name 'pasture_core' :/

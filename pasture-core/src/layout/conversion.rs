@@ -255,7 +255,7 @@ fn get_generic_converter(
 /// assert_eq!(2.0, dest.y);
 /// assert_eq!(3.0, dest.z);
 /// ```
-unsafe fn convert_unit(from: &[u8], to: &mut [u8]) {
+unsafe fn _convert_unit(from: &[u8], to: &mut [u8]) {
     to.copy_from_slice(from)
 }
 
@@ -278,7 +278,7 @@ unsafe fn convert_unit(from: &[u8], to: &mut [u8]) {
 /// ```
 unsafe fn convert_position_from_vec3f64_to_vec3f32(from: &[u8], to: &mut [u8]) {
     let from_vec = &*(from.as_ptr() as *const Vector3<f64>);
-    let mut to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<f32>);
+    let to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<f32>);
 
     to_vec.x = from_vec.x as f32;
     to_vec.y = from_vec.y as f32;
@@ -304,7 +304,7 @@ unsafe fn convert_position_from_vec3f64_to_vec3f32(from: &[u8], to: &mut [u8]) {
 /// ```
 unsafe fn convert_position_from_vec3f32_to_vec3f64(from: &[u8], to: &mut [u8]) {
     let from_vec = &*(from.as_ptr() as *const Vector3<f32>);
-    let mut to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<f64>);
+    let to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<f64>);
 
     to_vec.x = from_vec.x as f64;
     to_vec.y = from_vec.y as f64;
@@ -331,7 +331,7 @@ unsafe fn convert_position_from_vec3f32_to_vec3f64(from: &[u8], to: &mut [u8]) {
 /// ```
 unsafe fn convert_color_rgb_from_vec3u16_to_vec3u8(from: &[u8], to: &mut [u8]) {
     let from_vec = &*(from.as_ptr() as *const Vector3<u16>);
-    let mut to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<u8>);
+    let to_vec = &mut *(to.as_mut_ptr() as *mut Vector3<u8>);
 
     to_vec.x = (from_vec.x >> 8) as u8;
     to_vec.y = (from_vec.y >> 8) as u8;
@@ -365,7 +365,7 @@ unsafe fn convert_color_rgb_from_vec3u8_to_vec3u16(from: &[u8], to: &mut [u8]) {
     to_vec.z = ((from_vec.z as u16) << 8) as u16;
 }
 
-unsafe fn convert_generic_vec3<F, T>(from: &[u8], to: &mut [u8])
+unsafe fn _convert_generic_vec3<F, T>(from: &[u8], to: &mut [u8])
 where
     F: Into<T> + Copy + Scalar,
     T: Copy + Scalar,
