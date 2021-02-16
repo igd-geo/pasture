@@ -6,7 +6,8 @@ use pasture_core::{
     layout::attributes,
     layout::conversion::get_converter_for_attributes,
     layout::{
-        conversion::AttributeConversionFn, PointAttributeDefinition, PointLayout, PrimitiveType,
+        conversion::AttributeConversionFn, PointAttributeDefinition, PointAttributeMember,
+        PointLayout, PrimitiveType,
     },
     nalgebra::Vector3,
     util::view_raw_bytes_mut,
@@ -25,15 +26,15 @@ use pasture_core::{
 pub(crate) type ReaderFn<T> = Box<dyn Fn(usize, &mut Cursor<Vec<u8>>) -> Result<T>>;
 
 fn read_attribute_in_custom_layout<T: PrimitiveType + Default>(
-    attribute_def: &PointAttributeDefinition,
-    attribute_offset: usize,
+    attribute_def: &PointAttributeMember,
     current_point_index: usize,
     size_of_single_point: usize,
     converter: AttributeConversionFn,
     point_read: &mut Cursor<Vec<u8>>,
 ) -> Result<T> {
     let attribute_size = attribute_def.size() as usize;
-    let attribute_start = (current_point_index * size_of_single_point) + attribute_offset;
+    let attribute_start =
+        (current_point_index * size_of_single_point) + attribute_def.offset() as usize;
     let attribute_slice =
         &point_read.get_ref()[attribute_start..(attribute_start + attribute_size)];
 
@@ -317,10 +318,7 @@ macro_rules! make_get_reader_fn {
                 None => Box::new(|_, _| -> Result<$type> { Ok(Default::default()) }),
                 Some(attribute) => {
                     if attribute.datatype() == default_attribute.datatype() {
-                        let offset_in_point = source_layout
-                            .offset_of(attribute)
-                            .expect("Attribute offset not found")
-                            as usize;
+                        let offset_in_point = attribute.offset() as usize;
                         let size_of_single_point = source_layout.size_of_point_entry() as usize;
                         Box::new(move |current_point_index, point_read| {
                             $read_default_fn(
@@ -332,17 +330,13 @@ macro_rules! make_get_reader_fn {
                         })
                     } else {
                         let attribute_clone = attribute.clone();
-                        let offset_in_point = source_layout
-                            .offset_of(attribute)
-                            .expect("Attribute offset not found")
-                            as usize;
                         let size_of_single_point = source_layout.size_of_point_entry() as usize;
-                        let converter = get_converter_for_attributes(attribute, &default_attribute)
-                            .expect("No converter for attribute found");
+                        let converter =
+                            get_converter_for_attributes(&attribute.into(), &default_attribute)
+                                .expect("No converter for attribute found");
                         Box::new(move |current_point_index, point_read| {
                             read_attribute_in_custom_layout::<$type>(
                                 &attribute_clone,
-                                offset_in_point,
                                 current_point_index,
                                 size_of_single_point,
                                 converter,
@@ -436,7 +430,7 @@ make_get_reader_fn!(
 make_get_reader_fn!(
     get_extended_scan_angle_rank_reader,
     i16,
-    SCAN_ANGLE_RANK_EXTENDED,
+    SCAN_ANGLE,
     read_extended_scan_angle_rank_in_default_layout
 );
 

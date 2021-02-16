@@ -1,4 +1,6 @@
-use crate::layout::{PointAttributeDefinition, PointLayout, PointType, PrimitiveType};
+use crate::layout::{
+    FieldAlignment, PointAttributeDefinition, PointLayout, PointType, PrimitiveType,
+};
 
 /// A non-owning view for a contiguous slice of interleaved point data. This is a low-cost
 /// abstraction that enables passing around point data in an untyped but safe way! Its primary
@@ -15,14 +17,11 @@ impl<'data> InterleavedPointView<'data> {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// let points = vec![MyPointType(42), MyPointType(43)];
     /// let view = InterleavedPointView::from_slice(points.as_slice());
@@ -69,15 +68,11 @@ impl<'data> InterleavedPointView<'data> {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(Debug, Copy, Clone, PartialEq, Eq, PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// let points = vec![MyPointType(42), MyPointType(43)];
     /// let view = InterleavedPointView::from_slice(points.as_slice());
@@ -98,15 +93,11 @@ impl<'data> InterleavedPointView<'data> {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(Debug, Copy, Clone, PartialEq, Eq, PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// let points = vec![MyPointType(42), MyPointType(43)];
     /// let view = InterleavedPointView::from_slice(points.as_slice());
@@ -121,14 +112,11 @@ impl<'data> InterleavedPointView<'data> {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// let points = vec![MyPointType(42), MyPointType(43)];
     /// let view = InterleavedPointView::from_slice(points.as_slice());
@@ -153,12 +141,12 @@ impl<'data> PerAttributePointView<'data> {
     /// # use pasture_core::layout::*;
     ///
     /// let point_view = PerAttributePointView::new();
-    /// assert_eq!(point_view.get_point_layout(), &PointLayout::new());
+    /// assert_eq!(point_view.point_layout(), &PointLayout::default());
     /// ```
     pub fn new() -> Self {
         Self {
             point_data: vec![],
-            point_layout: PointLayout::new(),
+            point_layout: PointLayout::default(),
             point_count: 0,
         }
     }
@@ -300,9 +288,9 @@ impl<'data> PerAttributePointView<'data> {
     /// let mut point_view = PerAttributePointView::new();
     /// point_view.push_attribute(&positions, &attributes::POSITION_3D);
     ///
-    /// assert_eq!(point_view.get_point_layout(), &PointLayout::from_attributes(&[attributes::POSITION_3D]));
+    /// assert_eq!(point_view.point_layout(), &PointLayout::from_attributes(&[attributes::POSITION_3D]));
     /// ```
-    pub fn get_point_layout(&self) -> &PointLayout {
+    pub fn point_layout(&self) -> &PointLayout {
         &self.point_layout
     }
 
@@ -339,7 +327,7 @@ impl<'data> PerAttributePointView<'data> {
         };
         self.point_data.push(attribute_bytes);
         self.point_layout
-            .add_attribute(attribute_definition.clone());
+            .add_attribute(attribute_definition.clone(), FieldAlignment::Default);
     }
 
     fn push_additional_attribute<T: PrimitiveType>(
@@ -359,7 +347,7 @@ impl<'data> PerAttributePointView<'data> {
         };
         self.point_data.push(attribute_bytes);
         self.point_layout
-            .add_attribute(attribute_definition.clone());
+            .add_attribute(attribute_definition.clone(), FieldAlignment::Default);
     }
 
     fn attribute_buffers_match_layout(attributes: &[&[u8]], point_layout: &PointLayout) -> bool {

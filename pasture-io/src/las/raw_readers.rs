@@ -222,12 +222,12 @@ impl<T: Read + Seek> RawLASReader<T> {
                         source_layout
                             .get_attribute_by_name(name)
                             .and_then(|source_attribute| {
-                                get_converter_for_attributes(source_attribute, target_attribute)
+                                get_converter_for_attributes(
+                                    &source_attribute.into(),
+                                    &target_attribute.into(),
+                                )
                             });
-                    let offset_of_attribute = target_layout
-                        .offset_of(target_attribute)
-                        .expect("Offset for attribute not found within point layout!")
-                        as usize;
+                    let offset_of_attribute = target_attribute.offset() as usize;
                     let size_of_attribute = target_attribute.size() as usize;
                     Some((offset_of_attribute, size_of_attribute, converter))
                 })
@@ -1224,12 +1224,12 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
                         source_layout
                             .get_attribute_by_name(name)
                             .and_then(|source_attribute| {
-                                get_converter_for_attributes(source_attribute, target_attribute)
+                                get_converter_for_attributes(
+                                    &source_attribute.into(),
+                                    &target_attribute.into(),
+                                )
                             });
-                    let offset_of_attribute = target_layout
-                        .offset_of(target_attribute)
-                        .expect("Offset for attribute not found within point layout!")
-                        as usize;
+                    let offset_of_attribute = target_attribute.offset() as usize;
                     let size_of_attribute = target_attribute.size() as usize;
                     Some((offset_of_attribute, size_of_attribute, converter))
                 })

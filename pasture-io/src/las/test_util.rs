@@ -310,11 +310,7 @@ pub(crate) fn compare_to_reference_data_range(
             "Scan angle ranks do not match"
         );
     } else {
-        let scan_angles = attributes::<i16>(
-            points,
-            &attributes::SCAN_ANGLE_RANK.with_custom_datatype(PointAttributeDataType::I16),
-        )
-        .collect::<Vec<_>>();
+        let scan_angles = attributes::<i16>(points, &attributes::SCAN_ANGLE).collect::<Vec<_>>();
         assert_eq!(
             &test_data_scan_angles_extended()[range.clone()],
             scan_angles,
@@ -465,7 +461,7 @@ pub(crate) fn get_test_points_in_las_format(point_format: u8) -> Result<Box<dyn 
     if format.is_extended {
         buffer.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
         buffer.push_attribute_range(
-            &attributes::SCAN_ANGLE_RANK.with_custom_datatype(PointAttributeDataType::I16),
+            &attributes::SCAN_ANGLE,
             test_data_scan_angles_extended().as_slice(),
         );
     } else {

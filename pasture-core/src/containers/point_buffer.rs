@@ -277,14 +277,11 @@ impl InterleavedVecPointStorage {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// {
     ///   let mut storage = InterleavedVecPointStorage::new(MyPointType::layout());
@@ -310,14 +307,11 @@ impl InterleavedVecPointStorage {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// {
     ///   let mut storage = InterleavedVecPointStorage::new(MyPointType::layout());
@@ -340,14 +334,11 @@ impl InterleavedVecPointStorage {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// {
     ///   let mut storage = InterleavedVecPointStorage::new(MyPointType::layout());
@@ -446,9 +437,9 @@ impl PointBuffer for InterleavedVecPointStorage {
             );
         }
 
-        if let Some(attribute_offset) = self.layout.offset_of(attribute) {
+        if let Some(attribute_in_buffer) = self.layout.get_attribute_by_name(attribute.name()) {
             let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
-            let offset_to_attribute = offset_to_point_bytes + attribute_offset as usize;
+            let offset_to_attribute = offset_to_point_bytes + attribute_in_buffer.offset() as usize;
             let attribute_size = attribute.size() as usize;
 
             buf.copy_from_slice(
@@ -477,13 +468,14 @@ impl PointBuffer for InterleavedVecPointStorage {
             );
         }
 
-        if let Some(attribute_offset) = self.layout.offset_of(attribute) {
+        if let Some(attribute_in_buffer) = self.layout.get_attribute_by_name(attribute.name()) {
             let attribute_size = attribute.size() as usize;
             let start_index = point_indices.start;
 
             for point_index in point_indices {
                 let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
-                let offset_to_attribute = offset_to_point_bytes + attribute_offset as usize;
+                let offset_to_attribute =
+                    offset_to_point_bytes + attribute_in_buffer.offset() as usize;
                 let offset_in_target_buf = (point_index - start_index) * attribute_size;
                 let target_buf_slice =
                     &mut buf[offset_in_target_buf..offset_in_target_buf + attribute_size];
@@ -512,9 +504,10 @@ impl PointBufferWriteable for InterleavedVecPointStorage {
     }
 
     fn push_raw_points_per_attribute(&mut self, points: &PerAttributePointView<'_>) {
-        if *points.get_point_layout() != self.layout {
-            panic!("InterleavedVecPointStorage::push_raw_points_per_attribute: attribute_buffers do not match the PointLayout! Make sure that there is one entry for each PointAttributeDefinition in the PointLayout of this PointBuffer and that the order matches!");
-        }
+        // Don't compare the layouts using Eq, because the PerAttributePointView doesn't care for attribute alignments, but InterleavedVecPointStorage does
+        // This means that the 'PerAttributePointView' can have a layout with the same attributes but at different offsets and it doesn't matter for this
+        // method right here!
+        // The actual check for layout equality is done inside the closure below with 'get_raw_data_for_attribute'
 
         // This function is essentially a data transpose!
         let attribute_buffers = self
@@ -523,17 +516,25 @@ impl PointBufferWriteable for InterleavedVecPointStorage {
             .map(|attribute| {
                 (
                     attribute,
-                    points.get_raw_data_for_attribute(attribute).unwrap(),
+                    points
+                        .get_raw_data_for_attribute(&attribute.into())
+                        .unwrap_or_else(|| panic!("InterleavedVecPointStorage::push_raw_points_per_attribute: Attribute {} of new points is not part of the PointLayout of this buffer!", attribute)),
                 )
             })
             .collect::<Vec<_>>();
+        let mut single_point_blob = vec![0; self.layout.size_of_point_entry() as usize];
         for idx in 0..points.len() {
             for (attribute, attribute_buffer) in attribute_buffers.iter() {
                 let slice_start = idx * attribute.size() as usize;
                 let slice_end = (idx + 1) * attribute.size() as usize;
-                self.points
-                    .extend_from_slice(&attribute_buffer[slice_start..slice_end]);
+                let offset_in_point = attribute.offset() as usize;
+
+                let point_slice = &mut single_point_blob
+                    [offset_in_point..offset_in_point + attribute.size() as usize];
+                let attribute_slice = &attribute_buffer[slice_start..slice_end];
+                point_slice.copy_from_slice(attribute_slice);
             }
+            self.points.extend_from_slice(single_point_blob.as_slice());
         }
     }
 
@@ -664,17 +665,16 @@ impl PerAttributeVecPointStorage {
     ///
     /// If the `PointLayout` of type `T` does not match the layout of the associated `PerAttributeVecPointStorage`.
     ///
+    /// # Example
+    ///
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// {
     ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
@@ -682,23 +682,20 @@ impl PerAttributeVecPointStorage {
     /// }
     /// ```
     pub fn push_point<T: PointType>(&mut self, point: T) {
-        let point_layout = T::layout();
-        if point_layout != self.layout {
-            panic!(
-                "push_point: PointLayouts don't match (T has layout {:?}, self has layout {:?})",
-                point_layout, self.layout
-            );
-        }
+        // We don't care for the attribute offsets in T::layout(), because PerAttributeVecPointStorage stores each
+        // attribute in a separate Vec. So we only compare that all attributes of T::layout() exist and that their
+        // types are equal. This is done implicitly with the 'self.attributes.get_mut' call below
 
         self.reserve(1);
 
         let point_bytes = unsafe { view_raw_bytes(&point) };
-        for attribute in self.layout.attributes() {
-            let offset_to_attribute_in_point = self.layout.offset_of(attribute).unwrap() as usize;
+        let point_layout = T::layout();
+        for attribute in point_layout.attributes() {
+            let offset_to_attribute_in_point = attribute.offset() as usize;
             let point_slice = &point_bytes[offset_to_attribute_in_point
                 ..offset_to_attribute_in_point + attribute.size() as usize];
 
-            let attribute_buffer = self.attributes.get_mut(attribute.name()).unwrap();
+            let attribute_buffer = self.attributes.get_mut(attribute.name()).unwrap_or_else(|| panic!("PerAttributeVecPointStorage::push_point: Attribute {} of point does not exist in the PointLayout of this buffer!", attribute));
             attribute_buffer.extend_from_slice(point_slice);
         }
     }
@@ -709,17 +706,16 @@ impl PerAttributeVecPointStorage {
     ///
     /// If the `PointLayout` of type `T` does not match the layout of the associated `PerAttributeVecPointStorage`.
     ///
+    /// # Example
+    ///
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// struct MyPointType(u16);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
     ///
     /// {
     ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
@@ -727,19 +723,12 @@ impl PerAttributeVecPointStorage {
     /// }
     /// ```
     pub fn push_points<T: PointType>(&mut self, points: &[T]) {
-        let point_layout = T::layout();
-        if point_layout != self.layout {
-            panic!(
-                "push_point: PointLayouts don't match (T has layout {:?}, self has layout {:?})",
-                point_layout, self.layout
-            );
-        }
-
         self.reserve(points.len());
 
-        for attribute in self.layout.attributes() {
-            let offset_to_attribute_in_point = self.layout.offset_of(attribute).unwrap() as usize;
-            let attribute_buffer = self.attributes.get_mut(attribute.name()).unwrap();
+        let point_layout = T::layout();
+        for attribute in point_layout.attributes() {
+            let offset_to_attribute_in_point = attribute.offset() as usize;
+            let attribute_buffer = self.attributes.get_mut(attribute.name()).unwrap_or_else(|| panic!("PerAttributeVecPointStorage::push_points: Attribute {} of points does not exist in the PointLayout of this buffer!", attribute));
 
             for point in points {
                 let point_bytes = unsafe { view_raw_bytes(point) };
@@ -767,15 +756,11 @@ impl PerAttributeVecPointStorage {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// #[repr(packed)]
-    /// struct MyPointType(u16, f64);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
     ///
     /// {
     ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
@@ -816,15 +801,11 @@ impl PerAttributeVecPointStorage {
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
     ///
-    /// #[repr(packed)]
-    /// struct MyPointType(u16, f64);
-    ///
-    /// impl PointType for MyPointType {
-    ///   fn layout() -> PointLayout {
-    ///     PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
-    ///   }
-    /// }
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
     ///
     /// {
     ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
@@ -968,7 +949,7 @@ impl PointBuffer for PerAttributeVecPointStorage {
             let attribute_buffer = self.attributes.get(attribute.name()).unwrap();
             let attribute_size = attribute.size() as usize;
             let offset_in_buffer = point_index * attribute_size;
-            let offset_in_point = self.layout.offset_of(attribute).unwrap() as usize;
+            let offset_in_point = attribute.offset() as usize;
 
             let buf_slice = &mut buf[offset_in_point..offset_in_point + attribute_size];
             let attribute_slice =
@@ -1006,7 +987,7 @@ impl PointBuffer for PerAttributeVecPointStorage {
                 let attribute_slice = &attribute_buffer
                     [offset_in_attribute_buffer..offset_in_attribute_buffer + attribute_size];
 
-                let offset_in_point = self.layout.offset_of(attribute).unwrap() as usize;
+                let offset_in_point = attribute.offset() as usize;
                 let offset_in_points_buffer = point_index * point_size + offset_in_point;
                 let buf_slice =
                     &mut buf[offset_in_points_buffer..offset_in_points_buffer + attribute_size];
@@ -1041,7 +1022,10 @@ impl PointBuffer for PerAttributeVecPointStorage {
 
 impl PointBufferWriteable for PerAttributeVecPointStorage {
     fn push_points_interleaved(&mut self, points: &InterleavedPointView<'_>) {
-        if points.get_point_layout() != self.point_layout() {
+        if !points
+            .get_point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
             panic!("PerAttributeVecPointStorage::push_points_interleaved: Layout of 'points' does not match layout of this buffer!");
         }
 
@@ -1050,7 +1034,7 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
 
         for (attribute_name, attribute_data) in self.attributes.iter_mut() {
             let current_attribute = self.layout.get_attribute_by_name(attribute_name).unwrap();
-            let base_offset = self.layout.offset_of(current_attribute).unwrap() as usize;
+            let base_offset = current_attribute.offset() as usize;
             let attribute_size = current_attribute.size() as usize;
 
             for idx in 0..points.len() {
@@ -1063,19 +1047,29 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
     }
 
     fn push_raw_points_per_attribute(&mut self, points: &PerAttributePointView<'_>) {
-        if *points.get_point_layout() != self.layout {
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
             panic!("PerAttributeVecPointStorage::push_raw_points_per_attribute: points layout does not match this PointLayout!");
         }
         for attribute in self.layout.attributes() {
             self.attributes
                 .get_mut(attribute.name())
                 .unwrap()
-                .extend_from_slice(points.get_raw_data_for_attribute(attribute).unwrap());
+                .extend_from_slice(
+                    points
+                        .get_raw_data_for_attribute(&attribute.into())
+                        .unwrap(),
+                );
         }
     }
 
     fn extend_from_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
-        if points.point_layout() != self.point_layout() {
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
             panic!(
                 "PerAttributeVecPointStorage::extend_from_interleaved: Point layouts do not match!"
             );
@@ -1101,7 +1095,10 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
     }
 
     fn extend_from_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
-        if *points.point_layout() != self.layout {
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
             panic!("PerAttributeVecPointStorage::extend_from_per_attribute: Point layouts do not match, this buffer has layout {:?} but buffer to append from has layout {:?}", self.layout, points.point_layout());
         }
 
@@ -1110,7 +1107,8 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
                 .layout
                 .get_attribute_by_name(key)
                 .expect("Attribute not present in point layout");
-            let new_attribute_data = points.get_attribute_range_ref(0..points.len(), attribute_def);
+            let new_attribute_data =
+                points.get_attribute_range_ref(0..points.len(), &attribute_def.into());
             attribute_data.extend_from_slice(new_attribute_data);
         }
     }
@@ -1574,16 +1572,11 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributePointBufferSliceMut<'p> 
 /// ```
 /// # use pasture_core::containers::*;
 /// # use pasture_core::layout::*;
+/// # use pasture_derive::PointType;
 ///
-/// #[repr(packed)]
-/// struct MyPointType(u16, f64);
-///
-/// impl PointType for MyPointType {
-///   fn layout() -> PointLayout {
-///     PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
-///   }
-/// }
-///
+/// #[repr(C)]
+/// #[derive(PointType)]
+/// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
 ///
 /// let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
 /// storage.push_points(&[MyPointType(42, 0.123), MyPointType(43, 0.456)]);
@@ -1610,16 +1603,11 @@ pub fn attribute_slice<'a, T: PrimitiveType>(
 /// ```
 /// # use pasture_core::containers::*;
 /// # use pasture_core::layout::*;
+/// # use pasture_derive::PointType;
 ///
-/// #[repr(packed)]
-/// struct MyPointType(u16, f64);
-///
-/// impl PointType for MyPointType {
-///   fn layout() -> PointLayout {
-///     PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
-///   }
-/// }
-///
+/// #[repr(C)]
+/// #[derive(PointType)]
+/// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
 ///
 /// let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
 /// storage.push_points(&[MyPointType(42, 0.123), MyPointType(42, 0.456)]);
@@ -1654,26 +1642,25 @@ mod tests {
         layout::{attributes, PointLayout},
         util::view_raw_bytes_mut,
     };
+    use pasture_derive::PointType;
+
+    // We need this, otherwise we can't use the derive(PointType) macro from within pasture_core because the macro
+    // doesn't recognize the name 'pasture_core' :/
+    use crate as pasture_core;
 
     #[repr(packed)]
-    #[derive(Debug, Copy, Clone, PartialEq)]
-    struct TestPointType(u16, f64);
-
-    impl PointType for TestPointType {
-        fn layout() -> PointLayout {
-            PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
-        }
-    }
+    #[derive(Debug, Copy, Clone, PartialEq, PointType)]
+    struct TestPointType(
+        #[pasture(BUILTIN_INTENSITY)] u16,
+        #[pasture(BUILTIN_GPS_TIME)] f64,
+    );
 
     #[repr(packed)]
-    #[derive(Debug, Copy, Clone, PartialEq)]
-    struct OtherPointType(Vector3<f64>, u8);
-
-    impl PointType for OtherPointType {
-        fn layout() -> PointLayout {
-            PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::RETURN_NUMBER])
-        }
-    }
+    #[derive(Debug, Copy, Clone, PartialEq, PointType)]
+    struct OtherPointType(
+        #[pasture(BUILTIN_POSITION_3D)] Vector3<f64>,
+        #[pasture(BUILTIN_RETURN_NUMBER)] u8,
+    );
 
     trait OpqaueInterleavedBuffer: InterleavedPointBufferMut + PointBufferWriteable {}
     impl OpqaueInterleavedBuffer for InterleavedVecPointStorage {}

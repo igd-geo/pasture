@@ -1,23 +1,13 @@
 use std::{
     collections::HashMap,
     convert::TryInto,
-    fmt::Debug,
-    io::{Cursor, Read, SeekFrom},
+    io::{Cursor, SeekFrom},
 };
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
-use float_ord::FloatOrd;
-use las_rs::{point::Format, Version, Write};
-use pasture_core::{
-    containers::PointBuffer,
-    layout::conversion::get_converter_for_attributes,
-    layout::PointLayout,
-    layout::{attributes, conversion::AttributeConversionFn, PointAttributeDefinition},
-    nalgebra::Vector3,
-    util::view_raw_bytes_mut,
-};
-use scopeguard::defer;
+use las_rs::point::Format;
+use pasture_core::{containers::PointBuffer, layout::PointLayout, nalgebra::Vector3};
 
 use crate::base::PointWriter;
 
@@ -37,12 +27,12 @@ pub(crate) struct RawLASWriter<T: std::io::Write + std::io::Seek> {
     default_layout: PointLayout,
     current_header: las::raw::Header,
     evlrs: Vec<las::raw::Vlr>,
-    point_start_index: u64,
+    _point_start_index: u64,
     requires_flush: bool,
 }
 
 impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
-    pub fn from_write_and_header(mut write: T, mut header: las::Header) -> Result<Self> {
+    pub fn from_write_and_header(mut write: T, header: las::Header) -> Result<Self> {
         let default_layout = point_layout_from_las_point_format(header.point_format())?;
 
         // Sanitize header, i.e. clear point counts and bounds
@@ -89,7 +79,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
                 .iter()
                 .map(|evlr| evlr.clone().into_raw(true))
                 .collect::<Result<Vec<_>, _>>()?,
-            point_start_index,
+            _point_start_index: point_start_index,
             requires_flush: true,
         })
     }
@@ -643,13 +633,9 @@ mod tests {
 
     use las_rs::Builder;
     use pasture_core::containers::{points, InterleavedVecPointStorage};
-    use pasture_core::layout::attributes;
-    use pasture_core::layout::{
-        PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
-    };
+    use pasture_core::layout::PointType;
     use pasture_core::math::AABB;
     use pasture_core::nalgebra::Point3;
-    use static_assertions::const_assert_eq;
 
     use crate::{
         base::PointReader,
@@ -660,6 +646,8 @@ mod tests {
             LasPointFormat7, LasPointFormat8, LasPointFormat9,
         },
     };
+    use pasture_derive::PointType;
+    use scopeguard::defer;
 
     use super::*;
 
@@ -714,22 +702,15 @@ mod tests {
                     Ok(())
                 }
 
-                //#[repr(packed)]
+                #[repr(C)]
+                #[derive(PointType)]
                 struct CustomPointType {
+                    #[pasture(BUILTIN_INTENSITY)]
                     pub intensity: u16,
+                    #[pasture(BUILTIN_POSITION_3D)]
                     pub lowp_position: Vector3<f32>,
+                    #[pasture(attribute = "Custom")]
                     pub custom_attribute: u32,
-                }
-
-                impl PointType for CustomPointType {
-                    fn layout() -> PointLayout {
-                        PointLayout::from_attributes(&[
-                            attributes::INTENSITY,
-                            attributes::POSITION_3D
-                                .with_custom_datatype(PointAttributeDataType::Vec3f32),
-                            PointAttributeDefinition::custom("custom", PointAttributeDataType::U32),
-                        ])
-                    }
                 }
 
                 #[test]
@@ -857,131 +838,4 @@ mod tests {
     las_write_tests!(las_write_8, 8, LasPointFormat8);
     las_write_tests!(las_write_9, 9, LasPointFormat9);
     las_write_tests!(las_write_10, 10, LasPointFormat10);
-
-    // #[repr(packed)]
-    // struct CustomPointType {
-    //     pub intensity: u16,
-    //     pub lowp_position: Vector3<f32>,
-    //     pub custom_attribute: u32,
-    // }
-
-    // impl PointType for CustomPointType {
-    //     fn layout() -> PointLayout {
-    //         PointLayout::from_attributes(&[
-    //             attributes::INTENSITY,
-    //             attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
-    //             PointAttributeDefinition::custom("custom", PointAttributeDataType::U32),
-    //         ])
-    //     }
-    // }
-
-    // const_assert_eq!(std::mem::size_of::<CustomPointType>(), 18);
-
-    // #[test]
-    // fn test_raw_las_writer_from_different_point_layout() -> Result<()> {
-    //     // Get test data with a different layout, e.g. some missing attributes, some additional
-    //     // attributes that are not supported by LAS
-    //     let test_data = vec![
-    //         CustomPointType {
-    //             intensity: 42,
-    //             lowp_position: Vector3::new(0.1, 0.2, 0.3),
-    //             custom_attribute: 1337,
-    //         },
-    //         CustomPointType {
-    //             intensity: 43,
-    //             lowp_position: Vector3::new(0.4, 0.5, 0.6),
-    //             custom_attribute: 7331,
-    //         },
-    //     ];
-
-    //     let expected_bounds =
-    //         AABB::from_min_max(Point3::new(0.1, 0.2, 0.3), Point3::new(0.4, 0.5, 0.6));
-
-    //     let mut expected_data = InterleavedVecPointStorage::new(CustomPointType::layout());
-    //     expected_data.push_points(test_data.as_slice());
-
-    //     let format = Format::new(0)?;
-    //     let mut header_builder = Builder::from((1, 4));
-    //     header_builder.point_format = format.clone();
-
-    //     let out_path = format!("./test_raw_las_writer_different_format_{}.las", 0);
-
-    //     defer! {
-    //         std::fs::remove_file(&out_path).expect("Could not remove test file");
-    //     }
-
-    //     {
-    //         let mut writer = RawLASWriter::from_write_and_header(
-    //             BufWriter::new(File::create(&out_path)?),
-    //             header_builder.into_header()?,
-    //         )?;
-
-    //         writer.write(&expected_data)?;
-    //     }
-
-    //     {
-    //         let mut reader = LASReader::from_path(&out_path)?;
-    //         let metadata = reader.get_metadata();
-    //         assert!(metadata.bounds().is_some());
-    //         let actual_bounds = metadata.bounds().unwrap();
-    //         assert!(
-    //             epsilon_compare_point3f64(expected_bounds.min(), actual_bounds.min()),
-    //             "Bounds are different! Expected {:?} but was {:?}",
-    //             expected_bounds,
-    //             actual_bounds
-    //         );
-    //         assert!(
-    //             epsilon_compare_point3f64(expected_bounds.max(), actual_bounds.max()),
-    //             "Bounds are different! Expected {:?} but was {:?}",
-    //             expected_bounds,
-    //             actual_bounds
-    //         );
-
-    //         assert_eq!(test_data.len(), reader.remaining_points());
-
-    //         let read_points = reader.read(test_data.len())?;
-
-    //         assert_eq!(read_points.len(), test_data.len());
-
-    //         let mut actual_points =
-    //             points::<LasPointFormat0>(read_points.as_ref()).collect::<Vec<_>>();
-
-    //         // Expected positions were f32, converted to f64, this might yield rounding errors, so we compare positions separately
-    //         for (idx, (expected, actual)) in test_data.iter().zip(actual_points.iter()).enumerate()
-    //         {
-    //             let expected_pos_lowp = expected.lowp_position;
-    //             let actual_position = actual.position;
-    //             let expected_highp = Vector3::new(
-    //                 expected_pos_lowp.x as f64,
-    //                 expected_pos_lowp.y as f64,
-    //                 expected_pos_lowp.z as f64,
-    //             );
-    //             assert!(
-    //                 epsilon_compare_vec3f64(&expected_highp, &actual_position),
-    //                 "Position {} is different! Expected {} but was {}",
-    //                 idx,
-    //                 expected_highp,
-    //                 actual_position
-    //             );
-    //         }
-
-    //         // Zero out positions so that we can compare the other attributes
-    //         actual_points
-    //             .iter_mut()
-    //             .for_each(|point| point.position = Default::default());
-
-    //         let expected_points = test_data
-    //             .iter()
-    //             .map(|test_point| -> LasPointFormat0 {
-    //                 let mut default_point: LasPointFormat0 = Default::default();
-    //                 default_point.intensity = test_point.intensity;
-    //                 default_point
-    //             })
-    //             .collect::<Vec<_>>();
-
-    //         assert_eq!(expected_points, actual_points);
-    //     }
-
-    //     Ok(())
-    // }
 }

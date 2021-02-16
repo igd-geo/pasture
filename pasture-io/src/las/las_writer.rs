@@ -388,20 +388,17 @@ mod tests {
             LasPointFormat4, LasPointFormat5,
         },
     };
+    use pasture_derive::PointType;
 
     use super::*;
 
-    #[repr(packed)]
-    #[derive(Debug, Clone, Copy)]
+    #[repr(C, packed)]
+    #[derive(Debug, Clone, Copy, PointType)]
     struct TestPoint {
+        #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
+        #[pasture(BUILTIN_COLOR_RGB)]
         pub color: Vector3<u16>,
-    }
-
-    impl PointType for TestPoint {
-        fn layout() -> PointLayout {
-            PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::COLOR_RGB])
-        }
     }
 
     fn get_test_points_custom_format() -> Vec<TestPoint> {

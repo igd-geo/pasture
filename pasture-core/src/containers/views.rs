@@ -606,23 +606,34 @@ mod tests {
     use super::*;
     use crate::containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage};
     use crate::layout::{attributes, PointLayout};
+    use pasture_derive::PointType;
     use static_assertions::const_assert;
 
-    #[repr(packed)]
-    #[derive(Debug, Copy, Clone, PartialEq)]
-    struct TestPointType(u16, f64);
+    // We need this, otherwise we can't use the derive(PointType) macro from within pasture_core because the macro
+    // doesn't recognize the name 'pasture_core' :/
+    use crate as pasture_core;
 
-    impl PointType for TestPointType {
-        fn layout() -> PointLayout {
-            PointLayout::from_attributes(&[attributes::INTENSITY, attributes::GPS_TIME])
-        }
+    #[derive(Debug, Copy, Clone, PartialEq, PointType)]
+    #[repr(C)]
+    struct TestPointType {
+        #[pasture(BUILTIN_INTENSITY)]
+        pub intensity: u16,
+        #[pasture(BUILTIN_GPS_TIME)]
+        pub gps_time: f64,
     }
-
-    const_assert!(10 == std::mem::size_of::<TestPointType>());
 
     #[test]
     fn test_points_view_from_interleaved() {
-        let reference_points = vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+        let reference_points = vec![
+            TestPointType {
+                intensity: 42,
+                gps_time: 0.123,
+            },
+            TestPointType {
+                intensity: 43,
+                gps_time: 0.456,
+            },
+        ];
         let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
         storage.push_point(reference_points[0]);
         storage.push_point(reference_points[1]);
@@ -630,12 +641,21 @@ mod tests {
         {
             let points_by_mut_view = points_mut::<TestPointType>(&mut storage);
             points_by_mut_view.for_each(|point| {
-                point.0 *= 2;
-                point.1 += 1.0;
+                point.intensity *= 2;
+                point.gps_time += 1.0;
             });
         }
 
-        let modified_points = vec![TestPointType(84, 1.123), TestPointType(86, 1.456)];
+        let modified_points = vec![
+            TestPointType {
+                intensity: 84,
+                gps_time: 1.123,
+            },
+            TestPointType {
+                intensity: 86,
+                gps_time: 1.456,
+            },
+        ];
 
         {
             let points_by_val_view = points::<TestPointType>(&storage);
@@ -652,7 +672,16 @@ mod tests {
 
     #[test]
     fn test_single_attribute_view_from_per_attribute() {
-        let reference_points = vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+        let reference_points = vec![
+            TestPointType {
+                intensity: 42,
+                gps_time: 0.123,
+            },
+            TestPointType {
+                intensity: 43,
+                gps_time: 0.456,
+            },
+        ];
         let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
         storage.push_point(reference_points[0]);
         storage.push_point(reference_points[1]);
@@ -682,7 +711,16 @@ mod tests {
 
     #[test]
     fn test_two_attributes_view_from_per_attribute() {
-        let reference_points = vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+        let reference_points = vec![
+            TestPointType {
+                intensity: 42,
+                gps_time: 0.123,
+            },
+            TestPointType {
+                intensity: 43,
+                gps_time: 0.456,
+            },
+        ];
         let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
         storage.push_point(reference_points[0]);
         storage.push_point(reference_points[1]);

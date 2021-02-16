@@ -71,13 +71,14 @@ impl RawPointConverter {
                 let to_attribute = to_layout
                     .get_attribute_by_name(from_attribute.name())
                     .unwrap();
-                let conversion_fn = get_converter_for_attributes(from_attribute, to_attribute);
+                let conversion_fn =
+                    get_converter_for_attributes(&from_attribute.into(), &to_attribute.into());
                 conversion_fn.map(|conversion_fn| {
                     RawAttributeConverter::new(
                         conversion_fn,
-                        from_layout.offset_of(from_attribute).unwrap(),
+                        from_attribute.offset(),
                         from_attribute.size(),
-                        to_layout.offset_of(to_attribute).unwrap(),
+                        to_attribute.offset(),
                         to_attribute.size(),
                     )
                 })
