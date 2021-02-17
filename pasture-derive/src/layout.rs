@@ -3,15 +3,8 @@ use syn::{NestedMeta, Result};
 
 #[derive(Debug)]
 pub(crate) enum StructMemberLayout {
-    Rust,
     C,
     Packed(u64),
-}
-
-#[derive(Debug)]
-pub(crate) enum StructAlignment {
-    Default,
-    AlignTo(u64),
 }
 
 /// Is the given Attribute a #[repr(...)] attribute?

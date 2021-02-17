@@ -4,10 +4,8 @@ use anyhow::Result;
 use las_rs::point::Format;
 use pasture_core::{
     containers::PointBuffer,
-    containers::{attributes, InterleavedVecPointStorage, PerAttributeVecPointStorage},
+    containers::{attributes, PerAttributeVecPointStorage},
     layout::attributes,
-    layout::PointAttributeDataType,
-    layout::PointAttributeDefinition,
     math::AABB,
     nalgebra::{Point3, Vector3},
 };
@@ -515,7 +513,7 @@ pub(crate) fn get_test_points_in_las_format(point_format: u8) -> Result<Box<dyn 
     Ok(Box::new(buffer))
 }
 
-pub(crate) fn epsilon_compare_vec3f32(expected: &Vector3<f32>, actual: &Vector3<f32>) -> bool {
+pub(crate) fn _epsilon_compare_vec3f32(expected: &Vector3<f32>, actual: &Vector3<f32>) -> bool {
     const EPSILON: f32 = 1e-5;
     let dx = (expected.x - actual.x).abs();
     let dy = (expected.y - actual.y).abs();

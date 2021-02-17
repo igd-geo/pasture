@@ -19,7 +19,9 @@ pub(crate) use self::raw_readers::*;
 mod raw_writers;
 pub(crate) use self::raw_writers::*;
 
+#[cfg(test)]
 mod test_util;
+#[cfg(test)]
 pub(crate) use self::test_util::*;
 
 mod read_helpers;

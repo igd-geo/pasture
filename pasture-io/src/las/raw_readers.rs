@@ -1068,7 +1068,6 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         num_points_in_chunk: usize,
     ) -> Result<()> {
         let bytes_in_chunk = num_points_in_chunk * self.size_of_point_in_file as usize;
-        let target_point_size = self.layout.size_of_point_entry() as usize;
         let las_format = Format::new(self.metadata.point_format())?;
 
         self.reader
@@ -1077,7 +1076,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         let mut target_chunk_cursor = Cursor::new(chunk_buffer);
 
         // Convert the decompressed points - which have XYZ as u32 - into the target layout
-        for point_index in 0..num_points_in_chunk {
+        for _ in 0..num_points_in_chunk {
             let local_x = decompression_chunk_cursor.read_u32::<LittleEndian>()?;
             let local_y = decompression_chunk_cursor.read_u32::<LittleEndian>()?;
             let local_z = decompression_chunk_cursor.read_u32::<LittleEndian>()?;

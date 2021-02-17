@@ -2,12 +2,12 @@ extern crate proc_macro;
 //use anyhow::{anyhow, bail, Result};
 use layout::{get_struct_member_layout, StructMemberLayout};
 use proc_macro::TokenStream;
-use quote::{quote, quote_spanned};
+use quote::quote;
+use syn::DeriveInput;
 use syn::{
-    parse_macro_input, spanned::Spanned, Attribute, Data, Error, Field, Fields, GenericArgument,
-    Ident, Lit, NestedMeta, PathArguments, Result, Type, TypePath,
+    parse_macro_input, Attribute, Data, Error, Field, Fields, GenericArgument, Ident, Lit,
+    NestedMeta, PathArguments, Result, Type, TypePath,
 };
-use syn::{DataStruct, DeriveInput};
 
 mod layout;
 
@@ -315,11 +315,7 @@ fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescr
         .collect::<Result<Vec<FieldLayoutDescription>>>()
 }
 
-fn field_parameters(
-    data: &Data,
-    ident: &Ident,
-    type_attributes: &[Attribute],
-) -> Result<Vec<FieldLayoutDescription>> {
+fn field_parameters(data: &Data, ident: &Ident) -> Result<Vec<FieldLayoutDescription>> {
     // TODO Make sure that structrs are #[repr(C)] - OR figure out the exact layout of the members in the struct. But #[repr(rust)] is allowed
     // to re-order the fields in the struct, which would (maybe?) break the Layout. Then again, if we correctly determine offsets and sizes of
     // fields, the order might not be important anymore?! It's really quite tricky to get this right and will need a lot of tests
@@ -359,11 +355,9 @@ fn calculate_offsets_and_alignment(
     for field in fields {
         let min_alignment = match struct_layout {
             StructMemberLayout::C => field.primitive_type.min_alignment(),
-            StructMemberLayout::Packed(max_alignment) => std::cmp::min(max_alignment, field.primitive_type.min_alignment()),
-            _ => return Err(Error::new_spanned(
-                ident,
-                format!("#[derive(PointType)] is only valid for structs that are #[repr(C)] or #[repr(packed)]"),
-            ))
+            StructMemberLayout::Packed(max_alignment) => {
+                std::cmp::min(max_alignment, field.primitive_type.min_alignment())
+            }
         };
         max_alignment = std::cmp::max(min_alignment, max_alignment);
 
@@ -399,7 +393,7 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
 
     let name = &input.ident;
 
-    let fields = match field_parameters(&input.data, name, input.attrs.as_slice()) {
+    let fields = match field_parameters(&input.data, name) {
         Ok(inner) => inner,
         Err(why) => {
             return why.to_compile_error().into();

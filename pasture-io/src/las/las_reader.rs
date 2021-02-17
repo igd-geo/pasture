@@ -4,7 +4,7 @@ use std::{
 };
 use std::{io::SeekFrom, path::Path};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use crate::base::{PointReader, SeekToPoint};
 use pasture_core::{containers::PointBufferWriteable, layout::PointLayout, meta::Metadata};

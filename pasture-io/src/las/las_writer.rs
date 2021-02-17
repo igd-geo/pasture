@@ -1,20 +1,11 @@
 use std::{fs::File, io::BufWriter, io::Seek, io::Write, path::Path};
 
-use anyhow::{anyhow, Result};
-use las::{raw::point::Waveform, Color};
-use pasture_core::{
-    containers::PointBuffer,
-    layout::{attributes, PointLayout},
-    nalgebra::Vector3,
-    util::view_raw_bytes_mut,
-};
+use anyhow::Result;
+use pasture_core::{containers::PointBuffer, layout::PointLayout};
 
 use crate::base::PointWriter;
 
-use super::{
-    path_is_compressed_las_file, point_layout_from_las_point_format, LASMetadata, RawLASWriter,
-    RawLAZWriter,
-};
+use super::{path_is_compressed_las_file, RawLASWriter, RawLAZWriter};
 
 /// `PointWriter` implementation for LAS/LAZ files
 pub struct LASWriter {
@@ -65,6 +56,7 @@ mod tests {
     use las::{point::Format, Builder};
     use pasture_core::{
         containers::points, containers::InterleavedVecPointStorage, layout::PointType,
+        nalgebra::Vector3,
     };
     use scopeguard::defer;
 
