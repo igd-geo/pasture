@@ -1,13 +1,9 @@
 [package]
-name = "pasture-tools"
+name = "pasture-algorithms"
 version = "0.1.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
 
 [dependencies]
 pasture-core = { path = "../pasture-core" }
-pasture-io = { path = "../pasture-io" }
 anyhow = "1.0.34"
-clap = "2.33.3"
-log = "0.4"
-pretty_env_logger = "0.4.0"

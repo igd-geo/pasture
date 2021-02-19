@@ -66,7 +66,7 @@ impl RawPointConverter {
     pub fn from_to(from_layout: &PointLayout, to_layout: &PointLayout) -> RawPointConverter {
         let converters = from_layout
             .attributes()
-            .filter(|&from_attribute| to_layout.has_attribute(from_attribute.name()))
+            .filter(|&from_attribute| to_layout.has_attribute_with_name(from_attribute.name()))
             .map(|from_attribute| {
                 let to_attribute = to_layout
                     .get_attribute_by_name(from_attribute.name())

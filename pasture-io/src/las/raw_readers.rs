@@ -1810,7 +1810,7 @@ mod tests {
     use std::{fs::File, io::BufReader};
 
     use las_rs::point::Format;
-    use pasture_core::containers::attributes;
+    use pasture_core::containers::attribute;
     use pasture_core::layout::PointAttributeDataType;
 
     use crate::las::{
@@ -1935,7 +1935,7 @@ mod tests {
 
                     reader.read_into(&mut buffer, 10)?;
 
-                    let positions = attributes::<Vector3<f32>>(
+                    let positions = attribute::<Vector3<f32>>(
                         &buffer,
                         &attributes::POSITION_3D
                             .with_custom_datatype(PointAttributeDataType::Vec3f32),
@@ -1947,7 +1947,7 @@ mod tests {
                         .collect::<Vec<_>>();
                     assert_eq!(expected_positions, positions, "Positions do not match");
 
-                    let classifications = attributes::<u32>(
+                    let classifications = attribute::<u32>(
                         &buffer,
                         &attributes::CLASSIFICATION
                             .with_custom_datatype(PointAttributeDataType::U32),
@@ -1962,8 +1962,8 @@ mod tests {
                         "Classifications do not match"
                     );
 
-                    let point_source_ids = attributes::<u16>(&buffer, &attributes::POINT_SOURCE_ID)
-                        .collect::<Vec<_>>();
+                    let point_source_ids =
+                        attribute::<u16>(&buffer, &attributes::POINT_SOURCE_ID).collect::<Vec<_>>();
                     let expected_point_source_ids = test_data_point_source_ids();
                     assert_eq!(
                         expected_point_source_ids, point_source_ids,
@@ -1971,7 +1971,7 @@ mod tests {
                     );
 
                     let waveform_params =
-                        attributes::<Vector3<f32>>(&buffer, &attributes::WAVEFORM_PARAMETERS)
+                        attribute::<Vector3<f32>>(&buffer, &attributes::WAVEFORM_PARAMETERS)
                             .collect::<Vec<_>>();
                     let expected_waveform_params = if format.has_waveform {
                         test_data_wavepacket_parameters()

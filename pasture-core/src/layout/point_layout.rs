@@ -740,12 +740,32 @@ impl PointLayout {
     /// # use pasture_core::layout::*;
     /// let mut layout = PointLayout::default();
     /// layout.add_attribute(attributes::POSITION_3D, FieldAlignment::Default);
-    /// assert!(layout.has_attribute(attributes::POSITION_3D.name()));
+    /// assert!(layout.has_attribute_with_name(attributes::POSITION_3D.name()));
     /// ```
-    pub fn has_attribute(&self, attribute_name: &str) -> bool {
+    pub fn has_attribute_with_name(&self, attribute_name: &str) -> bool {
         self.attributes
             .iter()
             .any(|attribute| attribute.name() == attribute_name)
+    }
+
+    /// Returns `true` if the associated `PointLayout` contains the given `attribute`. Both the name of `attribute` as well as
+    /// its datatype must match for this method to return `true`. This is a more strict form of [`has_attribute_with_name`](Self::has_attribute_with_name)
+    ///
+    /// # Example
+    /// ```
+    /// # use pasture_core::layout::*;
+    /// let mut layout = PointLayout::default();
+    /// layout.add_attribute(attributes::POSITION_3D, FieldAlignment::Default);
+    /// assert!(layout.has_attribute(&attributes::POSITION_3D));
+    ///
+    /// layout.add_attribute(attributes::INTENSITY.with_custom_datatype(PointAttributeDataType::U32), FieldAlignment::Default);
+    /// assert!(!layout.has_attribute(&attributes::INTENSITY));
+    /// ```
+    pub fn has_attribute(&self, attribute: &PointAttributeDefinition) -> bool {
+        self.attributes.iter().any(|this_attribute| {
+            this_attribute.name() == attribute.name()
+                && this_attribute.datatype() == attribute.datatype()
+        })
     }
 
     /// Returns the attribute with the given name from this PointLayout. Returns None if no such attribute exists.

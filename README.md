@@ -14,6 +14,9 @@ Rust library for point cloud processing
     - [x] Interleaved view
     - [x] PerAttribute view
     - [ ] Performance checks on views for different PointBuffers
+    - [ ] Attribute iterators using macro_rules!
+        - [x] v1
+        - [ ] Extensive tests
 - [ ] PointType
     - [x] Basic `PointType` structure
     - [x] Procedural macro for implementing `PointType` for a type
@@ -42,10 +45,10 @@ Rust library for point cloud processing
         - [ ] SeekToPoint
             - [ ] Tests
     - [ ] Writer
-        - [ ] Migrate `LASWriter` to use `RawLASWriter` and `RawLAZWriter`
-            - [ ] Implement `RawLAZWriter`
+        - [x] Migrate `LASWriter` to use `RawLASWriter` and `RawLAZWriter`
+            - [x] Implement `RawLAZWriter`
                 - [x] Default format
-                - [ ] Custom format
+                - [x] Custom format
         - [x] Format 0
         - [x] Format 1
         - [x] Format 2

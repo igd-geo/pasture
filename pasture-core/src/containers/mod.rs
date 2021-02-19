@@ -6,3 +6,6 @@ pub use self::views::*;
 
 mod point_view;
 pub use self::point_view::*;
+
+mod iterators;
+pub use self::iterators::*;

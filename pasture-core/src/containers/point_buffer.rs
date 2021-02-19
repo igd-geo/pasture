@@ -13,31 +13,6 @@ use super::{InterleavedPointView, PerAttributePointView};
 use itertools::Itertools;
 use rayon::prelude::*;
 
-/**
- * TODOs
- *
- * Traits:
- *  - PointBuffer
- *      - Tests
- *  - PointBufferWriteable
- *  - InterleavedPointBuffer
- *  - InterleavedPointBufferMut
- *  - PerAttributePointBuffer
- *  - PerAttributePointBufferMut
- *
- * Structs:
- *  - InterleavedVecPointStorage
- *  - InterleavedPointBufferSlice
- *  - InterleavedPointBufferSliceMut
- *    - Implement
- *    - Tests
- *  - PerAttributeVecPointStorage
- *  - PerAttributePointBufferSlice
- *  - PerAttributePointBufferSliceMut
- *    - Implement
- *    - Tests
- */
-
 /// Base trait for all containers that store point data. A PointBuffer stores any number of point entries
 /// with a layout defined by the PointBuffers associated PointLayout structure.
 ///
@@ -81,6 +56,16 @@ pub trait PointBuffer {
     }
     /// Returns a reference to the underlying PointLayout of this PointBuffer
     fn point_layout(&self) -> &PointLayout;
+
+    /// Try to downcast the associated `PointBuffer` into an `InterleavedPointBuffer`
+    fn as_interleaved(&self) -> Option<&dyn InterleavedPointBuffer> {
+        None
+    }
+
+    /// Try to downcast the associated `PointBuffer` into an `PerAttributePointBuffer`
+    fn as_per_attribute(&self) -> Option<&dyn PerAttributePointBuffer> {
+        None
+    }
 }
 
 /// Trait for all mutable `PointBuffer`s, that is all `PointBuffer`s where it is possible to push points into. Distinguishing between
@@ -495,6 +480,10 @@ impl PointBuffer for InterleavedVecPointStorage {
 
     fn point_layout(&self) -> &PointLayout {
         &self.layout
+    }
+
+    fn as_interleaved(&self) -> Option<&dyn InterleavedPointBuffer> {
+        Some(self)
     }
 }
 
@@ -1018,6 +1007,10 @@ impl PointBuffer for PerAttributeVecPointStorage {
     fn point_layout(&self) -> &PointLayout {
         &self.layout
     }
+
+    fn as_per_attribute(&self) -> Option<&dyn PerAttributePointBuffer> {
+        Some(self)
+    }
 }
 
 impl PointBufferWriteable for PerAttributeVecPointStorage {
@@ -1127,7 +1120,7 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute(attribute.name()) {
+        if !self.layout.has_attribute_with_name(attribute.name()) {
             panic!("PerAttributeVecPointStorage::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
@@ -1149,7 +1142,7 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute(attribute.name()) {
+        if !self.layout.has_attribute_with_name(attribute.name()) {
             panic!("PerAttributeVecPointStorage::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
@@ -1178,7 +1171,7 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute(attribute.name()) {
+        if !self.layout.has_attribute_with_name(attribute.name()) {
             panic!("PerAttributeVecPointStorage::get_attribute_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
@@ -1201,7 +1194,7 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute(attribute.name()) {
+        if !self.layout.has_attribute_with_name(attribute.name()) {
             panic!("PerAttributeVecPointStorage::get_attribute_range_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
@@ -1300,6 +1293,10 @@ impl<'p> PointBuffer for InterleavedPointBufferSlice<'p> {
     fn point_layout(&self) -> &PointLayout {
         self.buffer.point_layout()
     }
+
+    fn as_interleaved(&self) -> Option<&dyn InterleavedPointBuffer> {
+        Some(self)
+    }
 }
 
 impl<'p> InterleavedPointBuffer for InterleavedPointBufferSlice<'p> {
@@ -1377,6 +1374,10 @@ impl<'p> PointBuffer for PerAttributePointBufferSlice<'p> {
 
     fn point_layout(&self) -> &PointLayout {
         self.buffer.point_layout()
+    }
+
+    fn as_per_attribute(&self) -> Option<&dyn PerAttributePointBuffer> {
+        Some(self)
     }
 }
 
@@ -1494,6 +1495,10 @@ impl<'p> PointBuffer for PerAttributePointBufferSliceMut<'p> {
 
     fn point_layout(&self) -> &PointLayout {
         self.buffer.point_layout()
+    }
+
+    fn as_per_attribute(&self) -> Option<&dyn PerAttributePointBuffer> {
+        Some(self)
     }
 }
 

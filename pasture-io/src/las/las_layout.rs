@@ -61,15 +61,15 @@ pub fn point_layout_from_las_point_format(format: &Format) -> Result<PointLayout
 pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format {
     // TODO Explicit support for extended size formats (6-10)
 
-    let has_gps_time = point_layout.has_attribute(attributes::GPS_TIME.name());
-    let has_colors = point_layout.has_attribute(attributes::COLOR_RGB.name());
+    let has_gps_time = point_layout.has_attribute_with_name(attributes::GPS_TIME.name());
+    let has_colors = point_layout.has_attribute_with_name(attributes::COLOR_RGB.name());
     let has_any_waveform_attribute = point_layout
-        .has_attribute(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name())
-        || point_layout.has_attribute(attributes::WAVEFORM_DATA_OFFSET.name())
-        || point_layout.has_attribute(attributes::WAVEFORM_PACKET_SIZE.name())
-        || point_layout.has_attribute(attributes::RETURN_POINT_WAVEFORM_LOCATION.name())
-        || point_layout.has_attribute(attributes::WAVEFORM_PARAMETERS.name());
-    let has_nir = point_layout.has_attribute(attributes::NIR.name());
+        .has_attribute_with_name(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name())
+        || point_layout.has_attribute_with_name(attributes::WAVEFORM_DATA_OFFSET.name())
+        || point_layout.has_attribute_with_name(attributes::WAVEFORM_PACKET_SIZE.name())
+        || point_layout.has_attribute_with_name(attributes::RETURN_POINT_WAVEFORM_LOCATION.name())
+        || point_layout.has_attribute_with_name(attributes::WAVEFORM_PARAMETERS.name());
+    let has_nir = point_layout.has_attribute_with_name(attributes::NIR.name());
 
     let mut format = Format::new(0).unwrap();
     format.has_color = has_colors;

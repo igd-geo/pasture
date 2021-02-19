@@ -3,7 +3,7 @@ use crate::containers::PerAttributePointBuffer;
 use crate::containers::PointBuffer;
 use crate::layout::{PointAttributeDefinition, PointType, PrimitiveType};
 
-use super::{InterleavedPointBufferMut, PerAttributePointBufferMut};
+use super::{attr1, attr2, attr3, attr4, InterleavedPointBufferMut, PerAttributePointBufferMut};
 
 mod iterators {
 
@@ -138,316 +138,6 @@ mod iterators {
             }
         }
     }
-
-    /// Iterator over a `PointBuffer` that yields strongly typed data by value for a specific attribute for each point
-    pub struct Point1AttributeIteratorByValue<'a, T: PrimitiveType> {
-        buffer: &'a dyn PointBuffer,
-        attribute: &'a PointAttributeDefinition,
-        current_index: usize,
-        _unused: PhantomData<T>,
-    }
-
-    impl<'a, T: PrimitiveType> Point1AttributeIteratorByValue<'a, T> {
-        pub fn new(buffer: &'a dyn PointBuffer, attribute: &'a PointAttributeDefinition) -> Self {
-            Self {
-                buffer,
-                attribute,
-                current_index: 0,
-                _unused: Default::default(),
-            }
-        }
-    }
-
-    impl<'a, T: PrimitiveType> Iterator for Point1AttributeIteratorByValue<'a, T> {
-        type Item = T;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.buffer.len() {
-                return None;
-            }
-
-            // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
-            let mut attribute = MaybeUninit::<T>::uninit();
-            unsafe {
-                let attribute_byte_slice = std::slice::from_raw_parts_mut(
-                    attribute.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T>(),
-                );
-                self.buffer.get_attribute_by_copy(
-                    self.current_index,
-                    self.attribute,
-                    attribute_byte_slice,
-                );
-            }
-
-            self.current_index += 1;
-
-            unsafe { Some(attribute.assume_init()) }
-        }
-    }
-
-    /// Iterator over a `PointBuffer` that yields strongly typed data by reference for a specific attribute for each point
-    pub struct Point1AttributeIteratorByRef<'a, T: PrimitiveType> {
-        attribute_data: &'a [T],
-        current_index: usize,
-    }
-
-    impl<'a, T: PrimitiveType> Point1AttributeIteratorByRef<'a, T> {
-        pub fn new(
-            buffer: &'a dyn PerAttributePointBuffer,
-            attribute: &'a PointAttributeDefinition,
-        ) -> Self {
-            let buffer_len = buffer.len();
-            let attribute_data = unsafe {
-                std::slice::from_raw_parts(
-                    buffer
-                        .get_attribute_range_ref(0..buffer_len, attribute)
-                        .as_ptr() as *const T,
-                    buffer_len,
-                )
-            };
-            Self {
-                attribute_data,
-                current_index: 0,
-            }
-        }
-    }
-
-    impl<'a, T: PrimitiveType> Iterator for Point1AttributeIteratorByRef<'a, T> {
-        type Item = &'a T;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.attribute_data.len() {
-                return None;
-            }
-
-            let current_attribute = &self.attribute_data[self.current_index];
-            self.current_index += 1;
-            Some(current_attribute)
-        }
-    }
-
-    pub struct Point1AttributeIteratorByMut<'a, T: PrimitiveType> {
-        attribute_data: &'a mut [T],
-        current_index: usize,
-    }
-
-    impl<'a, T: PrimitiveType> Point1AttributeIteratorByMut<'a, T> {
-        pub fn new(
-            buffer: &'a mut dyn PerAttributePointBufferMut,
-            attribute: &'a PointAttributeDefinition,
-        ) -> Self {
-            let buffer_len = buffer.len();
-            let attribute_data = unsafe {
-                std::slice::from_raw_parts_mut(
-                    buffer
-                        .get_attribute_range_mut(0..buffer_len, attribute)
-                        .as_mut_ptr() as *mut T,
-                    buffer_len,
-                )
-            };
-            Self {
-                attribute_data,
-                current_index: 0,
-            }
-        }
-    }
-
-    impl<'a, T: PrimitiveType> Iterator for Point1AttributeIteratorByMut<'a, T> {
-        type Item = &'a mut T;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.attribute_data.len() {
-                return None;
-            }
-
-            // Returning mutable references seems to require unsafe...
-
-            let current_index = self.current_index;
-            self.current_index += 1;
-            unsafe {
-                let ptr_to_current_attribute = self.attribute_data.as_mut_ptr().add(current_index);
-                let item = &mut *ptr_to_current_attribute;
-                Some(item)
-            }
-        }
-    }
-
-    /// Iterator over a `PointBuffer` that yields strongly typed data by value for two specific attributes for each point
-    pub struct Point2AttributeIteratorByValue<'a, T1: PrimitiveType, T2: PrimitiveType> {
-        buffer: &'a dyn PointBuffer,
-        attributes: [&'a PointAttributeDefinition; 2],
-        current_index: usize,
-        _unused: PhantomData<(T1, T2)>,
-    }
-
-    impl<'a, T1: PrimitiveType, T2: PrimitiveType> Point2AttributeIteratorByValue<'a, T1, T2> {
-        pub fn new(
-            buffer: &'a dyn PointBuffer,
-            attributes: [&'a PointAttributeDefinition; 2],
-        ) -> Self {
-            Self {
-                buffer,
-                attributes,
-                current_index: 0,
-                _unused: Default::default(),
-            }
-        }
-    }
-
-    impl<'a, T1: PrimitiveType, T2: PrimitiveType> Iterator
-        for Point2AttributeIteratorByValue<'a, T1, T2>
-    {
-        type Item = (T1, T2);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.buffer.len() {
-                return None;
-            }
-
-            // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
-            let mut attribute1 = MaybeUninit::<T1>::uninit();
-            let mut attribute2 = MaybeUninit::<T2>::uninit();
-            unsafe {
-                let attribute1_byte_slice = std::slice::from_raw_parts_mut(
-                    attribute1.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T1>(),
-                );
-                let attribute2_byte_slice = std::slice::from_raw_parts_mut(
-                    attribute2.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T2>(),
-                );
-
-                self.buffer.get_attribute_by_copy(
-                    self.current_index,
-                    self.attributes[0],
-                    attribute1_byte_slice,
-                );
-                self.buffer.get_attribute_by_copy(
-                    self.current_index,
-                    self.attributes[1],
-                    attribute2_byte_slice,
-                );
-            }
-
-            self.current_index += 1;
-
-            unsafe { Some((attribute1.assume_init(), attribute2.assume_init())) }
-        }
-    }
-
-    pub struct Point2AttributeIteratorByRef<'a, T1: PrimitiveType, T2: PrimitiveType> {
-        attribute_data: (&'a [T1], &'a [T2]),
-        current_index: usize,
-    }
-
-    impl<'a, T1: PrimitiveType, T2: PrimitiveType> Point2AttributeIteratorByRef<'a, T1, T2> {
-        pub fn new(
-            buffer: &'a dyn PerAttributePointBuffer,
-            attributes: [&'a PointAttributeDefinition; 2],
-        ) -> Self {
-            let buffer_len = buffer.len();
-            let attribute1_data = unsafe {
-                std::slice::from_raw_parts(
-                    buffer
-                        .get_attribute_range_ref(0..buffer_len, attributes[0])
-                        .as_ptr() as *const T1,
-                    buffer_len,
-                )
-            };
-            let attribute2_data = unsafe {
-                std::slice::from_raw_parts(
-                    buffer
-                        .get_attribute_range_ref(0..buffer_len, attributes[1])
-                        .as_ptr() as *const T2,
-                    buffer_len,
-                )
-            };
-            Self {
-                attribute_data: (attribute1_data, attribute2_data),
-                current_index: 0,
-            }
-        }
-    }
-
-    impl<'a, T1: PrimitiveType, T2: PrimitiveType> Iterator
-        for Point2AttributeIteratorByRef<'a, T1, T2>
-    {
-        type Item = (&'a T1, &'a T2);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.attribute_data.0.len() {
-                return None;
-            }
-
-            let attr1 = &self.attribute_data.0[self.current_index];
-            let attr2 = &self.attribute_data.1[self.current_index];
-            self.current_index += 1;
-
-            Some((attr1, attr2))
-        }
-    }
-
-    pub struct Point2AttributeIteratorByMut<'a, T1: PrimitiveType, T2: PrimitiveType> {
-        attribute_data: (&'a mut [T1], &'a mut [T2]),
-        current_index: usize,
-    }
-
-    impl<'a, T1: PrimitiveType, T2: PrimitiveType> Point2AttributeIteratorByMut<'a, T1, T2> {
-        pub fn new(
-            buffer: &'a mut dyn PerAttributePointBufferMut,
-            attributes: [&'a PointAttributeDefinition; 2],
-        ) -> Self {
-            let buffer_len = buffer.len();
-            let attribute1_data = unsafe {
-                std::slice::from_raw_parts_mut(
-                    buffer
-                        .get_attribute_range_mut(0..buffer_len, attributes[0])
-                        .as_ptr() as *mut T1,
-                    buffer_len,
-                )
-            };
-            let attribute2_data = unsafe {
-                std::slice::from_raw_parts_mut(
-                    buffer
-                        .get_attribute_range_mut(0..buffer_len, attributes[1])
-                        .as_ptr() as *mut T2,
-                    buffer_len,
-                )
-            };
-            Self {
-                attribute_data: (attribute1_data, attribute2_data),
-                current_index: 0,
-            }
-        }
-    }
-
-    impl<'a, T1: PrimitiveType, T2: PrimitiveType> Iterator
-        for Point2AttributeIteratorByMut<'a, T1, T2>
-    {
-        type Item = (&'a mut T1, &'a mut T2);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.attribute_data.0.len() {
-                return None;
-            }
-
-            let current_index = self.current_index;
-            self.current_index += 1;
-
-            unsafe {
-                let ptr_attrib1 = self.attribute_data.0.as_mut_ptr().add(current_index);
-                let attr1 = &mut *ptr_attrib1;
-
-                let ptr_attrib2 = self.attribute_data.1.as_mut_ptr().add(current_index);
-                let attr2 = &mut *ptr_attrib2;
-
-                Some((attr1, attr2))
-            }
-        }
-    }
-
-    // TODO Implement iterators for more attributes (e.g. PerAttributeIterator<'a, T1, T2, ...> returning (&'a T1, &'a T2, ...))
 }
 
 // TODO points() and attributes() should be macro calls. Inside a macro, we can dispatch on the actual type,
@@ -505,107 +195,84 @@ pub fn points_mut<'a, T: PointType + 'a>(
 }
 
 /// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
-pub fn attributes<'a, T: PrimitiveType + 'a>(
+pub fn attribute<'a, T: PrimitiveType + 'a>(
     buffer: &'a dyn PointBuffer,
     attribute: &'a PointAttributeDefinition,
-) -> impl Iterator<Item = T> + 'a {
-    if !buffer.point_layout().has_attribute(attribute.name()) {
-        panic!(
-            "attributes: PointLayout of buffer does not contain attribute {}",
-            attribute.name()
-        );
-    }
-
-    iterators::Point1AttributeIteratorByValue::new(buffer, attribute)
+) -> attr1::AttributeIteratorByValue<'a, T> {
+    attr1::AttributeIteratorByValue::<T>::new(buffer, attribute)
 }
 
 /// Returns an iterator over references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
-pub fn attributes_ref<'a, T: PrimitiveType + 'a>(
+pub fn attribute_ref<'a, T: PrimitiveType + 'a>(
     buffer: &'a dyn PerAttributePointBuffer,
     attribute: &'a PointAttributeDefinition,
-) -> iterators::Point1AttributeIteratorByRef<'a, T> {
-    if !buffer.point_layout().has_attribute(attribute.name()) {
-        panic!(
-            "attributes_ref: PointLayout of buffer does not contain attribute {}",
-            attribute.name()
-        );
-    }
-
-    iterators::Point1AttributeIteratorByRef::new(buffer, attribute)
+) -> attr1::AttributeIteratorByRef<'a, T> {
+    attr1::AttributeIteratorByRef::<T>::new(buffer, attribute)
 }
 
 /// Returns an iterator over mutable references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
-pub fn attributes_mut<'a, T: PrimitiveType + 'a>(
+pub fn attribute_mut<'a, T: PrimitiveType + 'a>(
     buffer: &'a mut dyn PerAttributePointBufferMut,
     attribute: &'a PointAttributeDefinition,
-) -> iterators::Point1AttributeIteratorByMut<'a, T> {
-    if !buffer.point_layout().has_attribute(attribute.name()) {
-        panic!(
-            "attributes_mut: PointLayout of buffer does not contain attribute {}",
-            attribute.name()
-        );
-    }
-
-    iterators::Point1AttributeIteratorByMut::new(buffer, attribute)
+) -> attr1::AttributeIteratorByMut<'a, T> {
+    attr1::AttributeIteratorByMut::<T>::new(buffer, attribute)
 }
 
-/// Returns an iterator over the two specific attributes for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
-pub fn attributes2<'a, T1: PrimitiveType + 'a, T2: PrimitiveType + 'a>(
-    buffer: &'a dyn PointBuffer,
-    attributes: [&'a PointAttributeDefinition; 2],
-) -> iterators::Point2AttributeIteratorByValue<'a, T1, T2> {
-    for attribute in attributes.iter() {
-        if !buffer.point_layout().has_attribute(attribute.name()) {
-            panic!(
-                "attributes2: PointLayout of buffer does not contain attribute {}",
-                attribute.name()
-            );
-        }
-    }
-
-    iterators::Point2AttributeIteratorByValue::new(buffer, attributes)
+macro_rules! attributes {
+    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
+        attr2::AttributeIteratorByValue::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
+        attr3::AttributeIteratorByValue::<$t1, $t2, $t3>::new($buffer, [$attr1, $attr2, $attr3])
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
+        attr3::AttributeIteratorByValue::<$t1, $t2, $t3, $t4>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3, $attr4],
+        )
+    };
 }
 
-/// Returns an iterator over references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
-pub fn attributes2_ref<'a, T1: PrimitiveType + 'a, T2: PrimitiveType + 'a>(
-    buffer: &'a dyn PerAttributePointBuffer,
-    attributes: [&'a PointAttributeDefinition; 2],
-) -> iterators::Point2AttributeIteratorByRef<'a, T1, T2> {
-    for attribute in attributes.iter() {
-        if !buffer.point_layout().has_attribute(attribute.name()) {
-            panic!(
-                "attributes2_ref: PointLayout of buffer does not contain attribute {}",
-                attribute.name()
-            );
-        }
-    }
-
-    iterators::Point2AttributeIteratorByRef::new(buffer, attributes)
+macro_rules! attributes_ref {
+    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
+        attr2::AttributeIteratorByRef::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
+        attr3::AttributeIteratorByRef::<$t1, $t2, $t3>::new($buffer, [$attr1, $attr2, $attr3])
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
+        attr3::AttributeIteratorByRef::<$t1, $t2, $t3, $t4>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3, $attr4],
+        )
+    };
 }
 
-/// Returns an iterator over mutable references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
-pub fn attributes2_mut<'a, T1: PrimitiveType + 'a, T2: PrimitiveType + 'a>(
-    buffer: &'a mut dyn PerAttributePointBufferMut,
-    attributes: [&'a PointAttributeDefinition; 2],
-) -> iterators::Point2AttributeIteratorByMut<'a, T1, T2> {
-    for attribute in attributes.iter() {
-        if !buffer.point_layout().has_attribute(attribute.name()) {
-            panic!(
-                "attributes2_mut: PointLayout of buffer does not contain attribute {}",
-                attribute.name()
-            );
-        }
-    }
-
-    iterators::Point2AttributeIteratorByMut::new(buffer, attributes)
+macro_rules! attributes_mut {
+    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
+        attr2::AttributeIteratorByMut::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
+        attr3::AttributeIteratorByMut::<$t1, $t2, $t3>::new($buffer, [$attr1, $attr2, $attr3])
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
+        attr3::AttributeIteratorByMut::<$t1, $t2, $t3, $t4>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3, $attr4],
+        )
+    };
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use crate::containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage};
     use crate::layout::attributes;
+    use crate::{
+        containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage},
+        layout::attributes::POSITION_3D,
+    };
+    use nalgebra::Vector3;
     use pasture_derive::PointType;
 
     // We need this, otherwise we can't use the derive(PointType) macro from within pasture_core because the macro
@@ -687,7 +354,7 @@ mod tests {
 
         {
             let first_attribute_mut_view =
-                attributes_mut::<u16>(&mut storage, &attributes::INTENSITY);
+                attribute_mut::<u16>(&mut storage, &attributes::INTENSITY);
             first_attribute_mut_view.for_each(|a| {
                 *a *= 2;
             });
@@ -696,13 +363,13 @@ mod tests {
         let modified_intensities = vec![84_u16, 86_u16];
 
         {
-            let attribute_by_val_view = attributes::<u16>(&storage, &attributes::INTENSITY);
+            let attribute_by_val_view = attribute::<u16>(&storage, &attributes::INTENSITY);
             let attribute_by_val_collected = attribute_by_val_view.collect::<Vec<_>>();
             assert_eq!(modified_intensities, attribute_by_val_collected);
         }
 
         {
-            let attribute_by_ref_view = attributes_ref::<u16>(&storage, &attributes::INTENSITY);
+            let attribute_by_ref_view = attribute_ref::<u16>(&storage, &attributes::INTENSITY);
             let attribute_by_ref_collected = attribute_by_ref_view.map(|a| *a).collect::<Vec<_>>();
             assert_eq!(modified_intensities, attribute_by_ref_collected);
         }
@@ -725,9 +392,12 @@ mod tests {
         storage.push_point(reference_points[1]);
 
         {
-            let attributes_mut_view = attributes2_mut::<u16, f64>(
+            let attributes_mut_view = attributes_mut!(
+                u16,
+                f64,
                 &mut storage,
-                [&attributes::INTENSITY, &attributes::GPS_TIME],
+                &attributes::INTENSITY,
+                &attributes::GPS_TIME,
             );
             attributes_mut_view.for_each(|(intensity, gps_time)| {
                 *intensity *= 2;
@@ -738,22 +408,69 @@ mod tests {
         let modified_data = vec![(84_u16, 1.123), (86_u16, 1.456)];
 
         {
-            let attributes_by_val_view =
-                attributes2::<u16, f64>(&storage, [&attributes::INTENSITY, &attributes::GPS_TIME]);
+            let attributes_by_val_view = attributes!(
+                u16,
+                f64,
+                &storage,
+                &attributes::INTENSITY,
+                &attributes::GPS_TIME,
+            );
             let attributes_by_val_collected = attributes_by_val_view.collect::<Vec<_>>();
             assert_eq!(modified_data, attributes_by_val_collected);
         }
 
         {
-            let attributes_by_ref_view = attributes2_ref::<u16, f64>(
+            let attributes_by_ref_view = attributes_ref!(
+                u16,
+                f64,
                 &storage,
-                [&attributes::INTENSITY, &attributes::GPS_TIME],
+                &attributes::INTENSITY,
+                &attributes::GPS_TIME,
             );
             let attributes_by_ref_collected = attributes_by_ref_view
                 .map(|(&intensity, &gps_time)| (intensity, gps_time))
                 .collect::<Vec<_>>();
             assert_eq!(modified_data, attributes_by_ref_collected);
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "not contained in PointLayout of buffer")]
+    fn test_attributes_with_different_datatype_fails() {
+        #[derive(Debug, Copy, Clone, PartialEq, PointType)]
+        #[repr(C)]
+        struct PositionLowp(#[pasture(BUILTIN_POSITION_3D)] Vector3<f32>);
+
+        let mut storage = InterleavedVecPointStorage::new(PositionLowp::layout());
+        storage.push_point(PositionLowp(Default::default()));
+
+        attribute::<Vector3<f64>>(&storage, &POSITION_3D).for_each(drop);
+    }
+
+    #[test]
+    #[should_panic(expected = "not contained in PointLayout of buffer")]
+    fn test_attributes_ref_with_different_datatype_fails() {
+        #[derive(Debug, Copy, Clone, PartialEq, PointType)]
+        #[repr(C)]
+        struct PositionLowp(#[pasture(BUILTIN_POSITION_3D)] Vector3<f32>);
+
+        let mut storage = PerAttributeVecPointStorage::new(PositionLowp::layout());
+        storage.push_point(PositionLowp(Default::default()));
+
+        attribute_ref::<Vector3<f64>>(&storage, &POSITION_3D).for_each(drop);
+    }
+
+    #[test]
+    #[should_panic(expected = "not contained in PointLayout of buffer")]
+    fn test_attributes_mut_with_different_datatype_fails() {
+        #[derive(Debug, Copy, Clone, PartialEq, PointType)]
+        #[repr(C)]
+        struct PositionLowp(#[pasture(BUILTIN_POSITION_3D)] Vector3<f32>);
+
+        let mut storage = PerAttributeVecPointStorage::new(PositionLowp::layout());
+        storage.push_point(PositionLowp(Default::default()));
+
+        attribute_mut::<Vector3<f64>>(&mut storage, &POSITION_3D).for_each(drop);
     }
 
     // #[test]
