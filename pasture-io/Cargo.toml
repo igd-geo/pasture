@@ -16,3 +16,11 @@ static_assertions = "1.1.0"
 scopeguard = "1.1.0"
 byteorder = "1.4.2"
 float-ord = "0.2.0"
+
+[dev-dependencies]
+criterion = "0.3"
+rand = {version = "0.8.3" }
+
+[[bench]]
+name = "las_bench"
+harness = false

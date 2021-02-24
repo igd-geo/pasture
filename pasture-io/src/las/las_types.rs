@@ -11,7 +11,7 @@ use std::convert::From;
 /// Point type for LAS point format 0
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat0 {
+pub struct LasPointFormat0 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -49,7 +49,7 @@ impl From<Point> for LasPointFormat0 {
 /// Point type for LAS point format 1
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat1 {
+pub struct LasPointFormat1 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -89,7 +89,7 @@ impl From<Point> for LasPointFormat1 {
 /// Point type for LAS point format 2
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat2 {
+pub struct LasPointFormat2 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -132,7 +132,7 @@ impl From<Point> for LasPointFormat2 {
 /// Point type for LAS point format 3
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat3 {
+pub struct LasPointFormat3 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -177,7 +177,7 @@ impl From<Point> for LasPointFormat3 {
 /// Point type for LAS point format 4
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat4 {
+pub struct LasPointFormat4 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -228,7 +228,7 @@ impl From<Point> for LasPointFormat4 {
 /// Point type for LAS point format 5
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat5 {
+pub struct LasPointFormat5 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -282,7 +282,7 @@ impl From<Point> for LasPointFormat5 {
 /// Point type for LAS point format 6
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat6 {
+pub struct LasPointFormat6 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -303,7 +303,7 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat6>(), 46);
 /// Point type for LAS point format 7
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat7 {
+pub struct LasPointFormat7 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -325,7 +325,7 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat7>(), 52);
 /// Point type for LAS point format 8
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat8 {
+pub struct LasPointFormat8 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -348,7 +348,7 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat8>(), 54);
 /// Point type for LAS point format 9
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat9 {
+pub struct LasPointFormat9 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
@@ -374,7 +374,7 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat9>(), 75);
 /// Point type for LAS point format 10
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
-pub(crate) struct LasPointFormat10 {
+pub struct LasPointFormat10 {
     #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
     #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
     #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,

@@ -77,6 +77,12 @@ impl LASMetadata {
     pub fn point_format(&self) -> u8 {
         self.point_format
     }
+
+    /// Returns the raw LAS header for the associated `LASMetadata`. This value is only present if the
+    /// associated `LASMetadata` was created from a raw LAS header
+    pub fn raw_las_header(&self) -> Option<&Header> {
+        self.raw_las_header.as_ref()
+    }
 }
 
 impl Metadata for LASMetadata {

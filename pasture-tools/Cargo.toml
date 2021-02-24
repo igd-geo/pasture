@@ -7,7 +7,17 @@ edition = "2018"
 [dependencies]
 pasture-core = { path = "../pasture-core" }
 pasture-io = { path = "../pasture-io" }
+pasture-algorithms = { path = "../pasture-algorithms" }
+pasture-derive = { path = "../pasture-derive" }
 anyhow = "1.0.34"
 clap = "2.33.3"
 log = "0.4"
 pretty_env_logger = "0.4.0"
+plotters = "^0.3.0"
+rand = {version = "0.8.3", features = ["small_rng"] }
+
+[[bin]]
+name = "reorder_laz_chunks"
+
+[[bin]]
+name = "plotting"

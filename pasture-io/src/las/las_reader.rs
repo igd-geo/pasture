@@ -5,6 +5,7 @@ use std::{
 use std::{io::SeekFrom, path::Path};
 
 use anyhow::Result;
+use las_rs::Header;
 
 use crate::base::{PointReader, SeekToPoint};
 use pasture_core::{containers::PointBufferWriteable, layout::PointLayout, meta::Metadata};
@@ -59,6 +60,11 @@ impl<'a> LASReader<'a> {
 
     pub fn remaining_points(&mut self) -> usize {
         self.raw_reader.remaining_points()
+    }
+
+    /// Returns the LAS header for the associated `LASReader`
+    pub fn header(&self) -> &Header {
+        self.raw_reader.header()
     }
 }
 

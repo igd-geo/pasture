@@ -3,14 +3,14 @@ use crate::containers::PerAttributePointBuffer;
 use crate::containers::PointBuffer;
 use crate::layout::{PointAttributeDefinition, PointType, PrimitiveType};
 
-use super::{attr1, attr2, attr3, attr4, InterleavedPointBufferMut, PerAttributePointBufferMut};
+use super::{attr1, InterleavedPointBufferMut, PerAttributePointBufferMut};
 
 mod iterators {
 
     //! Contains `Iterator` implementations through which the untyped contents of `PointBuffer` structures
     //! can be accessed in a safe and strongly-typed manner.
 
-    use crate::containers::{InterleavedPointBufferMut, PerAttributePointBufferMut};
+    use crate::containers::InterleavedPointBufferMut;
 
     use super::*;
     use std::marker::PhantomData;
@@ -140,10 +140,8 @@ mod iterators {
     }
 }
 
-// TODO points() and attributes() should be macro calls. Inside a macro, we can dispatch on the actual type,
-// so in cases where the user has a specific PointBuffer type and calls points(&buf), we can return a specific
-// iterator implementation instead of a boxed iterator. This will then be much faster in these cases because it
-// alleviates the need for virtual dispatch on every iteration step
+// TODO points() should be more powerful. It should be able to return the points in any type T that is convertible from
+// the underlying PointLayout of the buffer
 
 /// Returns an iterator over all points within the given PointBuffer, strongly typed to the PointType T. Assumes no
 /// internal memory representation for the source buffer, so returns an opaque iterator type that works with arbitrary
@@ -202,6 +200,15 @@ pub fn attribute<'a, T: PrimitiveType + 'a>(
     attr1::AttributeIteratorByValue::<T>::new(buffer, attribute)
 }
 
+/// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, converted to the `PrimitiveType` `T`. Use this function
+/// when the `buffer` stores the attribute with a different datatype than `T`
+pub fn attribute_as<'a, T: PrimitiveType + 'a>(
+    buffer: &'a dyn PointBuffer,
+    attribute: &'a PointAttributeDefinition,
+) -> attr1::AttributeIteratorByValueWithConversion<'a, T> {
+    attr1::AttributeIteratorByValueWithConversion::<T>::new(buffer, attribute)
+}
+
 /// Returns an iterator over references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
 pub fn attribute_ref<'a, T: PrimitiveType + 'a>(
     buffer: &'a dyn PerAttributePointBuffer,
@@ -218,6 +225,7 @@ pub fn attribute_mut<'a, T: PrimitiveType + 'a>(
     attr1::AttributeIteratorByMut::<T>::new(buffer, attribute)
 }
 
+#[macro_export]
 macro_rules! attributes {
     ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
         attr2::AttributeIteratorByValue::<$t1, $t2>::new($buffer, [$attr1, $attr2])
@@ -233,6 +241,26 @@ macro_rules! attributes {
     };
 }
 
+#[macro_export]
+macro_rules! attributes_as {
+    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
+        attr2::AttributeIteratorByValueWithConversion::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
+        attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3],
+        )
+    };
+    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
+        attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3, $t4>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3, $attr4],
+        )
+    };
+}
+
+#[macro_export]
 macro_rules! attributes_ref {
     ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
         attr2::AttributeIteratorByRef::<$t1, $t2>::new($buffer, [$attr1, $attr2])
@@ -248,6 +276,7 @@ macro_rules! attributes_ref {
     };
 }
 
+#[macro_export]
 macro_rules! attributes_mut {
     ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
         attr2::AttributeIteratorByMut::<$t1, $t2>::new($buffer, [$attr1, $attr2])
@@ -269,7 +298,7 @@ mod tests {
     use super::*;
     use crate::layout::attributes;
     use crate::{
-        containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage},
+        containers::{attr2, InterleavedVecPointStorage, PerAttributeVecPointStorage},
         layout::attributes::POSITION_3D,
     };
     use nalgebra::Vector3;
@@ -473,107 +502,63 @@ mod tests {
         attribute_mut::<Vector3<f64>>(&mut storage, &POSITION_3D).for_each(drop);
     }
 
-    // #[test]
-    // fn test_points_with_interleaved_point_storage() {
-    //     let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
-    //     storage.push_point(TestPointType(42, 0.123));
-    //     storage.push_point(TestPointType(43, 0.345));
+    #[test]
+    #[should_panic(expected = "Type T does not match datatype of attribute")]
+    fn test_attribute_with_wrong_type_fails() {
+        let storage = InterleavedVecPointStorage::new(TestPointType::layout());
+        attribute::<u32>(&storage, &attributes::INTENSITY);
+    }
 
-    //     let points_view = points::<TestPointType>(&storage);
+    #[test]
+    #[should_panic(expected = "Type T does not match datatype of attribute")]
+    fn test_attribute_ref_with_wrong_type_fails() {
+        let storage = PerAttributeVecPointStorage::new(TestPointType::layout());
+        attribute_ref::<u32>(&storage, &attributes::INTENSITY);
+    }
 
-    //     let points_collected = points_view.collect::<Vec<_>>();
+    #[test]
+    #[should_panic(expected = "Type T does not match datatype of attribute")]
+    fn test_attribute_mut_with_wrong_type_fails() {
+        let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
+        attribute_mut::<u32>(&mut storage, &attributes::INTENSITY);
+    }
 
-    //     assert_eq!(2, points_collected.len());
-    //     assert_eq!(42, { points_collected[0].0 });
-    //     assert_eq!(0.123, { points_collected[0].1 });
-    //     assert_eq!(43, { points_collected[1].0 });
-    //     assert_eq!(0.345, { points_collected[1].1 });
-    // }
+    #[test]
+    #[should_panic(expected = "Type T does not match datatype of attribute")]
+    fn test_attributes_with_wrong_type_fails() {
+        let storage = InterleavedVecPointStorage::new(TestPointType::layout());
+        attributes!(
+            u32,
+            f32,
+            &storage,
+            &attributes::INTENSITY,
+            &attributes::GPS_TIME,
+        );
+    }
 
-    // #[test]
-    // fn test_points_with_per_attribute_point_storage() {
-    //     let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
-    //     storage.push_point(TestPointType(42, 0.123));
-    //     storage.push_point(TestPointType(43, 0.345));
+    #[test]
+    #[should_panic(expected = "Type T does not match datatype of attribute")]
+    fn test_attributes_ref_with_wrong_type_fails() {
+        let storage = PerAttributeVecPointStorage::new(TestPointType::layout());
+        attributes_ref!(
+            u32,
+            f32,
+            &storage,
+            &attributes::INTENSITY,
+            &attributes::GPS_TIME,
+        );
+    }
 
-    //     let points_view = points::<TestPointType>(&storage);
-
-    //     let points_collected = points_view.collect::<Vec<_>>();
-
-    //     assert_eq!(2, points_collected.len());
-    //     assert_eq!(42, { points_collected[0].0 });
-    //     assert_eq!(0.123, { points_collected[0].1 });
-    //     assert_eq!(43, { points_collected[1].0 });
-    //     assert_eq!(0.345, { points_collected[1].1 });
-    // }
-
-    // #[test]
-    // fn test_attributes_from_per_attribute_buffer() {
-    //     let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
-    //     storage.push_point(TestPointType(42, 0.123));
-    //     storage.push_point(TestPointType(43, 0.345));
-
-    //     let attributes_view =
-    //         attributes_from_per_attribute_buffer::<u16>(&storage, &attributes::INTENSITY);
-
-    //     let attributes_collected = attributes_view.collect::<Vec<_>>();
-
-    //     assert_eq!(2, attributes_collected.len());
-    //     assert_eq!(42, *attributes_collected[0]);
-    //     assert_eq!(43, *attributes_collected[1]);
-    // }
-
-    // #[test]
-    // fn test_attributes_with_interleaved_point_storage() {
-    //     let mut storage = InterleavedVecPointStorage::new(TestPointType::layout());
-    //     storage.push_point(TestPointType(42, 0.123));
-    //     storage.push_point(TestPointType(43, 0.345));
-
-    //     let attributes_view = attributes::<u16>(&storage, &attributes::INTENSITY);
-
-    //     let attributes_collected = attributes_view.collect::<Vec<_>>();
-
-    //     assert_eq!(2, attributes_collected.len());
-    //     assert_eq!(42, attributes_collected[0]);
-    //     assert_eq!(43, attributes_collected[1]);
-    // }
-
-    // #[test]
-    // fn test_attributes_with_per_attribute_point_storage() {
-    //     let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
-    //     storage.push_point(TestPointType(42, 0.123));
-    //     storage.push_point(TestPointType(43, 0.345));
-
-    //     let attributes_view = attributes::<u16>(&storage, &attributes::INTENSITY);
-
-    //     let attributes_collected = attributes_view.collect::<Vec<_>>();
-
-    //     assert_eq!(2, attributes_collected.len());
-    //     assert_eq!(42, attributes_collected[0]);
-    //     assert_eq!(43, attributes_collected[1]);
-    // }
-
-    // #[test]
-    // fn test_attributes_mut_with_per_attribute_point_storage() {
-    //     let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
-    //     storage.push_point(TestPointType(42, 0.123));
-    //     storage.push_point(TestPointType(43, 0.345));
-
-    //     {
-    //         let attributes_mut_view = attributes_mut_from_per_attribute_buffer::<u16>(
-    //             &mut storage,
-    //             &attributes::INTENSITY,
-    //         );
-    //         for (idx, attribute) in attributes_mut_view.enumerate() {
-    //             *attribute = idx as u16;
-    //         }
-    //     }
-
-    //     let first_attribute_range = storage.get_attribute_range_ref(0..2, &attributes::INTENSITY);
-    //     let first_attribute_range_typed =
-    //         unsafe { std::slice::from_raw_parts(first_attribute_range.as_ptr() as *const u16, 2) };
-
-    //     assert_eq!(0, first_attribute_range_typed[0]);
-    //     assert_eq!(1, first_attribute_range_typed[1]);
-    // }
+    #[test]
+    #[should_panic(expected = "Type T does not match datatype of attribute")]
+    fn test_attributes_mut_with_wrong_type_fails() {
+        let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
+        attributes_mut!(
+            u32,
+            f32,
+            &mut storage,
+            &attributes::INTENSITY,
+            &attributes::GPS_TIME,
+        );
+    }
 }

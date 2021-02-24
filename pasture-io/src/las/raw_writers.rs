@@ -1,12 +1,11 @@
 use std::{
     collections::HashMap,
-    convert::TryInto,
     io::{Cursor, SeekFrom},
 };
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
-use las_rs::{point::Format, Builder, Vlr};
+use las_rs::{point::Format, Builder, Version, Vlr};
 use laz::{
     las::laszip::LASZIP_DESCRIPTION, las::laszip::LASZIP_RECORD_ID, las::laszip::LASZIP_USER_ID,
     LasZipCompressor, LazItemRecordBuilder, LazVlr,
@@ -55,27 +54,39 @@ fn update_point_counts_in_las_header(
     additional_points_by_return: &HashMap<u8, u64>,
     las_header: &mut las::raw::Header,
 ) {
-    if let Some(large_file) = las_header.large_file.as_mut() {
-        large_file.number_of_point_records += additional_points as u64;
-        additional_points_by_return
-            .iter()
-            .for_each(|(return_number, additional_count)| {
-                large_file.number_of_points_by_return[(return_number - 1) as usize] +=
-                    additional_count;
-            });
-    } else {
-        las_header.number_of_point_records =
-            (las_header.number_of_point_records as u64 + additional_points as u64)
-                .try_into()
-                .expect(
-                    "update_point_counts_in_las_header: Number of points too large for LAS file version! Consider using LAS version 1.4, which supports 64-bit point counts (set the version field in the LAS header to Version::new(1,4)).",
-                );
-        additional_points_by_return
-                .iter()
-                .for_each(|(return_number, additional_count)| {
-                    let current_count = las_header.number_of_points_by_return[(return_number - 1) as usize];
-                    las_header.number_of_points_by_return[(return_number - 1) as usize] = (current_count as u64 + additional_count).try_into().expect("update_point_counts_in_las_header: Number of points by return too large for LAS file version! Consider using LAS version 1.4, which supports 64-bit point counts (set the version field in the LAS header to Version::new(1,4)).",)
-                });
+    let large_file = las_header
+        .large_file
+        .as_mut()
+        .expect("LAS header must contain large_file field!");
+
+    large_file.number_of_point_records += additional_points as u64;
+    additional_points_by_return
+        .iter()
+        .for_each(|(return_number, additional_count)| {
+            large_file.number_of_points_by_return[(return_number - 1) as usize] += additional_count;
+        });
+}
+
+/// Do final checkup of the LAS header
+fn finalize_las_header(las_header: &mut las::raw::Header) {
+    // Set the legacy point counts field, if desired. The LAS standard states that the legacy number of point records field
+    // must only be set if the total point count is less than u32::MAX AND the point record format is less than 6!
+
+    let large_file = las_header
+        .large_file
+        .as_ref()
+        .expect("LAS header must contain large_file field!");
+    if large_file.number_of_point_records > u32::MAX as u64 {
+        return;
+    }
+    if las_header.point_data_record_format > 5 {
+        return;
+    }
+
+    las_header.number_of_point_records = large_file.number_of_point_records as u32;
+    for return_number in 0..5 {
+        las_header.number_of_points_by_return[return_number] =
+            large_file.number_of_points_by_return[return_number] as u32;
     }
 }
 
@@ -95,12 +106,11 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         // Sanitize header, i.e. clear point counts and bounds
         // TODO Add flag to prevent recalculating bounds
         let mut raw_header = header.clone().into_raw()?;
+        raw_header.version = Version::new(1, 4);
         raw_header.number_of_point_records = 0;
         raw_header.number_of_points_by_return = [0; 5];
-        if let Some(large_file) = &mut raw_header.large_file {
-            large_file.number_of_point_records = 0;
-            large_file.number_of_points_by_return = [0; 15];
-        }
+        // Pasture always writes LAS/LAZ in Format 1.4, so the large_file field is mandatory!
+        raw_header.large_file = Some(Default::default());
         raw_header.min_x = std::f64::MAX;
         raw_header.min_y = std::f64::MAX;
         raw_header.min_z = std::f64::MAX;
@@ -143,6 +153,8 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
 
     /// Writes the current header to the start of the file
     fn write_header(&mut self) -> Result<()> {
+        finalize_las_header(&mut self.current_header);
+
         let current_position = self.writer.seek(SeekFrom::Current(0))?;
         self.writer.seek(SeekFrom::Start(0))?;
         self.current_header.write_to(&mut self.writer)?;
@@ -625,12 +637,11 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         }
 
         let mut raw_header = header.clone().into_raw()?;
+        raw_header.version = Version::new(1, 4);
         raw_header.number_of_point_records = 0;
         raw_header.number_of_points_by_return = [0; 5];
-        if let Some(large_file) = &mut raw_header.large_file {
-            large_file.number_of_point_records = 0;
-            large_file.number_of_points_by_return = [0; 15];
-        }
+        // Pasture always writes LAS/LAZ in Format 1.4, so the large_file field is mandatory!
+        raw_header.large_file = Some(Default::default());
         raw_header.min_x = std::f64::MAX;
         raw_header.min_y = std::f64::MAX;
         raw_header.min_z = std::f64::MAX;
@@ -1120,6 +1131,8 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
 
     /// Writes the current header to the start of the file
     fn write_header(&mut self) -> Result<()> {
+        finalize_las_header(&mut self.current_header);
+
         let mut raw_writer = self.writer.get_mut();
 
         let current_position = raw_writer.seek(SeekFrom::Current(0))?;

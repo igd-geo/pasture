@@ -1,9 +1,8 @@
 use pasture_core::{
     containers::attribute,
+    containers::attribute_as,
     containers::PointBuffer,
     layout::attributes::POSITION_3D,
-    layout::conversion::get_converter_for_attributes,
-    layout::PointAttributeMember,
     math::AABB,
     nalgebra::{Point3, Vector3},
 };
@@ -25,10 +24,7 @@ pub fn calculate_bounds<T: PointBuffer>(buffer: &T) -> Option<AABB<f64>> {
     if position_attribute.datatype() == POSITION_3D.datatype() {
         Some(calculate_bounds_from_default_positions(buffer))
     } else {
-        Some(calculate_bounds_from_custom_positions(
-            buffer,
-            position_attribute,
-        ))
+        Some(calculate_bounds_from_custom_positions(buffer))
     }
 }
 
@@ -58,13 +54,28 @@ fn calculate_bounds_from_default_positions<T: PointBuffer>(buffer: &T) -> AABB<f
     AABB::from_min_max(pos_min, pos_max)
 }
 
-fn calculate_bounds_from_custom_positions<T: PointBuffer>(
-    buffer: &T,
-    position_attribute: &PointAttributeMember,
-) -> AABB<f64> {
-    let converter = get_converter_for_attributes(&position_attribute.into(), &POSITION_3D)
-        .expect("Position attribute can't be converted to Vector3<f64>");
-
-    //TODO It would be way better if attributes() handled the conversion! This way no unsafe code leaks to the user!
-    todo!()
+fn calculate_bounds_from_custom_positions<T: PointBuffer>(buffer: &T) -> AABB<f64> {
+    let mut pos_min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
+    let mut pos_max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
+    for pos in attribute_as::<Vector3<f64>>(buffer, &POSITION_3D) {
+        if pos.x < pos_min.x {
+            pos_min.x = pos.x;
+        }
+        if pos.y < pos_min.y {
+            pos_min.y = pos.y;
+        }
+        if pos.z < pos_min.z {
+            pos_min.z = pos.z;
+        }
+        if pos.x > pos_max.x {
+            pos_max.x = pos.x;
+        }
+        if pos.y > pos_max.y {
+            pos_max.y = pos.y;
+        }
+        if pos.z > pos_max.z {
+            pos_max.z = pos.z;
+        }
+    }
+    AABB::from_min_max(pos_min, pos_max)
 }

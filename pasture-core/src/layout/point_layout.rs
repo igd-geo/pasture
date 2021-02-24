@@ -768,6 +768,27 @@ impl PointLayout {
         })
     }
 
+    /// Returns the attribute that matches the given `attribute` in name and datatype from the associated `PointLayout`. Returns `None` if
+    /// no attribute with the same name and datatype exists
+    /// ```
+    /// # use pasture_core::layout::*;
+    /// let mut layout = PointLayout::default();
+    /// layout.add_attribute(attributes::POSITION_3D, FieldAlignment::Default);
+    /// let attribute = layout.get_attribute(&attributes::POSITION_3D);
+    /// assert!(attribute.is_some());
+    /// let invalid_attribute = layout.get_attribute(&attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::U32));
+    /// assert!(invalid_attribute.is_none());
+    /// ```
+    pub fn get_attribute(
+        &self,
+        attribute: &PointAttributeDefinition,
+    ) -> Option<&PointAttributeMember> {
+        self.attributes.iter().find(|self_attribute| {
+            self_attribute.name() == attribute.name()
+                && self_attribute.datatype() == attribute.datatype()
+        })
+    }
+
     /// Returns the attribute with the given name from this PointLayout. Returns None if no such attribute exists.
     /// ```
     /// # use pasture_core::layout::*;

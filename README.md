@@ -8,8 +8,10 @@ Rust library for point cloud processing
 
 - [ ] PointBuffer
     - [x] InterleavedPointBuffer
+        - [ ] Figure out ways of accessing the point data in known (but variable) formats, such as the 11 LAS formats
     - [x] PerAttributePointBuffer
         - [ ] Improve `push_attribute` and `push_attribute_range`
+    - [ ] Support iterator `collect`
 - [ ] Point Views
     - [x] Interleaved view
     - [x] PerAttribute view
@@ -21,8 +23,8 @@ Rust library for point cloud processing
     - [x] Basic `PointType` structure
     - [x] Procedural macro for implementing `PointType` for a type
         - [ ] Check robustness on types that are `#[repr(packed)]` but not `#[repr(C)]`
-        - [ ] Documentation of the `BUILTIN_...` and `attribute = "..."` syntax
-        - [ ] Get rid of warnings, clean up code
+        - [x] Documentation of the `BUILTIN_...` and `attribute = "..."` syntax
+        - [x] Get rid of warnings, clean up code
 - [ ] Examples of usage
 
 ## I/O
@@ -42,8 +44,8 @@ Rust library for point cloud processing
         - [x] Format 10
         - [x] Attribute conversions (e.g. positions as I32, F32, F64)
             - [ ] Works in principle, but requires many more tests to be robust 
-        - [ ] SeekToPoint
-            - [ ] Tests
+        - [x] SeekToPoint
+            - [x] Tests
     - [ ] Writer
         - [x] Migrate `LASWriter` to use `RawLASWriter` and `RawLAZWriter`
             - [x] Implement `RawLAZWriter`
@@ -68,7 +70,8 @@ Rust library for point cloud processing
         - [ ] Support for additional attributes in header
         - [ ] Support for VLRs
             - [ ] Define how VLRs should be represented 
-    - [ ] Benchmarks
+    - [x] Benchmarks
+        - [ ] Maybe extend the benchmarks for more point layouts
     - [ ] Examples
 - [ ] 3D Tiles
     - [ ] Reader

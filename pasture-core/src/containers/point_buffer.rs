@@ -422,7 +422,7 @@ impl PointBuffer for InterleavedVecPointStorage {
             );
         }
 
-        if let Some(attribute_in_buffer) = self.layout.get_attribute_by_name(attribute.name()) {
+        if let Some(attribute_in_buffer) = self.layout.get_attribute(attribute) {
             let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
             let offset_to_attribute = offset_to_point_bytes + attribute_in_buffer.offset() as usize;
             let attribute_size = attribute.size() as usize;
@@ -437,7 +437,7 @@ impl PointBuffer for InterleavedVecPointStorage {
 
     fn get_points_by_copy(&self, point_indices: Range<usize>, buf: &mut [u8]) {
         let points_ref = self.get_points_ref(point_indices);
-        buf.copy_from_slice(points_ref);
+        buf[0..points_ref.len()].copy_from_slice(points_ref);
     }
 
     fn get_attribute_range_by_copy(
@@ -453,7 +453,7 @@ impl PointBuffer for InterleavedVecPointStorage {
             );
         }
 
-        if let Some(attribute_in_buffer) = self.layout.get_attribute_by_name(attribute.name()) {
+        if let Some(attribute_in_buffer) = self.layout.get_attribute(attribute) {
             let attribute_size = attribute.size() as usize;
             let start_index = point_indices.start;
 
@@ -828,6 +828,9 @@ impl PerAttributeVecPointStorage {
         &mut self,
         attribute: &PointAttributeDefinition,
     ) {
+        if attribute.datatype() != T::data_type() {
+            panic!("PerAttributePointBuffer:sort_by_attribute: Type T does not match the datatype of the attribute {}", attribute);
+        }
         // TODO What is the fastest way to sort multiple vectors based on one of the vectors as the sort key?
         // Here we simply create an index permutation and then shuffle all vectors using that permutation
 
@@ -864,6 +867,10 @@ impl PerAttributeVecPointStorage {
         &mut self,
         attribute: &PointAttributeDefinition,
     ) {
+        if attribute.datatype() != T::data_type() {
+            panic!("PerAttributePointBuffer:sort_by_attribute: Type T does not match the datatype of the attribute {}", attribute);
+        }
+
         let typed_attribute = self.attributes.get(attribute.name()).map(|untyped_attribute| {
             return unsafe {
                 std::slice::from_raw_parts(untyped_attribute.as_ptr() as *const T, self.len())
@@ -1120,7 +1127,7 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute_with_name(attribute.name()) {
+        if !self.layout.has_attribute(attribute) {
             panic!("PerAttributeVecPointStorage::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
@@ -1142,7 +1149,7 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute_with_name(attribute.name()) {
+        if !self.layout.has_attribute(attribute) {
             panic!("PerAttributeVecPointStorage::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
@@ -1171,7 +1178,7 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute_with_name(attribute.name()) {
+        if !self.layout.has_attribute(attribute) {
             panic!("PerAttributeVecPointStorage::get_attribute_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
@@ -1194,7 +1201,7 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
             );
         }
 
-        if !self.layout.has_attribute_with_name(attribute.name()) {
+        if !self.layout.has_attribute(attribute) {
             panic!("PerAttributeVecPointStorage::get_attribute_range_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
