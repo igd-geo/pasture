@@ -21,3 +21,6 @@ name = "reorder_laz_chunks"
 
 [[bin]]
 name = "plotting"
+
+[[bin]]
+name = "info"

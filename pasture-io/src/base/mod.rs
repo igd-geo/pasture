@@ -6,3 +6,6 @@ pub use self::writer::*;
 
 mod seek;
 pub use self::seek::*;
+
+mod io_factory;
+pub use self::io_factory::*;

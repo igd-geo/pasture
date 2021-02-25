@@ -6,6 +6,28 @@ use static_assertions::const_assert;
 
 use crate::math::Alignable;
 
+mod private {
+    use super::*;
+
+    pub trait Sealed {}
+
+    impl Sealed for u8 {}
+    impl Sealed for u16 {}
+    impl Sealed for u32 {}
+    impl Sealed for u64 {}
+    impl Sealed for i8 {}
+    impl Sealed for i16 {}
+    impl Sealed for i32 {}
+    impl Sealed for i64 {}
+    impl Sealed for f32 {}
+    impl Sealed for f64 {}
+    impl Sealed for bool {}
+    impl Sealed for Vector3<u8> {}
+    impl Sealed for Vector3<u16> {}
+    impl Sealed for Vector3<f32> {}
+    impl Sealed for Vector3<f64> {}
+}
+
 /// Possible data types for individual point attributes
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PointAttributeDataType {
@@ -95,7 +117,7 @@ impl Display for PointAttributeDataType {
 }
 
 /// Marker trait for all types that can be used as primitive types within a PointAttributeDefinition
-pub trait PrimitiveType {
+pub trait PrimitiveType: private::Sealed {
     /// Returns the corresponding `PointAttributeDataType` for the implementing type
     fn data_type() -> PointAttributeDataType;
 }
