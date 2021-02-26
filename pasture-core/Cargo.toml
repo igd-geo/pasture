@@ -19,3 +19,8 @@ itertools = "0.10.0"
 
 [dev-dependencies]
 rand = "0.8.2"
+criterion = "0.3"
+
+[[bench]]
+name = "point_buffer_iterators_bench"
+harness = false

@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use anyhow::Result;
 use clap::{App, Arg};
@@ -98,14 +101,17 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
         return Ok(());
     }
 
+    let t_start = Instant::now();
+
     println!("Analyzing minimum and maximum values for all point attributes...");
 
-    let chunk_size = 50_000;
+    let chunk_size = 1_000_000;
     let mut buffer = InterleavedVecPointStorage::with_capacity(
         chunk_size,
         reader.get_default_point_layout().clone(),
     );
     let num_chunks = (total_points + chunk_size - 1) / chunk_size;
+    //let num_chunks = 4;
 
     // We investigate all builtin attributes, even though not all might be present in the file
     let mut minmax_position = None;
@@ -125,10 +131,17 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
     // TODO Waveform data
 
     for idx in 0..num_chunks {
+        // let mut inner_t_start = Instant::now();
         buffer.clear();
 
         let num_points_in_chunk = std::cmp::min(chunk_size, total_points - (idx * chunk_size));
         reader.read_into(&mut buffer, num_points_in_chunk)?;
+
+        // eprintln!(
+        //     "Reading chunk: {:.2}s",
+        //     inner_t_start.elapsed().as_secs_f64()
+        // );
+        // inner_t_start = Instant::now();
 
         minmax_chunk!(minmax_position, buffer, POSITION_3D, Vector3<f64>);
         minmax_chunk!(minmax_intensity, buffer, INTENSITY, u16);
@@ -154,17 +167,10 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
         minmax_chunk!(minmax_gps_time, buffer, GPS_TIME, f64);
         minmax_chunk!(minmax_nir, buffer, NIR, u16);
 
-        // let chunk_minmax_position: (Vector3<f64>, Vector3<f64>) =
-        //     minmax_attribute(&buffer, &POSITION_3D).unwrap();
-        // match minmax_position {
-        //     None => minmax_position = Some(chunk_minmax_position),
-        //     Some((old_min, old_max)) => {
-        //         minmax_position = Some((
-        //             old_min.inf(&chunk_minmax_position.0),
-        //             old_max.sup(&chunk_minmax_position.1),
-        //         ));
-        //     }
-        // }
+        // eprintln!(
+        //     "Finding minmax of chunk: {:.2}s",
+        //     inner_t_start.elapsed().as_secs_f64()
+        // );
     }
 
     minmax_position.map(|v| {
@@ -210,6 +216,8 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
     minmax_nir.map(|v| {
         println!("\tNIR:                    {}  {}", v.0, v.1);
     });
+
+    println!("Took {:.2}s", t_start.elapsed().as_secs_f64());
 
     Ok(())
 }

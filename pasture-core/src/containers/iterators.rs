@@ -13,15 +13,76 @@ use std::mem::MaybeUninit;
 pub mod attr1 {
     use super::*;
 
+    // pub struct AttributeIteratorByValue<'a, T: PrimitiveType> {
+    //     buffer: &'a dyn PointBuffer,
+    //     attribute: &'a PointAttributeDefinition,
+    //     current_index: usize,
+    //     _unused: PhantomData<T>,
+    // }
+
+    // impl<'a, T: PrimitiveType> AttributeIteratorByValue<'a, T> {
+    //     pub fn new(buffer: &'a dyn PointBuffer, attribute: &'a PointAttributeDefinition) -> Self {
+    //         if attribute.datatype() != T::data_type() {
+    //             panic!("Type T does not match datatype of attribute {}", attribute);
+    //         }
+    //         if !buffer.point_layout().has_attribute(attribute) {
+    //             panic!(
+    //                 "Attribute {} not contained in PointLayout of buffer ({})",
+    //                 attribute,
+    //                 buffer.point_layout()
+    //             );
+    //         }
+    //         Self {
+    //             buffer,
+    //             attribute,
+    //             current_index: 0,
+    //             _unused: Default::default(),
+    //         }
+    //     }
+    // }
+
+    // impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByValue<'a, T> {
+    //     type Item = T;
+
+    //     fn next(&mut self) -> Option<Self::Item> {
+    //         if self.current_index == self.buffer.len() {
+    //             return None;
+    //         }
+
+    //         // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
+    //         let mut attribute = MaybeUninit::<T>::uninit();
+    //         unsafe {
+    //             let attribute_byte_slice = std::slice::from_raw_parts_mut(
+    //                 attribute.as_mut_ptr() as *mut u8,
+    //                 std::mem::size_of::<T>(),
+    //             );
+    //             self.buffer.get_attribute_by_copy(
+    //                 self.current_index,
+    //                 self.attribute,
+    //                 attribute_byte_slice,
+    //             );
+    //         }
+
+    //         self.current_index += 1;
+
+    //         unsafe { Some(attribute.assume_init()) }
+    //     }
+    // }
+
     /// Iterator over a `PointBuffer` that yields strongly typed data by value for a specific attribute for each point
     pub struct AttributeIteratorByValue<'a, T: PrimitiveType> {
         buffer: &'a dyn PointBuffer,
         attribute: &'a PointAttributeDefinition,
         current_index: usize,
+        buffer_length: usize,
+        internal_buffer: Vec<T>,
+        index_in_internal_buffer: usize,
         _unused: PhantomData<T>,
     }
 
     impl<'a, T: PrimitiveType> AttributeIteratorByValue<'a, T> {
+        const INTERNAL_BUFFER_SIZE: usize = 50_000;
+
         pub fn new(buffer: &'a dyn PointBuffer, attribute: &'a PointAttributeDefinition) -> Self {
             if attribute.datatype() != T::data_type() {
                 panic!("Type T does not match datatype of attribute {}", attribute);
@@ -37,8 +98,41 @@ pub mod attr1 {
                 buffer,
                 attribute,
                 current_index: 0,
+                buffer_length: buffer.len(),
+                internal_buffer: Vec::new(),
+                index_in_internal_buffer: 0,
                 _unused: Default::default(),
             }
+        }
+
+        fn refill_internal_buffer(&mut self) {
+            let remaining_points = std::cmp::min(
+                Self::INTERNAL_BUFFER_SIZE,
+                self.buffer_length - self.current_index,
+            );
+
+            if remaining_points > self.internal_buffer.len() {
+                //Grow the vector without initializing the elements. This works because T is a `PrimitiveType`, which is `Copy`
+                self.internal_buffer.reserve(remaining_points);
+                unsafe {
+                    self.internal_buffer.set_len(remaining_points);
+                }
+            }
+
+            let buffer_slice = &mut self.internal_buffer[0..remaining_points];
+            let buffer_slice_untyped = unsafe {
+                std::slice::from_raw_parts_mut(
+                    buffer_slice.as_mut_ptr() as *mut u8,
+                    remaining_points * std::mem::size_of::<T>(),
+                )
+            };
+
+            self.buffer.get_attribute_range_by_copy(
+                self.current_index..(self.current_index + remaining_points),
+                self.attribute,
+                buffer_slice_untyped,
+            );
+            self.index_in_internal_buffer = 0;
         }
     }
 
@@ -46,27 +140,36 @@ pub mod attr1 {
         type Item = T;
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.buffer.len() {
+            if self.current_index == self.buffer_length {
                 return None;
             }
 
-            // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
-            let mut attribute = MaybeUninit::<T>::uninit();
-            unsafe {
-                let attribute_byte_slice = std::slice::from_raw_parts_mut(
-                    attribute.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T>(),
-                );
-                self.buffer.get_attribute_by_copy(
-                    self.current_index,
-                    self.attribute,
-                    attribute_byte_slice,
-                );
+            if self.index_in_internal_buffer >= self.internal_buffer.len() {
+                self.refill_internal_buffer();
             }
 
+            // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
+            // let mut attribute = MaybeUninit::<T>::uninit();
+            // unsafe {
+            //     let attribute_byte_slice = std::slice::from_raw_parts_mut(
+            //         attribute.as_mut_ptr() as *mut u8,
+            //         std::mem::size_of::<T>(),
+            //     );
+            //     self.buffer.get_attribute_by_copy(
+            //         self.current_index,
+            //         self.attribute,
+            //         attribute_byte_slice,
+            //     );
+            // }
+
+            let ret = self.internal_buffer[self.index_in_internal_buffer];
+
+            self.index_in_internal_buffer += 1;
             self.current_index += 1;
 
-            unsafe { Some(attribute.assume_init()) }
+            Some(ret)
+
+            //unsafe { Some(attribute.assume_init()) }
         }
     }
 

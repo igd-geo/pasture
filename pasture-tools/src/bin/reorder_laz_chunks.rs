@@ -12,18 +12,15 @@ use pasture_algorithms::bounds::calculate_bounds;
 use pasture_core::{
     containers::PointBuffer,
     containers::{
-        attribute, attribute_mut, InterleavedPointBuffer, InterleavedPointBufferMut,
-        InterleavedVecPointStorage, PerAttributeVecPointStorage, PointBufferWriteable,
+        attribute, InterleavedVecPointStorage, PerAttributeVecPointStorage, PointBufferWriteable,
     },
-    layout::attributes::{COLOR_RGB, POSITION_3D},
+    layout::attributes::POSITION_3D,
     math::reverse_bits,
     math::{expand_bits_by_3, MortonIndex64, AABB},
     nalgebra::{Point3, Vector3},
 };
 use pasture_io::las::LASReader;
-use pasture_io::{
-    base::PointReader, base::PointWriter, las::LASWriter, las_rs::Builder, las_rs::Header,
-};
+use pasture_io::{base::PointReader, base::PointWriter, las::LASWriter};
 
 struct Args {
     pub input_files: Vec<PathBuf>,

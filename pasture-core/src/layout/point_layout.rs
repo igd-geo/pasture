@@ -117,7 +117,7 @@ impl Display for PointAttributeDataType {
 }
 
 /// Marker trait for all types that can be used as primitive types within a PointAttributeDefinition
-pub trait PrimitiveType: private::Sealed {
+pub trait PrimitiveType: Copy + private::Sealed {
     /// Returns the corresponding `PointAttributeDataType` for the implementing type
     fn data_type() -> PointAttributeDataType;
 }
