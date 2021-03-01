@@ -541,7 +541,12 @@ impl PointBufferWriteable for InterleavedVecPointStorage {
             panic!("InterleavedVecPointStorage::extend_from_per_attribute: Point layouts do not match, this buffer has layout {:?} but buffer to append from has layout {:?}", self.layout, points.point_layout());
         }
 
-        todo!()
+        let additional_bytes = points.len() * points.point_layout().size_of_point_entry() as usize;
+        let old_points_len = self.points.len();
+        self.points
+            .resize(self.points.len() + additional_bytes, Default::default());
+        let new_points_slice = &mut self.points[old_points_len..old_points_len + additional_bytes];
+        points.get_points_by_copy(0..points.len(), new_points_slice);
     }
 
     fn clear(&mut self) {
@@ -1649,7 +1654,7 @@ mod tests {
     use nalgebra::Vector3;
 
     use super::*;
-    use crate::util::view_raw_bytes;
+    use crate::{containers, util::view_raw_bytes};
     use crate::{
         layout::{attributes, PointLayout},
         util::view_raw_bytes_mut,
@@ -2756,5 +2761,41 @@ mod tests {
 
         // See comment in test_per_attribute_vec_storage_push_attribute_wrong_type()
         per_attribute_buffer.push_attribute_range(&attributes::INTENSITY, &[42, 43]);
+    }
+
+    #[test]
+    fn test_interleaved_point_buffer_extend_from_per_attribute() {
+        let mut interleaved_buffer = InterleavedVecPointStorage::new(TestPointType::layout());
+
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+        per_attribute_buffer.push_points(&[TestPointType(42, 0.123), TestPointType(43, 0.456)]);
+
+        interleaved_buffer.extend_from_per_attribute(&per_attribute_buffer);
+
+        assert_eq!(2, interleaved_buffer.len());
+
+        let points = containers::points::<TestPointType>(&interleaved_buffer).collect::<Vec<_>>();
+        assert_eq!(
+            points,
+            vec![TestPointType(42, 0.123), TestPointType(43, 0.456)]
+        );
+    }
+
+    #[test]
+    fn test_per_attribute_point_buffer_extend_from_interleaved() {
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        let mut interleaved_buffer = InterleavedVecPointStorage::new(TestPointType::layout());
+        interleaved_buffer.push_points(&[TestPointType(42, 0.123), TestPointType(43, 0.456)]);
+
+        per_attribute_buffer.extend_from_interleaved(&interleaved_buffer);
+
+        assert_eq!(2, per_attribute_buffer.len());
+
+        let points = containers::points::<TestPointType>(&per_attribute_buffer).collect::<Vec<_>>();
+        assert_eq!(
+            points,
+            vec![TestPointType(42, 0.123), TestPointType(43, 0.456)]
+        );
     }
 }

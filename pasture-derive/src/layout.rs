@@ -93,8 +93,6 @@ fn get_packing_from_arg(arg: &NestedMeta) -> Result<u64> {
         }
         _ => Err(Error::new_spanned(arg, "Expected #[repr(packed(N))]")),
     }
-
-    //todo!()
 }
 
 pub(crate) fn get_struct_member_layout(

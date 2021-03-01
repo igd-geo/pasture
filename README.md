@@ -10,7 +10,7 @@ Rust library for point cloud processing
     - [x] InterleavedPointBuffer
         - [ ] Figure out ways of accessing the point data in known (but variable) formats, such as the 11 LAS formats
     - [x] PerAttributePointBuffer
-        - [ ] Improve `push_attribute` and `push_attribute_range`
+        - [ ] Improve `push_attribute` and `push_attribute_range` by using the builder pattern
     - [ ] Support iterator `collect`
 - [ ] Point Views
     - [x] Interleaved view

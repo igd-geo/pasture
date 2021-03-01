@@ -31,22 +31,37 @@ mod private {
 /// Possible data types for individual point attributes
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PointAttributeDataType {
+    /// An unsigned 8-bit integer value, corresponding to Rusts `u8` type
     U8,
+    /// A signed 8-bit integer value, corresponding to Rusts `i8` type
     I8,
+    /// An unsigned 16-bit integer value, corresponding to Rusts `u16` type
     U16,
+    /// A signed 16-bit integer value, corresponding to Rusts `i16` type
     I16,
+    /// An unsigned 32-bit integer value, corresponding to Rusts `u32` type
     U32,
+    /// A signed 32-bit integer value, corresponding to Rusts `i32` type
     I32,
+    /// An unsigned 64-bit integer value, corresponding to Rusts `u64` type
     U64,
+    /// A signed 64-bit integer value, corresponding to Rusts `i64` type
     I64,
+    /// A single-precision floating point value, corresponding to Rusts `f32` type
     F32,
+    /// A double-precision floating point value, corresponding to Rusts `f64` type
     F64,
+    /// A boolean value, corresponding to Rusts `bool` type
     Bool,
-    //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
+    /// A 3-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector3<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3u8,
+    /// A 3-component vector storing unsigned 16-bit integer values. Corresponding to the `Vector3<u16>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3u16,
+    /// A 3-component vector storing single-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3f32,
+    /// A 3-component vector storing double-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3f64,
+    //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
 }
 
 impl PointAttributeDataType {
@@ -116,7 +131,8 @@ impl Display for PointAttributeDataType {
     }
 }
 
-/// Marker trait for all types that can be used as primitive types within a PointAttributeDefinition
+/// Marker trait for all types that can be used as primitive types within a `PointAttributeDefinition`. It provides a mapping
+/// between Rust types and the `PointAttributeDataType` enum.
 pub trait PrimitiveType: Copy + private::Sealed {
     /// Returns the corresponding `PointAttributeDataType` for the implementing type
     fn data_type() -> PointAttributeDataType;
@@ -563,7 +579,44 @@ pub enum FieldAlignment {
     Packed(u64),
 }
 
-/// Describes the layout of a single point in a point cloud
+/// Describes the data layout of a single point in a point cloud
+///
+/// # Detailed explanation
+///
+/// To understand `PointLayout`, it is necessary to understand the memory model of Pasture. Pasture is a library
+/// for handling point cloud data, so the first thing worth understanding is what 'point cloud data' means in the context
+/// of Pasture:
+///
+/// A point cloud in Pasture is modeled as a collection of tuples of attributes (a_1, a_2, ..., a_n). An
+/// *attribute* can be any datum associated with a point, such as its position in 3D space, an intensity value, an object
+/// classification etc. The set of all unique attributes in a point cloud make up the point clouds *point layout*, which
+/// is represented in Pasture by the `PointLayout` type. The Pasture memory model describes how the attributes for each
+/// point in a point cloud are layed out in memory. There are two major memory layouts supported by Pasture: *Interleaved*
+/// and *PerAttribute*. In an *Interleaved* layout, all attributes for a single point are stored together in memory:
+///
+/// \[a_1(p_1), a_2(p_1), ..., a_n(p_1), a_1(p_2), a_2(p_2), ..., a_n(p_2), ...\]
+///
+/// This layout is equivalent to storing a type `T` inside a `Vec`, where `T` has members a_1, a_2, ..., a_n and is packed
+/// tightly.
+///
+/// In a *PerAttribute* layout, all attributes of a single type are stored together in memory, often in separate memory regions:
+///
+/// \[a_1(p_1), a_1(p_2), ..., a_1(p_n)\]
+/// \[a_2(p_1), a_2(p_2), ..., a_2(p_n)\]
+/// ...
+/// \[a_n(p_1), a_n(p_2), ..., a_n(p_n)\]
+///
+/// These layouts are sometimes called 'Array of Structs' (Interleaved) and 'Struct of Arrays' (PerAttribute).
+///
+/// Most code in Pasture supports point clouds with either of these memory layouts. To correctly handle memory layout and access
+/// in both Interleaved and PerAttribute layout, each buffer in Pasture that stores point cloud data requires a piece of metadata
+/// that describes the attributes of the point cloud with their [respective Rust types](pasture_core::layout::PointAttributeDataType), their order, their memory alignment
+/// and their potential offset within a single point entry in Interleaved format. All this information is stored inside the `PointLayout`
+/// structure.
+///
+/// To support the different memory layouts, Pasture buffers store point data as raw binary buffers internally. To work with the data,
+/// you will want to use strongly typed Rust structures. Any type `T` that you want to use for accessing point data in a strongly typed manner
+/// must implement the `PointType` trait and thus provide Pasture with a way of figuring out the attributes and memory layout of this type `T`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PointLayout {
     attributes: Vec<PointAttributeMember>,
@@ -571,19 +624,6 @@ pub struct PointLayout {
 }
 
 impl PointLayout {
-    // TODO We should provide multiple methods for creating a PointLayout from PointAttributeDefinitions:
-    //   from_attributes(&[PointAttributeDefinition]) -> Attributes are added in order, offsets adhere to alignments
-    //   from_attributes_packed(&[PointAttributeDefinition]) -> Attributes are added in order, offsets do not adhere to alignments (similar to #[repr(packed)])
-    //   from_attributes_and_offsets(&[PointAttributeDefinitionWithOffset]) -> Attributes are added in order with custom offsets
-    //
-    // It seems reasonable to have an augmented type 'PointAttributeDefinitionWithOffset' that can be created from 'PointAttributeDefinition' by
-    // calling '.with_offset(u64)' on it. The first two methods mentioned above call this function implicitly, the last one requires the user to
-    // call it. This would also allow the #[derive(PointType)] macro to specify the correct offsets
-    //
-    // Important changes have to be made to the equality comparisons of PointLayout!!! What does it mean for two layouts to be equal? Does it include the
-    // offsets of the attributes? ATM, I think it depends on the use case. All the 'PerAttribute' containers don't care for offsets, but the 'Interleaved'
-    // containers do care, and whenever we switch between Interleaved and PerAttribute we absolutely care.
-
     /// Creates a new PointLayout from the given sequence of attributes. The attributes will be aligned using the
     /// default alignments for their respective datatypes, in accordance with the [Rust alignment rules for `repr(C)` structs](https://doc.rust-lang.org/reference/type-layout.html#reprc-structs)
     ///

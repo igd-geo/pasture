@@ -59,8 +59,6 @@ pub fn point_layout_from_las_point_format(format: &Format) -> Result<PointLayout
 /// assert_eq!(las_format_b, las::point::Format::new(1).unwrap());
 /// ```
 pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format {
-    // TODO Explicit support for extended size formats (6-10)
-
     let has_gps_time = point_layout.has_attribute_with_name(attributes::GPS_TIME.name());
     let has_colors = point_layout.has_attribute_with_name(attributes::COLOR_RGB.name());
     let has_any_waveform_attribute = point_layout
@@ -77,7 +75,7 @@ pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format 
     format.has_nir = has_nir;
     format.has_waveform = has_any_waveform_attribute;
 
-    if has_nir {
+    if has_nir || has_any_waveform_attribute {
         format.is_extended = true;
     }
 

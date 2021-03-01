@@ -147,8 +147,6 @@ pub(crate) fn test_data_scan_angle_ranks() -> Vec<i8> {
 }
 
 pub(crate) fn test_data_scan_angles_extended() -> Vec<i16> {
-    //TODO Change these values in the test files, not sure why they ended up this way. Probably some conversion that lastools/las-rs did, whatever I used when I created these test files
-    //vec![0, 166, 333, 500, 666, 833, 1000, 1166, 1333, 1500]
     vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
 
@@ -406,7 +404,6 @@ pub(crate) fn compare_to_reference_data(points: &dyn PointBuffer, point_format: 
     compare_to_reference_data_range(points, point_format, 0..test_data_point_count());
 }
 
-// TODO Add function to get test data for a specific LAS format as a PointBuffer --> Useful for writer tests
 pub(crate) fn get_test_points_in_las_format(point_format: u8) -> Result<Box<dyn PointBuffer>> {
     let format = Format::new(point_format)?;
     let layout = point_layout_from_las_point_format(&format)?;
