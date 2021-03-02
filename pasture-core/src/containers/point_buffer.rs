@@ -8,9 +8,6 @@ use crate::{
     util::sort_untyped_slice_by_permutation,
 };
 
-use super::{InterleavedPointView, PerAttributePointView};
-
-use itertools::Itertools;
 use rayon::prelude::*;
 
 /// Base trait for all containers that store point data. A PointBuffer stores any number of point entries
@@ -407,11 +404,6 @@ impl InterleavedVecPointStorage {
     }
 
     fn push_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
-        //Don't compare the layouts using Eq, because the PerAttributePointView doesn't care for attribute alignments, but InterleavedVecPointStorage does
-        // This means that the 'PerAttributePointView' can have a layout with the same attributes but at different offsets and it doesn't matter for this
-        // method right here!
-        // The actual check for layout equality is done inside the closure below with 'get_raw_data_for_attribute'
-
         // This function is essentially a data transpose!
         let attribute_buffers = self
             .layout
@@ -440,11 +432,64 @@ impl InterleavedVecPointStorage {
     }
 
     fn splice_interleaved(&mut self, range: Range<usize>, points: &dyn InterleavedPointBuffer) {
-        todo!()
+        if points.point_layout() != self.point_layout() {
+            panic!(
+                "InterleavedVecPointStorage::splice_interleaved: points layout does not match this PointLayout!"
+            );
+        }
+        if range.start > range.end {
+            panic!("Range start is greater than range end");
+        }
+        if range.end > self.len() {
+            panic!("Range is out of bounds");
+        }
+        let this_offset = range.start * self.size_of_point_entry as usize;
+        let this_range_len = range.len() * self.size_of_point_entry as usize;
+        let this_slice = &mut self.points[this_offset..(this_offset + this_range_len)];
+        let other_slice = points.get_points_ref(0..range.len());
+        this_slice.copy_from_slice(other_slice);
     }
 
     fn splice_per_attribute(&mut self, range: Range<usize>, points: &dyn PerAttributePointBuffer) {
-        todo!()
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
+            panic!(
+                "InterleavedVecPointStorage::splice_per_attribute: points layout does not match this PointLayout!"
+            );
+        }
+        if range.start > range.end {
+            panic!("Range start is greater than range end");
+        }
+        if range.end > self.len() {
+            panic!("Range is out of bounds");
+        }
+
+        let attribute_buffers = self
+            .layout
+            .attributes()
+            .map(|attribute| {
+                (
+                    attribute,
+                    points.get_attribute_range_ref(0..range.len(), &attribute.into()),
+                )
+            })
+            .collect::<Vec<_>>();
+        for idx in 0..range.len() {
+            let current_point_offset = (range.start + idx) * self.size_of_point_entry as usize;
+            for (attribute, attribute_buffer) in attribute_buffers.iter() {
+                let slice_start = idx * attribute.size() as usize;
+                let slice_end = (idx + 1) * attribute.size() as usize;
+                let offset_in_point = attribute.offset() as usize;
+                let attribute_slice = &attribute_buffer[slice_start..slice_end];
+
+                let offset_in_this_buffer = current_point_offset + offset_in_point;
+                let point_slice = &mut self.points
+                    [offset_in_this_buffer..offset_in_this_buffer + attribute.size() as usize];
+                point_slice.copy_from_slice(attribute_slice);
+            }
+        }
     }
 }
 
@@ -974,11 +1019,66 @@ impl PerAttributeVecPointStorage {
     }
 
     fn splice_interleaved(&mut self, range: Range<usize>, points: &dyn InterleavedPointBuffer) {
-        todo!()
+        if range.start > range.end {
+            panic!("Range start is greater than range end");
+        }
+        if range.end > self.len() {
+            panic!("Range is out of bounds");
+        }
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
+            panic!("PerAttributeVecPointStorage::splice_interleaved: points layout does not match this PointLayout!");
+        }
+
+        let raw_point_data = points.get_points_ref(0..range.len());
+        let stride = self.layout.size_of_point_entry() as usize;
+
+        for (attribute_name, attribute_data) in self.attributes.iter_mut() {
+            let current_attribute = self.layout.get_attribute_by_name(attribute_name).unwrap();
+            let base_offset = current_attribute.offset() as usize;
+            let attribute_size = current_attribute.size() as usize;
+
+            for idx in 0..range.len() {
+                let this_attribute_start = (range.start + idx) * attribute_size;
+                let this_attribute_end = this_attribute_start + attribute_size;
+                let this_attribute_slice =
+                    &mut attribute_data[this_attribute_start..this_attribute_end];
+
+                let new_attribute_start = base_offset + (idx * stride);
+                let new_attribute_end = new_attribute_start + attribute_size;
+                let new_attribute_slice = &raw_point_data[new_attribute_start..new_attribute_end];
+
+                this_attribute_slice.copy_from_slice(new_attribute_slice);
+            }
+        }
     }
 
     fn splice_per_attribute(&mut self, range: Range<usize>, points: &dyn PerAttributePointBuffer) {
-        todo!()
+        if range.start > range.end {
+            panic!("Range start is greater than range end");
+        }
+        if range.end > self.len() {
+            panic!("Range is out of bounds");
+        }
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
+            panic!("PerAttributeVecPointStorage::splice_per_attribute: points layout does not match this PointLayout!");
+        }
+        for attribute in self.layout.attributes() {
+            let this_attribute_offset = range.start * attribute.size() as usize;
+            let this_attribute_slice = &mut self.attributes.get_mut(attribute.name()).unwrap()
+                [this_attribute_offset
+                    ..this_attribute_offset + range.len() * attribute.size() as usize];
+
+            let new_attribute_slice =
+                points.get_attribute_range_ref(0..range.len(), &attribute.into());
+
+            this_attribute_slice.copy_from_slice(new_attribute_slice);
+        }
     }
 }
 
@@ -1627,6 +1727,7 @@ mod tests {
     use nalgebra::Vector3;
 
     use super::*;
+    use crate::containers::{InterleavedPointView, PerAttributePointView};
     use crate::{containers, util::view_raw_bytes};
     use crate::{
         layout::{attributes, PointLayout},
@@ -2770,5 +2871,189 @@ mod tests {
             points,
             vec![TestPointType(42, 0.123), TestPointType(43, 0.456)]
         );
+    }
+
+    #[test]
+    fn test_interleaved_point_buffer_splice_from_interleaved() {
+        let mut source_points = InterleavedVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut new_points = InterleavedVecPointStorage::new(TestPointType::layout());
+        new_points.push_points(&[TestPointType(42, 0.42), TestPointType(43, 0.43)]);
+
+        source_points.splice(1..3, &new_points);
+
+        assert_eq!(4, source_points.len());
+
+        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        assert_eq!(
+            points,
+            vec![
+                TestPointType(1, 0.1),
+                TestPointType(42, 0.42),
+                TestPointType(43, 0.43),
+                TestPointType(4, 0.4)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_interleaved_point_buffer_splice_from_per_attribute() {
+        let mut source_points = InterleavedVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut new_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+        new_points.push_points(&[TestPointType(42, 0.42), TestPointType(43, 0.43)]);
+
+        source_points.splice(1..3, &new_points);
+
+        assert_eq!(4, source_points.len());
+
+        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        assert_eq!(
+            points,
+            vec![
+                TestPointType(1, 0.1),
+                TestPointType(42, 0.42),
+                TestPointType(43, 0.43),
+                TestPointType(4, 0.4)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_per_attribute_point_buffer_splice_from_interleaved() {
+        let mut source_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut new_points = InterleavedVecPointStorage::new(TestPointType::layout());
+        new_points.push_points(&[TestPointType(42, 0.42), TestPointType(43, 0.43)]);
+
+        source_points.splice(1..3, &new_points);
+
+        assert_eq!(4, source_points.len());
+
+        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        assert_eq!(
+            points,
+            vec![
+                TestPointType(1, 0.1),
+                TestPointType(42, 0.42),
+                TestPointType(43, 0.43),
+                TestPointType(4, 0.4)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_per_attribute_point_buffer_splice_from_per_attribute() {
+        let mut source_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut new_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+        new_points.push_points(&[TestPointType(42, 0.42), TestPointType(43, 0.43)]);
+
+        source_points.splice(1..3, &new_points);
+
+        assert_eq!(4, source_points.len());
+
+        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        assert_eq!(
+            points,
+            vec![
+                TestPointType(1, 0.1),
+                TestPointType(42, 0.42),
+                TestPointType(43, 0.43),
+                TestPointType(4, 0.4)
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match this PointLayout")]
+    fn test_interleaved_point_buffer_splice_from_interleaved_wrong_layout() {
+        let mut source_points = InterleavedVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut other_points = InterleavedVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.splice(0..1, &other_points);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match this PointLayout")]
+    fn test_interleaved_point_buffer_splice_from_per_attribute_wrong_layout() {
+        let mut source_points = InterleavedVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut other_points = PerAttributeVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.splice(0..1, &other_points);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match this PointLayout")]
+    fn test_per_attribute_point_buffer_splice_from_interleaved_wrong_layout() {
+        let mut source_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut other_points = InterleavedVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.splice(0..1, &other_points);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match this PointLayout")]
+    fn test_per_attribute_point_buffer_splice_from_per_attribute_wrong_layout() {
+        let mut source_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+        source_points.push_points(&[
+            TestPointType(1, 0.1),
+            TestPointType(2, 0.2),
+            TestPointType(3, 0.3),
+            TestPointType(4, 0.4),
+        ]);
+
+        let mut other_points = PerAttributeVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.splice(0..1, &other_points);
     }
 }
