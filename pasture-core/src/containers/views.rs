@@ -67,7 +67,7 @@ mod iterators {
 
     impl<'a, T: PointType + 'a> PointIteratorByRef<'a, T> {
         /// Creates a new `InterleavedPointIterator` over all points in the given `PointBuffer`
-        pub fn new(buffer: &'a dyn InterleavedPointBuffer) -> Self {
+        pub fn new<B: InterleavedPointBuffer + ?Sized>(buffer: &'a B) -> Self {
             let buffer_len = buffer.len();
             let point_data = unsafe {
                 std::slice::from_raw_parts(
@@ -103,7 +103,7 @@ mod iterators {
 
     impl<'a, T: PointType + 'a> PointIteratorByMut<'a, T> {
         /// Creates a new `PointIteratorByMut` that iterates over the points in the given buffer
-        pub fn new(buffer: &'a mut dyn InterleavedPointBufferMut) -> Self {
+        pub fn new<B: InterleavedPointBufferMut + ?Sized>(buffer: &'a mut B) -> Self {
             let buffer_len = buffer.len();
             let point_data = unsafe {
                 std::slice::from_raw_parts_mut(
@@ -161,8 +161,8 @@ pub fn points<'a, T: PointType + 'a>(buffer: &'a dyn PointBuffer) -> impl Iterat
 }
 
 /// Returns an iterator over references to all points within the given PointBuffer, strongly typed to the PointType T.
-pub fn points_ref<'a, T: PointType + 'a>(
-    buffer: &'a dyn InterleavedPointBuffer,
+pub fn points_ref<'a, T: PointType + 'a, B: InterleavedPointBuffer + ?Sized>(
+    buffer: &'a B,
 ) -> iterators::PointIteratorByRef<'a, T> {
     let point_layout = T::layout();
     if point_layout != *buffer.point_layout() {
@@ -177,8 +177,8 @@ pub fn points_ref<'a, T: PointType + 'a>(
 }
 
 /// Returns an iterator over mutable references to all points within the given PointBuffer, strongly typed to the PointType T.
-pub fn points_mut<'a, T: PointType + 'a>(
-    buffer: &'a mut dyn InterleavedPointBufferMut,
+pub fn points_mut<'a, T: PointType + 'a, B: InterleavedPointBufferMut + ?Sized>(
+    buffer: &'a mut B,
 ) -> iterators::PointIteratorByMut<'a, T> {
     let point_layout = T::layout();
     if point_layout != *buffer.point_layout() {
@@ -225,67 +225,130 @@ pub fn attribute_mut<'a, T: PrimitiveType + 'a>(
     attr1::AttributeIteratorByMut::<T>::new(buffer, attribute)
 }
 
+/// Create an iterator over multiple attributes within a `PointBuffer`. This macro uses some special syntax  to determine the attributes
+/// and their types:
+///
+/// `attributes!{ ATTRIBUTE_1_EXPR => ATTRIBUTE_1_TYPE, ATTRIBUTE_2_EXPR => ATTRIBUTE_2_TYPE, ..., buffer }`
+///
+/// `ATTRIBUTE_X_EXPR` must be an expression that evaluates to a `&PointAttributeDefinition` and `ATTRIBUTE_X_TYPE` must be the Pasture
+/// `PrimitiveType` that the attribute will be returned as. The type must match the type that the attribute is stored with inside `buffer`.
+/// The iterator will then return tuples of the type:
+///
+/// `(ATTRIBUTE_1_TYPE, ATTRIBUTE_2_TYPE, ...)`
+///
+/// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
 #[macro_export]
 macro_rules! attributes {
-    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
-        attr2::AttributeIteratorByValue::<$t1, $t2>::new($buffer, [$attr1, $attr2])
-    };
-    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
-        attr3::AttributeIteratorByValue::<$t1, $t2, $t3>::new($buffer, [$attr1, $attr2, $attr3])
-    };
-    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
-        attr3::AttributeIteratorByValue::<$t1, $t2, $t3, $t4>::new(
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
+        crate::containers::attr2::AttributeIteratorByValue::<$t1, $t2>::new(
             $buffer,
-            [$attr1, $attr2, $attr3, $attr4],
+            [$attr1, $attr2],
         )
     };
-}
-
-#[macro_export]
-macro_rules! attributes_as {
-    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
-        attr2::AttributeIteratorByValueWithConversion::<$t1, $t2>::new($buffer, [$attr1, $attr2])
-    };
-    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
-        attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3>::new(
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByValue::<$t1, $t2, $t3>::new(
             $buffer,
             [$attr1, $attr2, $attr3],
         )
     };
-    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
-        attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3, $t4>::new(
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByValue::<$t1, $t2, $t3, $t4>::new(
             $buffer,
             [$attr1, $attr2, $attr3, $attr4],
         )
     };
 }
 
+/// Create an iterator over multiple attributes within a `PointBuffer`, supporting type converisons. This macro uses some special syntax
+/// to determine the attributes and their types:
+///
+/// `attributes_as!{ ATTRIBUTE_1_EXPR => ATTRIBUTE_1_TYPE, ATTRIBUTE_2_EXPR => ATTRIBUTE_2_TYPE, ..., buffer }`
+///
+/// `ATTRIBUTE_X_EXPR` must be an expression that evaluates to a `&PointAttributeDefinition` and `ATTRIBUTE_X_TYPE` must be the Pasture
+/// `PrimitiveType` that the attribute will be returned as. This type must be convertible from the actual type that the attribute
+/// is stored with inside `buffer`. The iterator will then return tuples of the form:
+///
+/// `(ATTRIBUTE_1_TYPE, ATTRIBUTE_2_TYPE, ...)`
+///
+/// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
+#[macro_export]
+macro_rules! attributes_as {
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
+        crate::containers::attr2::AttributeIteratorByValueWithConversion::<$t1, $t2>::new(
+            $buffer,
+            [$attr1, $attr2],
+        )
+    };
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3],
+        )
+    };
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3, $t4>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3, $attr4],
+        )
+    };
+}
+
+/// Create an iterator over references to multiple attributes within a `PointBuffer`. Requires that the buffer implements
+/// `PerAttributePointBuffer`. This macro uses some special syntax to determine the attributes and their types:
+///
+/// `attributes_ref!{ ATTRIBUTE_1_EXPR => ATTRIBUTE_1_TYPE, ATTRIBUTE_2_EXPR => ATTRIBUTE_2_TYPE, ..., buffer }`
+///
+/// `ATTRIBUTE_X_EXPR` must be an expression that evaluates to a `&PointAttributeDefinition` and `ATTRIBUTE_X_TYPE` must be the Pasture
+/// `PrimitiveType` that the attribute reference will be returned as. The type must match the type that the attribute is stored with in
+/// the `buffer`. The iterator will then return tuples of the form:
+///
+/// `(&ATTRIBUTE_1_TYPE, &ATTRIBUTE_2_TYPE, ...)`
+///
+/// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
 #[macro_export]
 macro_rules! attributes_ref {
-    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
-        attr2::AttributeIteratorByRef::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
+        crate::containers::attr2::AttributeIteratorByRef::<$t1, $t2>::new($buffer, [$attr1, $attr2])
     };
-    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
-        attr3::AttributeIteratorByRef::<$t1, $t2, $t3>::new($buffer, [$attr1, $attr2, $attr3])
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByRef::<$t1, $t2, $t3>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3],
+        )
     };
-    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
-        attr3::AttributeIteratorByRef::<$t1, $t2, $t3, $t4>::new(
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByRef::<$t1, $t2, $t3, $t4>::new(
             $buffer,
             [$attr1, $attr2, $attr3, $attr4],
         )
     };
 }
 
+/// Create an iterator over mutable references to multiple attributes within a `PointBuffer`. Requires that the buffer implements
+/// `PerAttributePointBufferMut`. This macro uses some special syntax to determine the attributes and their types:
+///
+/// `attributes_mut!{ ATTRIBUTE_1_EXPR => ATTRIBUTE_1_TYPE, ATTRIBUTE_2_EXPR => ATTRIBUTE_2_TYPE, ..., buffer }`
+///
+/// `ATTRIBUTE_X_EXPR` must be an expression that evaluates to a `&PointAttributeDefinition` and `ATTRIBUTE_X_TYPE` must be the Pasture
+/// `PrimitiveType` that the attribute reference will be returned as. The type must match the type that the attribute is stored with in
+/// the `buffer`. The iterator will then return tuples of the form:
+///
+/// `(&mut ATTRIBUTE_1_TYPE, &mut ATTRIBUTE_2_TYPE, ...)`
+///
+/// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
 #[macro_export]
 macro_rules! attributes_mut {
-    ($t1:ty, $t2:ty, $buffer:expr, $attr1:expr, $attr2:expr,) => {
-        attr2::AttributeIteratorByMut::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
+        crate::containers::attr2::AttributeIteratorByMut::<$t1, $t2>::new($buffer, [$attr1, $attr2])
     };
-    ($t1:ty, $t2:ty, $t3:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr,) => {
-        attr3::AttributeIteratorByMut::<$t1, $t2, $t3>::new($buffer, [$attr1, $attr2, $attr3])
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByMut::<$t1, $t2, $t3>::new(
+            $buffer,
+            [$attr1, $attr2, $attr3],
+        )
     };
-    ($t1:ty, $t2:ty, $t3:ty, $t4:ty, $buffer:expr, $attr1:expr, $attr2:expr, $attr3:expr, $attr4:expr,) => {
-        attr3::AttributeIteratorByMut::<$t1, $t2, $t3, $t4>::new(
+    ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
+        crate::containers::attr3::AttributeIteratorByMut::<$t1, $t2, $t3, $t4>::new(
             $buffer,
             [$attr1, $attr2, $attr3, $attr4],
         )
@@ -298,7 +361,7 @@ mod tests {
     use super::*;
     use crate::layout::attributes;
     use crate::{
-        containers::{attr2, InterleavedVecPointStorage, PerAttributeVecPointStorage},
+        containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage},
         layout::attributes::POSITION_3D,
     };
     use nalgebra::Vector3;
@@ -334,7 +397,7 @@ mod tests {
         storage.push_point(reference_points[1]);
 
         {
-            let points_by_mut_view = points_mut::<TestPointType>(&mut storage);
+            let points_by_mut_view = points_mut::<TestPointType, _>(&mut storage);
             points_by_mut_view.for_each(|point| {
                 point.intensity *= 2;
                 point.gps_time += 1.0;
@@ -359,7 +422,7 @@ mod tests {
         }
 
         {
-            let points_by_ref_view = points_ref::<TestPointType>(&storage);
+            let points_by_ref_view = points_ref::<TestPointType, _>(&storage);
             let points_by_ref_collected = points_by_ref_view.map(|r| *r).collect::<Vec<_>>();
             assert_eq!(modified_points, points_by_ref_collected);
         }
@@ -422,11 +485,9 @@ mod tests {
 
         {
             let attributes_mut_view = attributes_mut!(
-                u16,
-                f64,
-                &mut storage,
-                &attributes::INTENSITY,
-                &attributes::GPS_TIME,
+                &attributes::INTENSITY => u16,
+                &attributes::GPS_TIME => f64,
+                &mut storage
             );
             attributes_mut_view.for_each(|(intensity, gps_time)| {
                 *intensity *= 2;
@@ -438,11 +499,9 @@ mod tests {
 
         {
             let attributes_by_val_view = attributes!(
-                u16,
-                f64,
-                &storage,
-                &attributes::INTENSITY,
-                &attributes::GPS_TIME,
+                &attributes::INTENSITY => u16,
+                &attributes::GPS_TIME => f64,
+                &storage
             );
             let attributes_by_val_collected = attributes_by_val_view.collect::<Vec<_>>();
             assert_eq!(modified_data, attributes_by_val_collected);
@@ -450,11 +509,9 @@ mod tests {
 
         {
             let attributes_by_ref_view = attributes_ref!(
-                u16,
-                f64,
-                &storage,
-                &attributes::INTENSITY,
-                &attributes::GPS_TIME,
+                &attributes::INTENSITY => u16,
+                &attributes::GPS_TIME => f64,
+                &storage
             );
             let attributes_by_ref_collected = attributes_by_ref_view
                 .map(|(&intensity, &gps_time)| (intensity, gps_time))
@@ -528,11 +585,9 @@ mod tests {
     fn test_attributes_with_wrong_type_fails() {
         let storage = InterleavedVecPointStorage::new(TestPointType::layout());
         attributes!(
-            u32,
-            f32,
-            &storage,
-            &attributes::INTENSITY,
-            &attributes::GPS_TIME,
+            &attributes::INTENSITY => u32,
+            &attributes::GPS_TIME => f32,
+            &storage
         );
     }
 
@@ -541,11 +596,9 @@ mod tests {
     fn test_attributes_ref_with_wrong_type_fails() {
         let storage = PerAttributeVecPointStorage::new(TestPointType::layout());
         attributes_ref!(
-            u32,
-            f32,
-            &storage,
-            &attributes::INTENSITY,
-            &attributes::GPS_TIME,
+            &attributes::INTENSITY => u32,
+            &attributes::GPS_TIME => f32,
+            &storage
         );
     }
 
@@ -554,11 +607,9 @@ mod tests {
     fn test_attributes_mut_with_wrong_type_fails() {
         let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
         attributes_mut!(
-            u32,
-            f32,
-            &mut storage,
-            &attributes::INTENSITY,
-            &attributes::GPS_TIME,
+            &attributes::INTENSITY => u32,
+            &attributes::GPS_TIME => f32,
+            &mut storage
         );
     }
 }

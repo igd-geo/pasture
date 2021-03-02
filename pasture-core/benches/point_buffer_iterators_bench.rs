@@ -111,7 +111,7 @@ fn points_iterator_performance_per_attribute_buffer<
 
 fn points_ref_iterator_performance_small_type(buffer: &dyn InterleavedPointBuffer) -> Vector3<f64> {
     let mut position = Vector3::new(0.0, 0.0, 0.0);
-    for point in points_ref::<CustomPointTypeSmall>(buffer) {
+    for point in points_ref::<CustomPointTypeSmall, _>(buffer) {
         position = point.position.clone();
     }
     position

@@ -49,7 +49,7 @@ fn main() {
         }
 
         //`points<T>` returns the data by value. Let's try writing to the data instead:
-        for point_mut in containers::points_mut::<SimplePoint>(&mut buffer) {
+        for point_mut in containers::points_mut::<SimplePoint, _>(&mut buffer) {
             point_mut.intensity *= 2;
         }
 

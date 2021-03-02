@@ -10,6 +10,9 @@ use crate::{
 
 use rayon::prelude::*;
 
+// TODO Can we maybe impl<T: PointBufferWriteable> &T and provide some push<U> methods?
+// TODO Figure out what I have to implement so that I can 'collect' the point/attribute iterators into PointBuffers
+
 /// Base trait for all containers that store point data. A PointBuffer stores any number of point entries
 /// with a layout defined by the PointBuffers associated PointLayout structure.
 ///
