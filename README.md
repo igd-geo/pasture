@@ -26,6 +26,7 @@ Rust library for point cloud processing
         - [x] Documentation of the `BUILTIN_...` and `attribute = "..."` syntax
         - [x] Get rid of warnings, clean up code
 - [ ] Examples of usage
+- [ ] Find better names for the different point buffer flavors. `InterleavedVecPointStorage` is quite a mouthful... 
 
 ## I/O
 

@@ -72,21 +72,23 @@ pub trait PointBuffer {
 /// read-only `PointBuffer` and mutable `PointBufferMut` traits enables read-only, non-owning views of a `PointBuffer` with the same interface
 /// as a owning `PointBuffer`!
 pub trait PointBufferWriteable: PointBuffer {
-    /// Push points in interleaved format into the associated `PointBuffer`
-    fn push_points_interleaved(&mut self, points: &InterleavedPointView<'_>);
-
-    /// Push points in per-attribute format into the associated `PointBuffer`
+    /// Appends the given `points` to the end of the associated `PointBuffer`
     ///
     /// # Panics
     ///
-    /// If an attribute from the `PointLayout` of the associated `PointBuffer` is missing in `attribute_buffers`.
-    fn push_raw_points_per_attribute(&mut self, points: &PerAttributePointView<'_>);
+    /// Panics if `points` is neither an `InterleavedPointBuffer` nor a `PerAttributePointBuffer`. *Note:* All the builtin buffers supplied by
+    /// Pasture always implement at least one of these traits, so it is always safe to call `push` with any of the builtin buffers.
+    fn push(&mut self, points: &dyn PointBuffer);
 
-    /// Appends all points from the given `InterleavedPointBuffer` to the end of the associated `PointBufferWriteable`
-    fn extend_from_interleaved(&mut self, points: &dyn InterleavedPointBuffer);
-
-    /// Appends all points from the given `PerAttributePointBuffer` to the end of the associated `PointBufferWriteable`
-    fn extend_from_per_attribute(&mut self, points: &dyn PerAttributePointBuffer);
+    /// Replaces the specified `range` in the associated `PointBuffer` with the given `replace_with` buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the starting point is greater than the end point or if the end point is greater than the length of the associated `PointBuffer`.
+    /// Panics if the length of `replace_with` is less than the length of `range`
+    /// Panics if `replace_with` is neither an `InterleavedPointBuffer` nor a `PerAttributePointBuffer`. *Note:* All the builtin buffers supplied by
+    /// Pasture always implement at least one of these traits, so it is always safe to call `splice` with any of the builtin buffers.
+    fn splice(&mut self, range: Range<usize>, replace_with: &dyn PointBuffer);
 
     /// Clears the contents of the associated `PointBufferMut`
     fn clear(&mut self);
@@ -349,7 +351,14 @@ impl InterleavedVecPointStorage {
         self.points.extend_from_slice(points_as_bytes);
     }
 
-    /// Returns a slice of the associated `InterleavedVecPointStorage`
+    /// Returns a slice of the associated `InterleavedVecPointStorage`.
+    ///
+    /// # Note on `std::ops::Index`
+    ///
+    /// This method semantically does what a hypothetical `buf[a..b]` call would do, i.e. what `std::ops::Index` is designed
+    /// for. Sadly, `std::ops::Index` requires that the resulting output type is returned by reference, which prevents any
+    /// view types from being used with `std::ops::Index`. Since slicing a `PointBuffer` has to return a view object, Pasture
+    /// can't use `std::ops::Index` together with `PointBuffer`.
     pub fn slice(&self, range: Range<usize>) -> InterleavedPointBufferSlice<'_> {
         InterleavedPointBufferSlice::new(self, range)
     }
@@ -390,6 +399,52 @@ impl InterleavedVecPointStorage {
     fn reserve(&mut self, additional_points: usize) {
         let additional_bytes = additional_points * self.size_of_point_entry as usize;
         self.points.reserve(additional_bytes);
+    }
+
+    fn push_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
+        self.points
+            .extend_from_slice(points.get_points_ref(0..points.len()));
+    }
+
+    fn push_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
+        //Don't compare the layouts using Eq, because the PerAttributePointView doesn't care for attribute alignments, but InterleavedVecPointStorage does
+        // This means that the 'PerAttributePointView' can have a layout with the same attributes but at different offsets and it doesn't matter for this
+        // method right here!
+        // The actual check for layout equality is done inside the closure below with 'get_raw_data_for_attribute'
+
+        // This function is essentially a data transpose!
+        let attribute_buffers = self
+            .layout
+            .attributes()
+            .map(|attribute| {
+                (
+                    attribute,
+                    points.get_attribute_range_ref(0..points.len(), &attribute.into()),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut single_point_blob = vec![0; self.layout.size_of_point_entry() as usize];
+        for idx in 0..points.len() {
+            for (attribute, attribute_buffer) in attribute_buffers.iter() {
+                let slice_start = idx * attribute.size() as usize;
+                let slice_end = (idx + 1) * attribute.size() as usize;
+                let offset_in_point = attribute.offset() as usize;
+
+                let point_slice = &mut single_point_blob
+                    [offset_in_point..offset_in_point + attribute.size() as usize];
+                let attribute_slice = &attribute_buffer[slice_start..slice_end];
+                point_slice.copy_from_slice(attribute_slice);
+            }
+            self.points.extend_from_slice(single_point_blob.as_slice());
+        }
+    }
+
+    fn splice_interleaved(&mut self, range: Range<usize>, points: &dyn InterleavedPointBuffer) {
+        todo!()
+    }
+
+    fn splice_per_attribute(&mut self, range: Range<usize>, points: &dyn PerAttributePointBuffer) {
+        todo!()
     }
 }
 
@@ -488,65 +543,24 @@ impl PointBuffer for InterleavedVecPointStorage {
 }
 
 impl PointBufferWriteable for InterleavedVecPointStorage {
-    fn push_points_interleaved(&mut self, points: &InterleavedPointView<'_>) {
-        self.points.extend_from_slice(points.get_raw_data());
-    }
-
-    fn push_raw_points_per_attribute(&mut self, points: &PerAttributePointView<'_>) {
-        // Don't compare the layouts using Eq, because the PerAttributePointView doesn't care for attribute alignments, but InterleavedVecPointStorage does
-        // This means that the 'PerAttributePointView' can have a layout with the same attributes but at different offsets and it doesn't matter for this
-        // method right here!
-        // The actual check for layout equality is done inside the closure below with 'get_raw_data_for_attribute'
-
-        // This function is essentially a data transpose!
-        let attribute_buffers = self
-            .layout
-            .attributes()
-            .map(|attribute| {
-                (
-                    attribute,
-                    points
-                        .get_raw_data_for_attribute(&attribute.into())
-                        .unwrap_or_else(|| panic!("InterleavedVecPointStorage::push_raw_points_per_attribute: Attribute {} of new points is not part of the PointLayout of this buffer!", attribute)),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut single_point_blob = vec![0; self.layout.size_of_point_entry() as usize];
-        for idx in 0..points.len() {
-            for (attribute, attribute_buffer) in attribute_buffers.iter() {
-                let slice_start = idx * attribute.size() as usize;
-                let slice_end = (idx + 1) * attribute.size() as usize;
-                let offset_in_point = attribute.offset() as usize;
-
-                let point_slice = &mut single_point_blob
-                    [offset_in_point..offset_in_point + attribute.size() as usize];
-                let attribute_slice = &attribute_buffer[slice_start..slice_end];
-                point_slice.copy_from_slice(attribute_slice);
-            }
-            self.points.extend_from_slice(single_point_blob.as_slice());
+    fn push(&mut self, points: &dyn PointBuffer) {
+        if let Some(interleaved) = points.as_interleaved() {
+            self.push_interleaved(interleaved);
+        } else if let Some(per_attribute) = points.as_per_attribute() {
+            self.push_per_attribute(per_attribute);
+        } else {
+            panic!("InterleavedVecPointStorage::push: points buffer implements neither the InterleavedPointBuffer nor the PerAttributePointBuffer traits");
         }
     }
 
-    fn extend_from_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
-        if *points.point_layout() != self.layout {
-            panic!("InterleavedVecPointStorage::extend_from_interleaved: Point layouts do not match, this buffer has layout {:?} but buffer to append from has layout {:?}", self.layout, points.point_layout());
+    fn splice(&mut self, range: Range<usize>, replace_with: &dyn PointBuffer) {
+        if let Some(interleaved) = replace_with.as_interleaved() {
+            self.splice_interleaved(range, interleaved);
+        } else if let Some(per_attribute) = replace_with.as_per_attribute() {
+            self.splice_per_attribute(range, per_attribute);
+        } else {
+            panic!("InterleavedVecPointStorage::splice: replace_with buffer implements neither the InterleavedPointBuffer nor the PerAttributePointBuffer traits");
         }
-
-        self.points
-            .extend_from_slice(points.get_points_ref(0..points.len()));
-    }
-
-    fn extend_from_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
-        if *points.point_layout() != self.layout {
-            panic!("InterleavedVecPointStorage::extend_from_per_attribute: Point layouts do not match, this buffer has layout {:?} but buffer to append from has layout {:?}", self.layout, points.point_layout());
-        }
-
-        let additional_bytes = points.len() * points.point_layout().size_of_point_entry() as usize;
-        let old_points_len = self.points.len();
-        self.points
-            .resize(self.points.len() + additional_bytes, Default::default());
-        let new_points_slice = &mut self.points[old_points_len..old_points_len + additional_bytes];
-        points.get_points_by_copy(0..points.len(), new_points_slice);
     }
 
     fn clear(&mut self) {
@@ -917,23 +931,54 @@ impl PerAttributeVecPointStorage {
         }
     }
 
-    /// Returns mutable references to the attribute buffers of the associated `PerAttributeVecPointStorage` in the same order
-    /// as defined in the point layout. This is a convenience method that simplifies data transpose operations
-    fn get_attribute_buffers_in_order_mut(&mut self) -> Vec<&mut Vec<u8>> {
-        let mut references = vec![];
-
-        unsafe {
-            for attribute in self.point_layout().clone().attributes() {
-                let ptr = self
-                    .attributes
-                    .get_mut(attribute.name())
-                    .expect("Could not get attribute buffer")
-                    as *mut Vec<u8>;
-                references.push(ptr.as_mut().expect("Ptr was null"));
-            }
+    fn push_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
+            panic!("PerAttributeVecPointStorage::push_points_interleaved: Layout of 'points' does not match layout of this buffer!");
         }
 
-        references
+        let raw_point_data = points.get_points_ref(0..points.len());
+        let stride = self.layout.size_of_point_entry() as usize;
+
+        for (attribute_name, attribute_data) in self.attributes.iter_mut() {
+            let current_attribute = self.layout.get_attribute_by_name(attribute_name).unwrap();
+            let base_offset = current_attribute.offset() as usize;
+            let attribute_size = current_attribute.size() as usize;
+
+            for idx in 0..points.len() {
+                let attribute_start = base_offset + (idx * stride);
+                let attribute_end = attribute_start + attribute_size;
+                let attribute_slice = &raw_point_data[attribute_start..attribute_end];
+                attribute_data.extend_from_slice(attribute_slice);
+            }
+        }
+    }
+
+    fn push_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
+            panic!("PerAttributeVecPointStorage::push_raw_points_per_attribute: points layout does not match this PointLayout!");
+        }
+        for attribute in self.layout.attributes() {
+            self.attributes
+                .get_mut(attribute.name())
+                .unwrap()
+                .extend_from_slice(
+                    points.get_attribute_range_ref(0..points.len(), &attribute.into()),
+                );
+        }
+    }
+
+    fn splice_interleaved(&mut self, range: Range<usize>, points: &dyn InterleavedPointBuffer) {
+        todo!()
+    }
+
+    fn splice_per_attribute(&mut self, range: Range<usize>, points: &dyn PerAttributePointBuffer) {
+        todo!()
     }
 }
 
@@ -1026,95 +1071,23 @@ impl PointBuffer for PerAttributeVecPointStorage {
 }
 
 impl PointBufferWriteable for PerAttributeVecPointStorage {
-    fn push_points_interleaved(&mut self, points: &InterleavedPointView<'_>) {
-        if !points
-            .get_point_layout()
-            .compare_without_offsets(self.point_layout())
-        {
-            panic!("PerAttributeVecPointStorage::push_points_interleaved: Layout of 'points' does not match layout of this buffer!");
-        }
-
-        let raw_point_data = points.get_raw_data();
-        let stride = self.layout.size_of_point_entry() as usize;
-
-        for (attribute_name, attribute_data) in self.attributes.iter_mut() {
-            let current_attribute = self.layout.get_attribute_by_name(attribute_name).unwrap();
-            let base_offset = current_attribute.offset() as usize;
-            let attribute_size = current_attribute.size() as usize;
-
-            for idx in 0..points.len() {
-                let attribute_start = base_offset + (idx * stride);
-                let attribute_end = attribute_start + attribute_size;
-                let attribute_slice = &raw_point_data[attribute_start..attribute_end];
-                attribute_data.extend_from_slice(attribute_slice);
-            }
+    fn push(&mut self, points: &dyn PointBuffer) {
+        if let Some(interleaved) = points.as_interleaved() {
+            self.push_interleaved(interleaved);
+        } else if let Some(per_attribute) = points.as_per_attribute() {
+            self.push_per_attribute(per_attribute);
+        } else {
+            panic!("PerAttributeVecPointStorage::push: points buffer does not implement the InterleavedPointBuffer or the PerAttributePointBuffer trait");
         }
     }
 
-    fn push_raw_points_per_attribute(&mut self, points: &PerAttributePointView<'_>) {
-        if !points
-            .point_layout()
-            .compare_without_offsets(self.point_layout())
-        {
-            panic!("PerAttributeVecPointStorage::push_raw_points_per_attribute: points layout does not match this PointLayout!");
-        }
-        for attribute in self.layout.attributes() {
-            self.attributes
-                .get_mut(attribute.name())
-                .unwrap()
-                .extend_from_slice(
-                    points
-                        .get_raw_data_for_attribute(&attribute.into())
-                        .unwrap(),
-                );
-        }
-    }
-
-    fn extend_from_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
-        if !points
-            .point_layout()
-            .compare_without_offsets(self.point_layout())
-        {
-            panic!(
-                "PerAttributeVecPointStorage::extend_from_interleaved: Point layouts do not match!"
-            );
-        }
-
-        let points_range = points.get_points_ref(0..points.len());
-        let point_stride = self.point_layout().size_of_point_entry() as usize;
-        let attribute_sizes = self
-            .point_layout()
-            .attributes()
-            .map(|attribute| attribute.size())
-            .collect::<Vec<_>>();
-        let mut attribute_buffers = self.get_attribute_buffers_in_order_mut();
-
-        for mut point in &points_range.iter().chunks(point_stride) {
-            for (attribute_index, &attribute_size) in attribute_sizes.iter().enumerate() {
-                let attribute_data = &mut attribute_buffers[attribute_index];
-                for _ in 0..attribute_size {
-                    attribute_data.push(*point.next().expect("Can't get next point byte"));
-                }
-            }
-        }
-    }
-
-    fn extend_from_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
-        if !points
-            .point_layout()
-            .compare_without_offsets(self.point_layout())
-        {
-            panic!("PerAttributeVecPointStorage::extend_from_per_attribute: Point layouts do not match, this buffer has layout {:?} but buffer to append from has layout {:?}", self.layout, points.point_layout());
-        }
-
-        for (&key, attribute_data) in self.attributes.iter_mut() {
-            let attribute_def = self
-                .layout
-                .get_attribute_by_name(key)
-                .expect("Attribute not present in point layout");
-            let new_attribute_data =
-                points.get_attribute_range_ref(0..points.len(), &attribute_def.into());
-            attribute_data.extend_from_slice(new_attribute_data);
+    fn splice(&mut self, range: Range<usize>, replace_with: &dyn PointBuffer) {
+        if let Some(interleaved) = replace_with.as_interleaved() {
+            self.splice_interleaved(range, interleaved);
+        } else if let Some(per_attribute) = replace_with.as_per_attribute() {
+            self.splice_per_attribute(range, per_attribute);
+        } else {
+            panic!("PerAttributeVecPointStorage::splice: replace_with buffer does not implement the InterleavedPointBuffer or the PerAttributePointBuffer trait");
         }
     }
 
@@ -1986,7 +1959,7 @@ mod tests {
     #[test]
     fn test_point_buffer_writeable_push_points_interleaved() {
         let mut interleaved_buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
-        interleaved_buffer.push_points_interleaved(&InterleavedPointView::from_slice(&[
+        interleaved_buffer.push(&InterleavedPointView::from_slice(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]));
@@ -2001,7 +1974,7 @@ mod tests {
 
         let mut per_attribute_buffer =
             get_empty_per_attribute_point_buffer(TestPointType::layout());
-        per_attribute_buffer.push_points_interleaved(&InterleavedPointView::from_slice(&[
+        per_attribute_buffer.push(&InterleavedPointView::from_slice(&[
             TestPointType(44, 0.321),
             TestPointType(45, 0.654),
         ]));
@@ -2025,7 +1998,7 @@ mod tests {
         data_view.push_attribute(&gps_times, &attributes::GPS_TIME);
 
         let mut interleaved_buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
-        interleaved_buffer.push_raw_points_per_attribute(&data_view);
+        interleaved_buffer.push(&data_view);
 
         assert_eq!(2, interleaved_buffer.len());
 
@@ -2037,7 +2010,7 @@ mod tests {
 
         let mut per_attribute_buffer =
             get_empty_per_attribute_point_buffer(TestPointType::layout());
-        per_attribute_buffer.push_raw_points_per_attribute(&data_view);
+        per_attribute_buffer.push(&data_view);
 
         assert_eq!(2, per_attribute_buffer.len());
 
@@ -2058,7 +2031,7 @@ mod tests {
         let data_view = PerAttributePointView::new();
 
         let mut buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
-        buffer.push_raw_points_per_attribute(&data_view);
+        buffer.push(&data_view);
     }
 
     #[test]
@@ -2067,7 +2040,7 @@ mod tests {
         let data_view = PerAttributePointView::new();
 
         let mut buffer = get_empty_per_attribute_point_buffer(TestPointType::layout());
-        buffer.push_raw_points_per_attribute(&data_view);
+        buffer.push(&data_view);
     }
 
     #[test]
@@ -2701,7 +2674,7 @@ mod tests {
         let mut interleaved_buffer = InterleavedVecPointStorage::new(TestPointType::layout());
         interleaved_buffer.push_points(&[TestPointType(42, 0.123), TestPointType(43, 0.456)]);
 
-        per_attribute_buffer.extend_from_interleaved(&interleaved_buffer);
+        per_attribute_buffer.push(&interleaved_buffer);
 
         assert_eq!(2, per_attribute_buffer.len());
         let attrib1 = attribute_slice::<u16>(&per_attribute_buffer, 0..2, &attributes::INTENSITY);
@@ -2770,7 +2743,7 @@ mod tests {
         let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
         per_attribute_buffer.push_points(&[TestPointType(42, 0.123), TestPointType(43, 0.456)]);
 
-        interleaved_buffer.extend_from_per_attribute(&per_attribute_buffer);
+        interleaved_buffer.push(&per_attribute_buffer);
 
         assert_eq!(2, interleaved_buffer.len());
 
@@ -2788,7 +2761,7 @@ mod tests {
         let mut interleaved_buffer = InterleavedVecPointStorage::new(TestPointType::layout());
         interleaved_buffer.push_points(&[TestPointType(42, 0.123), TestPointType(43, 0.456)]);
 
-        per_attribute_buffer.extend_from_interleaved(&interleaved_buffer);
+        per_attribute_buffer.push(&interleaved_buffer);
 
         assert_eq!(2, per_attribute_buffer.len());
 

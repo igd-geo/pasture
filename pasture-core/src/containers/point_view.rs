@@ -1,17 +1,24 @@
+use std::ops::Range;
+
 use crate::layout::{
     FieldAlignment, PointAttributeDefinition, PointLayout, PointType, PrimitiveType,
 };
 
-/// A non-owning view for a contiguous slice of interleaved point data. This is a low-cost
-/// abstraction that enables passing around point data in an untyped but safe way! Its primary
-/// use is for pushing point data into a `PointBuffer` through its trait interface
-pub struct InterleavedPointView<'data> {
-    point_data: &'data [u8],
+use super::{
+    InterleavedPointBuffer, PerAttributePointBuffer, PerAttributePointBufferSlice, PointBuffer,
+};
+
+/// A non-owning view for a contiguous slice of interleaved point data. This is like `InterleavedVecPointBuffer`, but it
+/// does not own the point data. It is useful for passing around point data in an untyped but safe manner, for example in
+/// I/O heavy code.
+pub struct InterleavedPointView<'d> {
+    point_data: &'d [u8],
     point_layout: PointLayout,
     point_count: usize,
+    size_of_point_entry: usize,
 }
 
-impl<'data> InterleavedPointView<'data> {
+impl<'d> InterleavedPointView<'d> {
     /// Creates a new `InterleavedPointView` referencing the given slice of points
     ///
     /// ```
@@ -26,37 +33,37 @@ impl<'data> InterleavedPointView<'data> {
     /// let points = vec![MyPointType(42), MyPointType(43)];
     /// let view = InterleavedPointView::from_slice(points.as_slice());
     /// ```
-    pub fn from_slice<T: PointType>(points: &'data [T]) -> Self {
+    pub fn from_slice<T: PointType>(points: &'d [T]) -> Self {
         let raw_points_data = unsafe {
             std::slice::from_raw_parts(
                 points.as_ptr() as *const u8,
                 points.len() * std::mem::size_of::<T>(),
             )
         };
+        let point_layout = T::layout();
+        let size_of_point_entry = point_layout.size_of_point_entry() as usize;
         Self {
             point_data: raw_points_data,
-            point_layout: T::layout(),
+            point_layout,
             point_count: points.len(),
+            size_of_point_entry,
         }
     }
 
     /// Creates a new `InterleavedPointView` referencing the given slice of untyped point data
-    pub fn from_raw_slice(points: &'data [u8], layout: PointLayout) -> Self {
+    pub fn from_raw_slice(points: &'d [u8], layout: PointLayout) -> Self {
         let size_of_single_point = layout.size_of_point_entry() as usize;
         if points.len() % size_of_single_point != 0 {
             panic!("InterleavedPointView::from_raw_slice: points.len() is no multiple of point entry size in PointLayout!");
         }
         let num_points = points.len() / size_of_single_point;
+        let size_of_point_entry = layout.size_of_point_entry() as usize;
         Self {
             point_data: points,
             point_layout: layout,
             point_count: num_points,
+            size_of_point_entry,
         }
-    }
-
-    /// Returns the raw data for the points that the associated `InterleavedPointView` is pointing to
-    pub fn get_raw_data(&self) -> &'data [u8] {
-        self.point_data
     }
 
     /// Returns the data for the points of the associated `InterleavedPointView` as a typed slice.
@@ -79,7 +86,7 @@ impl<'data> InterleavedPointView<'data> {
     /// let points_ref = view.get_typed_data::<MyPointType>();
     /// assert_eq!(points_ref, points.as_slice());
     /// ```
-    pub fn get_typed_data<T: PointType>(&self) -> &'data [T] {
+    pub fn get_typed_data<T: PointType>(&self) -> &'d [T] {
         if self.point_layout != T::layout() {
             panic!("InterleavedPointView::get_typed_data: Point layout does not match type T!");
         }
@@ -87,54 +94,139 @@ impl<'data> InterleavedPointView<'data> {
             std::slice::from_raw_parts(self.point_data.as_ptr() as *const T, self.point_count)
         }
     }
+}
 
-    /// Returns the `PointLayout` of the associated `InterleavedPointView`
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// # use pasture_derive::PointType;
-    ///
-    /// #[repr(C)]
-    /// #[derive(Debug, Copy, Clone, PartialEq, Eq, PointType)]
-    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
-    ///
-    /// let points = vec![MyPointType(42), MyPointType(43)];
-    /// let view = InterleavedPointView::from_slice(points.as_slice());
-    /// assert_eq!(view.get_point_layout(), &MyPointType::layout());
-    /// ```
-    pub fn get_point_layout(&self) -> &PointLayout {
+impl<'d> PointBuffer for InterleavedPointView<'d> {
+    // TODO Refactor the code here and in InterleavedVecPointStorage (they are basically identical) by extracting them into a standalone function
+    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+        if point_index >= self.len() {
+            panic!(
+                "InterleavedPointView::get_point_by_copy: Point index {} out of bounds",
+                point_index
+            );
+        }
+
+        let offset_to_point = point_index * self.size_of_point_entry;
+        let point_slice =
+            &self.point_data[offset_to_point..(offset_to_point + self.size_of_point_entry)];
+        buf.copy_from_slice(point_slice);
+    }
+
+    fn get_attribute_by_copy(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
+    ) {
+        if point_index >= self.len() {
+            panic!(
+                "InterleavedPointView::get_attribute_by_copy: Point index {} out of bounds!",
+                point_index
+            );
+        }
+
+        if let Some(attribute_in_buffer) = self.point_layout.get_attribute(attribute) {
+            let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
+            let offset_to_attribute = offset_to_point_bytes + attribute_in_buffer.offset() as usize;
+            let attribute_size = attribute.size() as usize;
+
+            buf.copy_from_slice(
+                &self.point_data[offset_to_attribute..offset_to_attribute + attribute_size],
+            );
+        } else {
+            panic!("InterleavedPointView::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+        }
+    }
+
+    fn get_points_by_copy(&self, index_range: std::ops::Range<usize>, buf: &mut [u8]) {
+        let points_ref = self.get_points_ref(index_range);
+        buf[0..points_ref.len()].copy_from_slice(points_ref);
+    }
+
+    fn get_attribute_range_by_copy(
+        &self,
+        index_range: std::ops::Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
+    ) {
+        if index_range.end > self.len() {
+            panic!(
+                "InterleavedPointView::get_attribute_range_by_copy: Point indices {:?} out of bounds!",
+                index_range
+            );
+        }
+
+        if let Some(attribute_in_buffer) = self.point_layout.get_attribute(attribute) {
+            let attribute_size = attribute.size() as usize;
+            let start_index = index_range.start;
+
+            for point_index in index_range {
+                let offset_to_point_bytes = point_index * self.size_of_point_entry as usize;
+                let offset_to_attribute =
+                    offset_to_point_bytes + attribute_in_buffer.offset() as usize;
+                let offset_in_target_buf = (point_index - start_index) * attribute_size;
+                let target_buf_slice =
+                    &mut buf[offset_in_target_buf..offset_in_target_buf + attribute_size];
+
+                target_buf_slice.copy_from_slice(
+                    &self.point_data[offset_to_attribute..offset_to_attribute + attribute_size],
+                );
+            }
+        } else {
+            panic!("InterleavedPointView::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.point_count
+    }
+
+    fn point_layout(&self) -> &PointLayout {
         &self.point_layout
     }
 
-    /// Returns the number of point entries in the associated `InterleavedPointView`
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// # use pasture_derive::PointType;
-    ///
-    /// #[repr(C)]
-    /// #[derive(PointType)]
-    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
-    ///
-    /// let points = vec![MyPointType(42), MyPointType(43)];
-    /// let view = InterleavedPointView::from_slice(points.as_slice());
-    /// assert_eq!(view.len(), 2);
-    /// ```
-    pub fn len(&self) -> usize {
-        self.point_count
+    fn as_interleaved(&self) -> Option<&dyn InterleavedPointBuffer> {
+        Some(self)
     }
 }
 
-/// A non-owning view for per-attribute point data
-pub struct PerAttributePointView<'data> {
-    point_data: Vec<&'data [u8]>,
+impl<'d> InterleavedPointBuffer for InterleavedPointView<'d> {
+    fn get_point_ref(&self, point_index: usize) -> &[u8] {
+        if point_index >= self.len() {
+            panic!(
+                "InterleavedPointView::get_point_ref: Point index {} out of bounds!",
+                point_index
+            );
+        }
+
+        let offset_to_point = point_index * self.size_of_point_entry as usize;
+        &self.point_data[offset_to_point..offset_to_point + self.size_of_point_entry as usize]
+    }
+
+    fn get_points_ref(&self, index_range: std::ops::Range<usize>) -> &[u8] {
+        if index_range.end > self.len() {
+            panic!(
+                "InterleavedPointView::get_points_ref: Point indices {:?} out of bounds!",
+                index_range
+            );
+        }
+
+        let offset_to_point = index_range.start * self.size_of_point_entry as usize;
+        let total_bytes_of_range =
+            (index_range.end - index_range.start) * self.size_of_point_entry as usize;
+        &self.point_data[offset_to_point..offset_to_point + total_bytes_of_range]
+    }
+}
+
+/// A non-owning view for per-attribute point data. This is like `PerAttributeVecPointBuffer`, but it does not own the
+/// point data. It is useful for passing around point data in an untyped but safe manner, for example in I/O heavy code.
+pub struct PerAttributePointView<'d> {
+    point_data: Vec<&'d [u8]>,
     point_layout: PointLayout,
     point_count: usize,
 }
 
-impl<'data> PerAttributePointView<'data> {
+impl<'d> PerAttributePointView<'d> {
     /// Creates a new empty `PerAttributePointView` that stores no data and has an empty `PointLayout`
     /// ```
     /// # use pasture_core::containers::*;
@@ -163,7 +255,7 @@ impl<'data> PerAttributePointView<'data> {
     /// can be that `attributes.len()` does not match the number of attributes in the `PointLayout`, or that
     /// the length of one of the slices in `attributes` is no multiple of the size of a single entry of the
     /// corresponding point attribute in the `PointLayout`.
-    pub fn from_slices(attributes: Vec<&'data [u8]>, point_layout: PointLayout) -> Self {
+    pub fn from_slices(attributes: Vec<&'d [u8]>, point_layout: PointLayout) -> Self {
         if !Self::attribute_buffers_match_layout(&attributes, &point_layout) {
             panic!("PerAttributePointView::from_slices: attributes don't match the PointLayout!");
         }
@@ -202,7 +294,7 @@ impl<'data> PerAttributePointView<'data> {
     /// ```
     pub fn push_attribute<T: PrimitiveType>(
         &mut self,
-        attribute: &'data [T],
+        attribute: &'d [T],
         attribute_definition: &PointAttributeDefinition,
     ) {
         if attribute_definition.datatype() != T::data_type() {
@@ -233,7 +325,7 @@ impl<'data> PerAttributePointView<'data> {
     pub fn get_raw_data_for_attribute(
         &self,
         attribute: &PointAttributeDefinition,
-    ) -> Option<&'data [u8]> {
+    ) -> Option<&'d [u8]> {
         self.point_layout
             .index_of(attribute)
             .map(|attribute_index| self.point_data[attribute_index])
@@ -262,7 +354,7 @@ impl<'data> PerAttributePointView<'data> {
     pub fn get_typed_data_for_attribute<T: PrimitiveType>(
         &self,
         attribute: &PointAttributeDefinition,
-    ) -> Option<&'data [T]> {
+    ) -> Option<&'d [T]> {
         if attribute.datatype() != T::data_type() {
             panic!("PerAttributePointView::get_typed_data_for_attribute: PointAttributeDefinition does not have datatype T!");
         }
@@ -314,7 +406,7 @@ impl<'data> PerAttributePointView<'data> {
 
     fn push_first_attribute<T: PrimitiveType>(
         &mut self,
-        attribute: &'data [T],
+        attribute: &'d [T],
         attribute_definition: &PointAttributeDefinition,
     ) {
         self.point_count = attribute.len();
@@ -332,7 +424,7 @@ impl<'data> PerAttributePointView<'data> {
 
     fn push_additional_attribute<T: PrimitiveType>(
         &mut self,
-        attribute: &'data [T],
+        attribute: &'d [T],
         attribute_definition: &PointAttributeDefinition,
     ) {
         if attribute.len() != self.point_count {
@@ -372,5 +464,138 @@ impl<'data> PerAttributePointView<'data> {
         }
 
         true
+    }
+}
+
+impl<'d> PointBuffer for PerAttributePointView<'d> {
+    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+        if point_index >= self.len() {
+            panic!(
+                "PerAttributePointView::get_point_by_copy: Point index {} out of bounds!",
+                point_index
+            );
+        }
+
+        for (idx, attribute) in self.point_layout.attributes().enumerate() {
+            let attribute_buffer = self.point_data[idx];
+            let attribute_size = attribute.size() as usize;
+            let offset_in_buffer = point_index * attribute_size;
+            let offset_in_point = attribute.offset() as usize;
+
+            let buf_slice = &mut buf[offset_in_point..offset_in_point + attribute_size];
+            let attribute_slice =
+                &attribute_buffer[offset_in_buffer..offset_in_buffer + attribute_size];
+            buf_slice.copy_from_slice(attribute_slice);
+        }
+    }
+
+    fn get_attribute_by_copy(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
+    ) {
+        let attribute_slice = self.get_attribute_ref(point_index, attribute);
+        buf.copy_from_slice(attribute_slice);
+    }
+
+    fn get_points_by_copy(&self, index_range: std::ops::Range<usize>, buf: &mut [u8]) {
+        if index_range.end > self.len() {
+            panic!(
+                "PerAttributePointView::get_points_by_copy: Point indices {:?} out of bounds!",
+                index_range
+            );
+        }
+
+        let point_size = self.point_layout.size_of_point_entry() as usize;
+
+        for (idx, attribute) in self.point_layout.attributes().enumerate() {
+            let attribute_buffer = self.point_data[idx];
+            let attribute_size = attribute.size() as usize;
+            for point_index in index_range.clone() {
+                // Get the appropriate subsections of the attribute buffer and the point buffer that is passed in
+                let offset_in_attribute_buffer = point_index * attribute_size;
+                let attribute_slice = &attribute_buffer
+                    [offset_in_attribute_buffer..offset_in_attribute_buffer + attribute_size];
+
+                let offset_in_point = attribute.offset() as usize;
+                let offset_in_points_buffer = point_index * point_size + offset_in_point;
+                let buf_slice =
+                    &mut buf[offset_in_points_buffer..offset_in_points_buffer + attribute_size];
+
+                buf_slice.copy_from_slice(attribute_slice);
+            }
+        }
+    }
+
+    fn get_attribute_range_by_copy(
+        &self,
+        index_range: std::ops::Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &mut [u8],
+    ) {
+        let attribute_buffer_slice = self.get_attribute_range_ref(index_range, attribute);
+        buf.copy_from_slice(attribute_buffer_slice);
+    }
+
+    fn len(&self) -> usize {
+        self.point_count
+    }
+
+    fn point_layout(&self) -> &PointLayout {
+        &self.point_layout
+    }
+
+    fn as_per_attribute(&self) -> Option<&dyn PerAttributePointBuffer> {
+        Some(self)
+    }
+}
+
+impl<'d> PerAttributePointBuffer for PerAttributePointView<'d> {
+    fn get_attribute_ref(&self, point_index: usize, attribute: &PointAttributeDefinition) -> &[u8] {
+        if point_index >= self.len() {
+            panic!(
+                "PerAttributePointView::get_attribute_ref: Point index {} out of bounds!",
+                point_index
+            );
+        }
+
+        let attribute_index = match self.point_layout.index_of(attribute) {
+            Some(idx) => idx,
+            None => panic!("PerAttributePointView::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
+        };
+
+        let attribute_buffer = self.point_data[attribute_index];
+        let attribute_size = attribute.size() as usize;
+        let offset_in_attribute_buffer = point_index * attribute_size;
+        &attribute_buffer[offset_in_attribute_buffer..offset_in_attribute_buffer + attribute_size]
+    }
+
+    fn get_attribute_range_ref(
+        &self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+    ) -> &[u8] {
+        if index_range.end > self.len() {
+            panic!(
+                "PerAttributePointView::get_attribute_range_ref: Point indices {:?} out of bounds!",
+                index_range
+            );
+        }
+
+        let attribute_index = match self.point_layout.index_of(attribute) {
+            Some(idx) => idx,
+            None => panic!("PerAttributePointView::get_attribute_range_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
+        };
+
+        let attribute_buffer = self.point_data[attribute_index];
+        let start_offset_in_attribute_buffer = index_range.start * attribute.size() as usize;
+        let end_offset_in_attribute_buffer = start_offset_in_attribute_buffer
+            + (index_range.end - index_range.start) * attribute.size() as usize;
+        &attribute_buffer[start_offset_in_attribute_buffer..end_offset_in_attribute_buffer]
+    }
+
+    fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_> {
+        PerAttributePointBufferSlice::new(self, range)
     }
 }

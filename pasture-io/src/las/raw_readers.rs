@@ -617,7 +617,7 @@ impl<T: Read + Seek> RawLASReader<T> {
 
             self.read_chunk_default_layout(&mut points_chunk[..], points_in_chunk)?;
 
-            point_buffer.push_points_interleaved(&InterleavedPointView::from_raw_slice(
+            point_buffer.push(&InterleavedPointView::from_raw_slice(
                 &points_chunk[0..bytes_in_chunk],
                 self.layout.clone(),
             ));
@@ -664,7 +664,7 @@ impl<T: Read + Seek> RawLASReader<T> {
                 point_buffer.point_layout(),
             )?;
 
-            point_buffer.push_points_interleaved(&InterleavedPointView::from_raw_slice(
+            point_buffer.push(&InterleavedPointView::from_raw_slice(
                 &points_chunk[0..bytes_in_chunk],
                 point_buffer.point_layout().clone(),
             ));
@@ -1449,7 +1449,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
                 points_in_chunk,
             )?;
 
-            point_buffer.push_points_interleaved(&InterleavedPointView::from_raw_slice(
+            point_buffer.push(&InterleavedPointView::from_raw_slice(
                 &points_chunk[0..bytes_in_chunk],
                 self.layout.clone(),
             ));
@@ -1493,7 +1493,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
                 point_buffer.point_layout(),
             )?;
 
-            point_buffer.push_points_interleaved(&InterleavedPointView::from_raw_slice(
+            point_buffer.push(&InterleavedPointView::from_raw_slice(
                 &points_chunk[0..bytes_in_chunk],
                 point_buffer.point_layout().clone(),
             ));

@@ -87,7 +87,7 @@ fn get_args() -> Result<Args> {
     .author("Pascal Bormann <pascal.bormann@igd.fraunhofer.de>")
     .arg(Arg::with_name("INPUT").short("i").takes_value(true).value_name("INPUT").help("Input file or directory. Directories are scanned (non-recursively) for point cloud files with known file extensions").required(true))
     .arg(Arg::with_name("OUTPUT").short("o").takes_value(true).value_name("OUTPUT").help("Output directory").required(true))
-    .arg(Arg::with_name("N").short("n").takes_value(true).value_name("N").help("Take the first N points of each LAZ chunk").required(true))
+    .arg(Arg::with_name("N").short("n").takes_value(true).value_name("N").help("Take the first N points of each LAZ chunk").default_value("50000"))
     .arg(Arg::with_name("LOCAL_BOUNDS").long("chunk-bounds").help("Use the local bounds of each chunk for point reordering"))
     .get_matches();
 
@@ -172,8 +172,7 @@ fn hilbertize_chunk(
     // could we do with the standard algorithms
 
     for (source_index, _) in indexed_morton_indices.iter().take(take_first_n) {
-        output_buffer
-            .extend_from_interleaved(&input_buffer.slice(*source_index..*source_index + 1));
+        output_buffer.push(&input_buffer.slice(*source_index..*source_index + 1));
     }
 }
 
