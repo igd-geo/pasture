@@ -25,7 +25,14 @@ Rust library for point cloud processing
         - [ ] Check robustness on types that are `#[repr(packed)]` but not `#[repr(C)]`
         - [x] Documentation of the `BUILTIN_...` and `attribute = "..."` syntax
         - [x] Get rid of warnings, clean up code
+    - [ ] Can we support `Option<T>` for `T: PrimitiveType`? This could make it easier to work with data such as LAS where there are different runtime formats
 - [ ] Examples of usage
+- [ ] Documentation 
+    - [ ] Module-level documentation is missing 
+    - [ ] Check for consistent naming and linking in docs, i.e. using 'the associated XYZ' and properly linking to types
+    - [ ] Include some explanatory pictures for the memory layouts. Should be possible by including HTML
+    - [ ] Provide more examples in docs and add `Examples` header prior to examples (by adding `# Examples`)
+    - [ ] Documentation of `points` iterators is wrong
 - [ ] Find better names for the different point buffer flavors. `InterleavedVecPointStorage` is quite a mouthful... 
 
 ## I/O
@@ -77,3 +84,15 @@ Rust library for point cloud processing
 - [ ] 3D Tiles
     - [ ] Reader
     - [ ] Writer
+
+# Algorithms
+
+- [x] Calculate bounding box
+
+# Tools
+
+- [ ] `info`
+    - [ ] Support for other data types besides LAS
+- [ ] `split`
+- [ ] `merge`
+- [ ] Combine tools into single multi-command tool (e.g. `pasture info ...`, `pasture split ...` etc.)
