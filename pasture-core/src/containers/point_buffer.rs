@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::FromIterator};
 
 use std::ops::Range;
 
@@ -11,7 +11,7 @@ use crate::{
 use rayon::prelude::*;
 
 // TODO Can we maybe impl<T: PointBufferWriteable> &T and provide some push<U> methods?
-// TODO Figure out what I have to implement so that I can 'collect' the point/attribute iterators into PointBuffers
+// TODO This file is VERY big, split it up into multiple files
 
 /// Base trait for all containers that store point data. A PointBuffer stores any number of point entries
 /// with a layout defined by the PointBuffers associated PointLayout structure.
@@ -94,12 +94,12 @@ pub trait PointBufferWriteable: PointBuffer {
     fn clear(&mut self);
 }
 
-/// Trait for PointBuffer types that store interleaved point data. In an interleaved PointBuffer, all attributes
-/// for a single point are stored together in memory. To illustrate this, suppose the PointLayout of some point
-/// type defines the default attributes POSITION_3D (Vector3<f64>), INTENSITY (u16) and CLASSIFICATION (u8). In
-/// an InterleavedPointBuffer, the data layout is like this:<br>
-/// [Vector3<f64>, u16, u8, Vector3<f64>, u16, u8, ...]<br>
-///  |------Point 1-------| |------Point 2-------| |--...<br>
+/// Trait for `PointBuffer` types that store point data in Interleaved memory layout. In an `InterleavedPointBuffer`, all attributes
+/// for a single point are stored together in memory. To illustrate this, suppose the `PointLayout` of some point
+/// type defines the default attributes `POSITION_3D` (`Vector3<f64>`), `INTENSITY` (`u16`) and `CLASSIFICATION` (`u8`). In
+/// an `InterleavedPointBuffer`, the data layout is like this:<br>
+/// `[Vector3<f64>, u16, u8, Vector3<f64>, u16, u8, ...]`<br>
+/// ` |------Point 1-------| |------Point 2-------| |--...`<br>
 pub trait InterleavedPointBuffer: PointBuffer {
     /// Returns a pointer to the raw memory of the point entry at the given index in this PointBuffer. In contrast
     /// to [get_point_by_copy](PointBuffer::get_point_by_copy), this function performs no copy operations and thus can
@@ -111,7 +111,7 @@ pub trait InterleavedPointBuffer: PointBuffer {
     fn get_points_ref(&self, index_range: Range<usize>) -> &[u8];
 }
 
-/// Trait for PointBuffer types that store interleaved point data and are mutable
+/// Trait for `InterleavedPointBuffer` types that provide mutable access to the point data
 pub trait InterleavedPointBufferMut: InterleavedPointBuffer {
     /// Mutable version of [get_point_ref](InterleavedPointBuffer::get_point_ref)
     fn get_point_mut(&mut self, point_index: usize) -> &mut [u8];
@@ -119,8 +119,8 @@ pub trait InterleavedPointBufferMut: InterleavedPointBuffer {
     fn get_points_mut(&mut self, index_range: Range<usize>) -> &mut [u8];
 }
 
-/// Trait for PointBuffer types that store point data per attribute. In buffers of this type, the data for a single
-/// attribute of all points in stored together in memory. To illustrate this, suppose the PointLayout of some point
+/// Trait for `PointBuffer` types that store point data in PerAttribute memory layout. In buffers of this type, the data for a single
+/// attribute of all points in stored together in memory. To illustrate this, suppose the `PointLayout` of some point
 /// type defines the default attributes `POSITION_3D` (`Vector3<f64>`), `INTENSITY` (`u16`) and `CLASSIFICATION` (`u8`). In
 /// a `PerAttributePointBuffer`, the data layout is like this:<br>
 /// `[Vector3<f64>, Vector3<f64>, Vector3<f64>, ...]`<br>
@@ -146,7 +146,7 @@ pub trait PerAttributePointBuffer: PointBuffer {
     fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_>;
 }
 
-/// Trait for `PointBuffer` types that are `PerAttributePointBuffer` and also provide mutable access to specific attributes
+/// Trait for `PerAttributePointBuffer` types that provide mutable access to specific attributes
 pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
     /// Mutable version of [get_attribute_ref](PerAttributePointBuffer::get_attribute_ref)
     fn get_attribute_mut(
@@ -218,6 +218,9 @@ pub struct InterleavedVecPointStorage {
 
 impl InterleavedVecPointStorage {
     /// Creates a new empty `InterleavedVecPointStorage` with the given `PointLayout`
+    ///
+    /// # Examples
+    ///
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
@@ -237,6 +240,9 @@ impl InterleavedVecPointStorage {
     /// Creates a new `InterleavedVecPointStorage` with enough capacity to store `capacity` points using
     /// the given `PointLayout`. Calling this method is similar to `Vec::with_capacity`: Internal memory
     /// is reserved but the `len()` is not affected.
+    ///
+    /// # Examples
+    ///
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
@@ -258,9 +264,7 @@ impl InterleavedVecPointStorage {
     /// reasons this function performs a `PointLayout` check. If you want to add many points quickly, either use
     /// the `push_points` variant which takes a range, or use the `push_point_unchecked` variant to circumvent checks.
     ///
-    /// # Panics
-    ///
-    /// If the `PointLayout` of `T` does not match the `PointLayout` of the associated `InterleavedVecPointStorage`.
+    /// # Examples
     ///
     /// ```
     /// # use pasture_core::containers::*;
@@ -276,6 +280,10 @@ impl InterleavedVecPointStorage {
     ///   storage.push_point(MyPointType(42));
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the `PointLayout` of `T` does not match the `PointLayout` of the associated `InterleavedVecPointStorage`.
     pub fn push_point<T: PointType>(&mut self, point: T) {
         let point_layout = T::layout();
         if point_layout != self.layout {
@@ -291,6 +299,8 @@ impl InterleavedVecPointStorage {
     /// Pushes a single point into the associated `InterleavedVecPointStorage`. *Note:* This method performs no checks
     /// regarding the point type `T`, so it is very unsafe! Only call this method if you know the point type matches
     /// the `PointLayout` of the associated `InterleavedVecPointStorage`!
+    ///
+    /// # Examples
     ///
     /// ```
     /// # use pasture_core::containers::*;
@@ -315,9 +325,7 @@ impl InterleavedVecPointStorage {
 
     /// Pushes a range of points into the associated `InterleavedVecPointStorage`.
     ///
-    /// # Panics
-    ///
-    /// If the `PointLayout` of type `T` does not match the layout of the associated `InterleavedVecPointStorage`.
+    /// # Examples
     ///
     /// ```
     /// # use pasture_core::containers::*;
@@ -334,6 +342,10 @@ impl InterleavedVecPointStorage {
     ///   storage.push_points(&points);
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the `PointLayout` of type `T` does not match the layout of the associated `InterleavedVecPointStorage`.
     pub fn push_points<T: PointType>(&mut self, points: &[T]) {
         let point_layout = T::layout();
         if point_layout != self.layout {
@@ -673,6 +685,41 @@ impl InterleavedPointBufferMut for InterleavedVecPointStorage {
     }
 }
 
+impl<T: PointType> FromIterator<T> for InterleavedVecPointStorage {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut buffer = Self::new(T::layout());
+        for point in iter {
+            buffer.push_point_unchecked(point);
+        }
+        buffer
+    }
+}
+
+impl<T: PointType> From<&'_ [T]> for InterleavedVecPointStorage {
+    fn from(slice: &'_ [T]) -> Self {
+        let mut buffer = Self::with_capacity(slice.len(), T::layout());
+        buffer.push_points(slice);
+        buffer
+    }
+}
+
+impl<T: PointType> From<&'_ mut [T]> for InterleavedVecPointStorage {
+    fn from(slice: &'_ mut [T]) -> Self {
+        let mut buffer = Self::with_capacity(slice.len(), T::layout());
+        buffer.push_points(slice);
+        buffer
+    }
+}
+
+impl<T: PointType> From<Vec<T>> for InterleavedVecPointStorage {
+    fn from(vec: Vec<T>) -> Self {
+        //TODO We could optimize this by transmogrifying the Vec<T> into a Vec<u8> and moving this vec
+        // into Self. But it requires unsafe code and we have to make sure that this always works for any
+        // possible PointType
+        Self::from(vec.as_slice())
+    }
+}
+
 /// `PointBuffer` type that uses PerAttribute memory layout and `Vec`-based owning storage for point data
 pub struct PerAttributeVecPointStorage {
     layout: PointLayout,
@@ -681,6 +728,9 @@ pub struct PerAttributeVecPointStorage {
 
 impl PerAttributeVecPointStorage {
     /// Creates a new empty `PerAttributeVecPointStorage` with the given `PointLayout`
+    ///
+    /// # Examples
+    ///
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
@@ -699,6 +749,9 @@ impl PerAttributeVecPointStorage {
     /// Creates a new `PerAttributeVecPointStorage` with enough capacity to store `capacity` points using
     /// the given `PointLayout`. Calling this method is similar to `Vec::with_capacity`: Internal memory
     /// is reserved but the `len()` is not affected.
+    ///
+    /// # Examples
+    ///
     /// ```
     /// # use pasture_core::containers::*;
     /// # use pasture_core::layout::*;
@@ -719,11 +772,7 @@ impl PerAttributeVecPointStorage {
 
     /// Pushes a single point into the associated `PerAttributeVecPointStorage`.
     ///
-    /// # Panics
-    ///
-    /// If the `PointLayout` of type `T` does not match the layout of the associated `PerAttributeVecPointStorage`.
-    ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// # use pasture_core::containers::*;
@@ -739,6 +788,10 @@ impl PerAttributeVecPointStorage {
     ///   storage.push_point(MyPointType(42));
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the `PointLayout` of type `T` does not match the layout of the associated `PerAttributeVecPointStorage`.
     pub fn push_point<T: PointType>(&mut self, point: T) {
         // We don't care for the attribute offsets in T::layout(), because PerAttributeVecPointStorage stores each
         // attribute in a separate Vec. So we only compare that all attributes of T::layout() exist and that their
@@ -760,11 +813,7 @@ impl PerAttributeVecPointStorage {
 
     /// Pushes a range of points into the associated `PerAttributeVecPointStorage`.
     ///
-    /// # Panics
-    ///
-    /// If the `PointLayout` of type `T` does not match the layout of the associated `PerAttributeVecPointStorage`.
-    ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// # use pasture_core::containers::*;
@@ -780,6 +829,10 @@ impl PerAttributeVecPointStorage {
     ///   storage.push_points(&[MyPointType(42), MyPointType(43)]);
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the `PointLayout` of type `T` does not match the layout of the associated `PerAttributeVecPointStorage`.
     pub fn push_points<T: PointType>(&mut self, points: &[T]) {
         self.reserve(points.len());
 
@@ -807,9 +860,7 @@ impl PerAttributeVecPointStorage {
     /// these edit operations and then has a method that checks correctness of the internal datastructure before yielding the
     /// `PerAttributeVecPointStorage` again
     ///
-    /// # Panics
-    ///
-    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
+    /// # Examples
     ///
     /// ```
     /// # use pasture_core::containers::*;
@@ -826,6 +877,10 @@ impl PerAttributeVecPointStorage {
     ///   storage.push_attribute(&attributes::GPS_TIME, 0.123);
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
     pub fn push_attribute<T: PrimitiveType>(
         &mut self,
         attribute: &PointAttributeDefinition,
@@ -852,9 +907,7 @@ impl PerAttributeVecPointStorage {
     /// these edit operations and then has a method that checks correctness of the internal datastructure before yielding the
     /// `PerAttributeVecPointStorage` again
     ///
-    /// # Panics
-    ///
-    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
+    /// # Examples
     ///
     /// ```
     /// # use pasture_core::containers::*;
@@ -871,6 +924,10 @@ impl PerAttributeVecPointStorage {
     ///   storage.push_attribute_range(&attributes::GPS_TIME, &[0.123, 0.456, 0.789]);
     /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
     pub fn push_attribute_range<T: PrimitiveType>(
         &mut self,
         attribute: &PointAttributeDefinition,
@@ -931,7 +988,7 @@ impl PerAttributeVecPointStorage {
             });
     }
 
-    /// Like `sort_by_attribute`, but sorts each attribute in parallel
+    /// Like `sort_by_attribute`, but sorts each attribute in parallel. Uses the [`rayon`]() crate for parallelization
     pub fn par_sort_by_attribute<T: PrimitiveType + Ord>(
         &mut self,
         attribute: &PointAttributeDefinition,
@@ -1319,6 +1376,38 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
     }
 }
 
+impl<T: PointType> FromIterator<T> for PerAttributeVecPointStorage {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut buffer = Self::new(T::layout());
+        for point in iter {
+            buffer.push_point(point);
+        }
+        buffer
+    }
+}
+
+impl<T: PointType> From<&'_ [T]> for PerAttributeVecPointStorage {
+    fn from(slice: &'_ [T]) -> Self {
+        let mut buffer = Self::with_capacity(slice.len(), T::layout());
+        buffer.push_points(slice);
+        buffer
+    }
+}
+
+impl<T: PointType> From<&'_ mut [T]> for PerAttributeVecPointStorage {
+    fn from(slice: &'_ mut [T]) -> Self {
+        let mut buffer = Self::with_capacity(slice.len(), T::layout());
+        buffer.push_points(slice);
+        buffer
+    }
+}
+
+impl<T: PointType> From<Vec<T>> for PerAttributeVecPointStorage {
+    fn from(vec: Vec<T>) -> Self {
+        Self::from(vec.as_slice())
+    }
+}
+
 /// Non-owning, read-only slice of the data of an `InterleavedPointBuffer`
 pub struct InterleavedPointBufferSlice<'p> {
     buffer: &'p dyn InterleavedPointBuffer,
@@ -1327,6 +1416,10 @@ pub struct InterleavedPointBufferSlice<'p> {
 
 impl<'p> InterleavedPointBufferSlice<'p> {
     /// Creates a new `InterleavedPointBufferSlice` pointing to the given range within the given buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the end of `range_in_buffer` is larger than `buffer.len()`
     pub fn new(buffer: &'p dyn InterleavedPointBuffer, range_in_buffer: Range<usize>) -> Self {
         if range_in_buffer.end > buffer.len() {
             panic!(
@@ -1410,6 +1503,10 @@ pub struct PerAttributePointBufferSlice<'p> {
 
 impl<'p> PerAttributePointBufferSlice<'p> {
     /// Creates a new `PerAttributePointBufferSlice` pointing to the given range within the given buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the end of `range_in_buffer` is larger than `buffer.len()`
     pub fn new(buffer: &'p dyn PerAttributePointBuffer, range_in_buffer: Range<usize>) -> Self {
         if range_in_buffer.end > buffer.len() {
             panic!(
@@ -1505,6 +1602,10 @@ unsafe impl<'a> Send for PerAttributePointBufferSliceMut<'a> {}
 
 impl<'p> PerAttributePointBufferSliceMut<'p> {
     /// Creates a new `PerAttributePointBufferSlice` pointing to the given range within the given buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the end of `range_in_buffer` is larger than `buffer.len()`
     pub fn new(
         buffer: &'p mut dyn PerAttributePointBufferMut<'p>,
         range_in_buffer: Range<usize>,
@@ -1665,7 +1766,8 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributePointBufferSliceMut<'p> 
 
 /// Returns a slice of the given attribute data in the associated `PerAttributePointBuffer`
 ///
-/// # Example
+/// # Examples
+///
 /// ```
 /// # use pasture_core::containers::*;
 /// # use pasture_core::layout::*;
@@ -1696,7 +1798,8 @@ pub fn attribute_slice<'a, T: PrimitiveType>(
 
 /// Returns a mutable slice of the given attribute data in the associated `PerAttributeVecPointStorage`
 ///
-/// # Example
+/// # Examples
+///
 /// ```
 /// # use pasture_core::containers::*;
 /// # use pasture_core::layout::*;
@@ -3062,5 +3165,95 @@ mod tests {
         other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
 
         source_points.splice(0..1, &other_points);
+    }
+
+    #[test]
+    fn test_interleaved_point_buffer_from_iterator() {
+        let no_points: Vec<TestPointType> = vec![];
+        let some_points: Vec<TestPointType> =
+            vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+
+        {
+            let empty_buffer: InterleavedVecPointStorage = no_points.into_iter().collect();
+            assert_eq!(0, empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *empty_buffer.point_layout());
+        }
+
+        {
+            let non_empty_buffer: InterleavedVecPointStorage =
+                some_points.clone().into_iter().collect();
+            assert_eq!(some_points.len(), non_empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
+
+            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            assert_eq!(some_points, points);
+        }
+    }
+
+    #[test]
+    fn test_interleaved_point_buffer_from_slice() {
+        let no_points: Vec<TestPointType> = vec![];
+        let some_points: Vec<TestPointType> =
+            vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+
+        {
+            let empty_buffer = InterleavedVecPointStorage::from(no_points.as_slice());
+            assert_eq!(0, empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *empty_buffer.point_layout());
+        }
+
+        {
+            let non_empty_buffer = InterleavedVecPointStorage::from(some_points.as_slice());
+            assert_eq!(2, non_empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
+
+            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            assert_eq!(some_points, points);
+        }
+    }
+
+    #[test]
+    fn test_per_attribute_point_buffer_from_iterator() {
+        let no_points: Vec<TestPointType> = vec![];
+        let some_points: Vec<TestPointType> =
+            vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+
+        {
+            let empty_buffer: PerAttributeVecPointStorage = no_points.into_iter().collect();
+            assert_eq!(0, empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *empty_buffer.point_layout());
+        }
+
+        {
+            let non_empty_buffer: PerAttributeVecPointStorage =
+                some_points.clone().into_iter().collect();
+            assert_eq!(some_points.len(), non_empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
+
+            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            assert_eq!(some_points, points);
+        }
+    }
+
+    #[test]
+    fn test_per_attribute_point_buffer_from_slice() {
+        let no_points: Vec<TestPointType> = vec![];
+        let some_points: Vec<TestPointType> =
+            vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+
+        {
+            let empty_buffer = PerAttributeVecPointStorage::from(no_points.as_slice());
+            assert_eq!(0, empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *empty_buffer.point_layout());
+        }
+
+        {
+            let non_empty_buffer = PerAttributeVecPointStorage::from(some_points.as_slice());
+            assert_eq!(2, non_empty_buffer.len());
+            assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
+
+            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            assert_eq!(some_points, points);
+        }
     }
 }

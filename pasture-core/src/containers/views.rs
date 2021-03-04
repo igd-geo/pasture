@@ -143,10 +143,13 @@ mod iterators {
 // TODO points() should be more powerful. It should be able to return the points in any type T that is convertible from
 // the underlying PointLayout of the buffer
 
-/// Returns an iterator over all points within the given PointBuffer, strongly typed to the PointType T. Assumes no
-/// internal memory representation for the source buffer, so returns an opaque iterator type that works with arbitrary
-/// PointBuffer implementations. If you know the type of your PointBuffer, prefer one of the points_from_... variants
-/// as they will yield better performance. Or simply use the points! macro, which selects the best matching candidate.
+/// Returns an iterator over all points within the given PointBuffer, strongly typed to the PointType T. Works with any type
+/// that implements the `PointBuffer` trait, but returns points by value, potentially copying them. If you want to iterate over
+/// (mutable) references, use the `points_ref`/`points_mut` functions, which require an `InterleavedPointBuffer`.
+///
+/// # Panics
+///
+/// Panics if the `PointLayout` of `buffer` does not match the default `PointLayout` of type `T`
 pub fn points<'a, T: PointType + 'a>(buffer: &'a dyn PointBuffer) -> impl Iterator<Item = T> + 'a {
     let point_layout = T::layout();
     if point_layout != *buffer.point_layout() {
@@ -160,7 +163,11 @@ pub fn points<'a, T: PointType + 'a>(buffer: &'a dyn PointBuffer) -> impl Iterat
     iterators::PointIteratorByValue::new(buffer)
 }
 
-/// Returns an iterator over references to all points within the given PointBuffer, strongly typed to the PointType T.
+/// Returns an iterator over references to all points within the given `PointBuffer`, strongly typed to the `PointType` `T`.
+///
+/// # Panics
+///
+/// Panics if the `PointLayout` of `buffer` does not match the default `PointLayout` of type `T`
 pub fn points_ref<'a, T: PointType + 'a, B: InterleavedPointBuffer + ?Sized>(
     buffer: &'a B,
 ) -> iterators::PointIteratorByRef<'a, T> {
@@ -176,7 +183,11 @@ pub fn points_ref<'a, T: PointType + 'a, B: InterleavedPointBuffer + ?Sized>(
     iterators::PointIteratorByRef::new(buffer)
 }
 
-/// Returns an iterator over mutable references to all points within the given PointBuffer, strongly typed to the PointType T.
+/// Returns an iterator over mutable references to all points within the given `PointBuffer`, strongly typed to the `PointType` `T`.
+///
+/// # Panics
+///
+/// Panics if the `PointLayout` of `buffer` does not match the default `PointLayout` of type `T`
 pub fn points_mut<'a, T: PointType + 'a, B: InterleavedPointBufferMut + ?Sized>(
     buffer: &'a mut B,
 ) -> iterators::PointIteratorByMut<'a, T> {
@@ -192,7 +203,15 @@ pub fn points_mut<'a, T: PointType + 'a, B: InterleavedPointBufferMut + ?Sized>(
     iterators::PointIteratorByMut::new(buffer)
 }
 
-/// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
+/// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`. Works
+/// with any type that implements the `PointBuffer` trait, but returns the attribute data by value, potentially copying it. If you want to iterate over
+/// (mutable) references to attribute data, use the `attribute_ref`/`attribute_mut` functions, which require a `PerAttributePointBuffer`. For iterating
+/// over multiple attributes at once, use the `attributes!` macro and its variants.
+///
+/// # Panics
+///
+/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.<br>
+/// Panics if the `PointAttributeDataType` of the `attribute` in the `buffer` is not `T`. If you want to convert the attribute into type `T`, use `attribute_as`
 pub fn attribute<'a, T: PrimitiveType + 'a>(
     buffer: &'a dyn PointBuffer,
     attribute: &'a PointAttributeDefinition,
@@ -201,7 +220,14 @@ pub fn attribute<'a, T: PrimitiveType + 'a>(
 }
 
 /// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, converted to the `PrimitiveType` `T`. Use this function
-/// when the `buffer` stores the attribute with a different datatype than `T`
+/// when the `buffer` stores the attribute with a different datatype than `T`. This requires that a primitive conversion from the `PointAttributeDataType`
+/// of the `attribute` in the `buffer` into type `T` exists. See the documentation of the [conversion](crate::layout::conversion) module for more information
+/// on primitive type conversions in pasture.
+///
+/// # Panics
+///
+/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.<br>
+/// Panics if there is no valid primitive conversion between from the `PointAttributeDataType` of `attribute` into `T`.
 pub fn attribute_as<'a, T: PrimitiveType + 'a>(
     buffer: &'a dyn PointBuffer,
     attribute: &'a PointAttributeDefinition,
@@ -209,7 +235,11 @@ pub fn attribute_as<'a, T: PrimitiveType + 'a>(
     attr1::AttributeIteratorByValueWithConversion::<T>::new(buffer, attribute)
 }
 
-/// Returns an iterator over references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
+/// Returns an iterator over references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`.
+///
+/// # Panics
+///
+/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.
 pub fn attribute_ref<'a, T: PrimitiveType + 'a>(
     buffer: &'a dyn PerAttributePointBuffer,
     attribute: &'a PointAttributeDefinition,
@@ -217,7 +247,11 @@ pub fn attribute_ref<'a, T: PrimitiveType + 'a>(
     attr1::AttributeIteratorByRef::<T>::new(buffer, attribute)
 }
 
-/// Returns an iterator over mutable references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`
+/// Returns an iterator over mutable references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`.
+///
+/// # Panics
+///
+/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.
 pub fn attribute_mut<'a, T: PrimitiveType + 'a>(
     buffer: &'a mut dyn PerAttributePointBufferMut,
     attribute: &'a PointAttributeDefinition,
@@ -237,6 +271,11 @@ pub fn attribute_mut<'a, T: PrimitiveType + 'a>(
 /// `(ATTRIBUTE_1_TYPE, ATTRIBUTE_2_TYPE, ...)`
 ///
 /// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
+///
+/// # Panics
+///
+/// Panics if any of the attributes are not contained within the `buffer`.
+/// Panics if, for any attribute, the desired type does not match the `PointAttributeDataType` of that attribute.
 #[macro_export]
 macro_rules! attributes {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
@@ -271,6 +310,11 @@ macro_rules! attributes {
 /// `(ATTRIBUTE_1_TYPE, ATTRIBUTE_2_TYPE, ...)`
 ///
 /// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
+///
+/// # Panics
+///
+/// Panics if any of the attributes are not contained within the `buffer`.
+/// Panics if, for any attribute, no conversion exists between this attributes `PointAttributeDataType` and the desired type for this attribute.
 #[macro_export]
 macro_rules! attributes_as {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
@@ -305,6 +349,11 @@ macro_rules! attributes_as {
 /// `(&ATTRIBUTE_1_TYPE, &ATTRIBUTE_2_TYPE, ...)`
 ///
 /// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
+///
+/// # Panics
+///
+/// Panics if any of the attributes are not contained within the `buffer`.
+/// Panics if, for any attribute, the desired type does not match the `PointAttributeDataType` of that attribute.
 #[macro_export]
 macro_rules! attributes_ref {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
@@ -336,6 +385,11 @@ macro_rules! attributes_ref {
 /// `(&mut ATTRIBUTE_1_TYPE, &mut ATTRIBUTE_2_TYPE, ...)`
 ///
 /// *Note:* Currently, a maximum of 4 attributes at the same time are supported.
+///
+/// # Panics
+///
+/// Panics if any of the attributes are not contained within the `buffer`.
+/// Panics if, for any attribute, the desired type does not match the `PointAttributeDataType` of that attribute.
 #[macro_export]
 macro_rules! attributes_mut {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {

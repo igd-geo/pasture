@@ -610,7 +610,7 @@ pub enum FieldAlignment {
 ///
 /// Most code in Pasture supports point clouds with either of these memory layouts. To correctly handle memory layout and access
 /// in both Interleaved and PerAttribute layout, each buffer in Pasture that stores point cloud data requires a piece of metadata
-/// that describes the attributes of the point cloud with their [respective Rust types](pasture_core::layout::PointAttributeDataType), their order, their memory alignment
+/// that describes the attributes of the point cloud with their [respective Rust types](PointAttributeDataType), their order, their memory alignment
 /// and their potential offset within a single point entry in Interleaved format. All this information is stored inside the `PointLayout`
 /// structure.
 ///

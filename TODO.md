@@ -5,7 +5,8 @@
         - [ ] Figure out ways of accessing the point data in known (but variable) formats, such as the 11 LAS formats
     - [x] PerAttributePointBuffer
         - [ ] Improve `push_attribute` and `push_attribute_range` by using the builder pattern
-    - [ ] Support iterator `collect`
+    - [x] Support iterator `collect`
+        - [ ] `From<[T;N]>` is not possible at the moment because it requires support for const generics
 - [ ] Point Views
     - [x] Interleaved view
     - [x] PerAttribute view
@@ -22,11 +23,11 @@
     - [ ] Can we support `Option<T>` for `T: PrimitiveType`? This could make it easier to work with data such as LAS where there are different runtime formats
 - [ ] Examples of usage
 - [ ] Documentation 
-    - [ ] Module-level documentation is missing 
+    - [x] Module-level documentation is missing 
     - [ ] Check for consistent naming and linking in docs, i.e. using 'the associated XYZ' and properly linking to types
     - [ ] Include some explanatory pictures for the memory layouts. Should be possible by including HTML
     - [ ] Provide more examples in docs and add `Examples` header prior to examples (by adding `# Examples`)
-    - [ ] Documentation of `points` iterators is wrong
+    - [x] Documentation of `points` iterators is wrong
 - [ ] Find better names for the different point buffer flavors. `InterleavedVecPointStorage` is quite a mouthful... 
 
 # I/O

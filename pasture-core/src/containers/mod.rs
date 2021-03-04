@@ -5,7 +5,7 @@
 //! specific point cloud buffer in Pasture. It provides basic access to the point data without making
 //! any assumptions about the memory layout of the point data. More specific types include [InterleavedPointBuffer]
 //! and [PerAttributePointBuffer], which store data in an Interleaved or PerAttribute memory layout.
-//! For an explanation of these memory layouts, see the [PointLayout] type.
+//! For an explanation of these memory layouts, see the [PointLayout](crate::layout::PointLayout) type.
 //!
 //! On top of these traits, Pasture provides some specific implementations for storing contiguous
 //! point data in [Interleaved](InterleavedVecPointStorage) or [PerAttribute](PerAttributeVecPointStorage)
