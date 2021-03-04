@@ -1,3 +1,20 @@
+//! Provides the core data structures and traits for storing point cloud data in memory.
+//!
+//! Pasture exposes a hierarchy of traits that define the capabilities of the in-memory buffers that
+//! the point data is stored in. The most basic trait is [PointBuffer], which is implemented by every
+//! specific point cloud buffer in Pasture. It provides basic access to the point data without making
+//! any assumptions about the memory layout of the point data. More specific types include [InterleavedPointBuffer]
+//! and [PerAttributePointBuffer], which store data in an Interleaved or PerAttribute memory layout.
+//! For an explanation of these memory layouts, see the [PointLayout] type.
+//!
+//! On top of these traits, Pasture provides some specific implementations for storing contiguous
+//! point data in [Interleaved](InterleavedVecPointStorage) or [PerAttribute](PerAttributeVecPointStorage)
+//! layouts, as well as [non-owning](InterleavedPointView) and [sliced](InterleavedPointBufferSlice) versions
+//! of these buffers.
+//!
+//! Lastly, this module exposes some helper functions for iterating over the point data inside any of
+//! these buffers.
+
 mod point_buffer;
 pub use self::point_buffer::*;
 

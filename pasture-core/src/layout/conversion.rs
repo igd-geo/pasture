@@ -1,17 +1,18 @@
-/// Contains helper function and structures for raw binary point format conversions. This module contains a lot of unsafe
-/// code because it has to support conversions between various point formats at runtime. The conversions operate on binary
-/// buffers (`&[u8]` and `&mut [u8]`) that represent the binary layout of strongly typed `PointTypes`. Given two point
-/// types `A: PointType` and `B: PointType`, a runtime conversion from `A` to `B` works by first obtaining the binary
-/// representations of `A` and `B` through `view_raw_bytes`/`view_raw_bytes_mut`:
-/// ```ignore
-/// let point_a : A = Default::default();
-/// let point_b : B = Default::default();
-///
-/// let buf_a = unsafe { view_raw_bytes(&a) };
-/// let buf_b = unsafe { view_raw_bytes_mut(&mut b) };
-/// ```
-/// The conversion then operates on these two buffers. As this is a *highly* unsafe operation where all sorts of things
-/// could go wrong, any conversion is only valid together with the *exact* `PointLayout` of both `A` and `B`!
+//! Contains helper function and structures for raw binary point format conversions. This module contains a lot of unsafe
+//! code because it has to support conversions between various point formats at runtime. The conversions operate on binary
+//! buffers (`&[u8]` and `&mut [u8]`) that represent the binary layout of strongly typed `PointTypes`. Given two point
+//! types `A: PointType` and `B: PointType`, a runtime conversion from `A` to `B` works by first obtaining the binary
+//! representations of `A` and `B` through `view_raw_bytes`/`view_raw_bytes_mut`:
+//! ```ignore
+//! let point_a : A = Default::default();
+//! let point_b : B = Default::default();
+//!
+//! let buf_a = unsafe { view_raw_bytes(&a) };
+//! let buf_b = unsafe { view_raw_bytes_mut(&mut b) };
+//! ```
+//! The conversion then operates on these two buffers. As this is a *highly* unsafe operation where all sorts of things
+//! could go wrong, any conversion is only valid together with the *exact* `PointLayout` of both `A` and `B`!
+
 use lazy_static::lazy_static;
 use nalgebra::{Scalar, Vector3};
 use std::{collections::HashMap, ops::Range};
@@ -56,6 +57,7 @@ impl RawAttributeConverter {
     }
 }
 
+/// Helper struct that encapsulates all `RawAttributeConverter`s necessary for converting a point in a specific layout
 pub struct RawPointConverter {
     attribute_converters: Vec<RawAttributeConverter>,
 }

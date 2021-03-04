@@ -121,11 +121,11 @@ pub trait InterleavedPointBufferMut: InterleavedPointBuffer {
 
 /// Trait for PointBuffer types that store point data per attribute. In buffers of this type, the data for a single
 /// attribute of all points in stored together in memory. To illustrate this, suppose the PointLayout of some point
-/// type defines the default attributes POSITION_3D (Vector3<f64>), INTENSITY (u16) and CLASSIFICATION (u8). In
-/// a PerAttributePointBuffer, the data layout is like this:<br>
-/// [Vector3<f64>, Vector3<f64>, Vector3<f64>, ...]<br>
-/// [u16, u16, u16, ...]<br>
-/// [u8, u8, u8, ...]<br>
+/// type defines the default attributes `POSITION_3D` (`Vector3<f64>`), `INTENSITY` (`u16`) and `CLASSIFICATION` (`u8`). In
+/// a `PerAttributePointBuffer`, the data layout is like this:<br>
+/// `[Vector3<f64>, Vector3<f64>, Vector3<f64>, ...]`<br>
+/// `[u16, u16, u16, ...]`<br>
+/// `[u8, u8, u8, ...]`<br>
 pub trait PerAttributePointBuffer: PointBuffer {
     /// Returns a pointer to the raw memory for the attribute entry of the given point in this PointBuffer. In contrast
     /// to [get_attribute_by_copy](PointBuffer::get_attribute_by_copy), this function performs no copy operations and
@@ -146,6 +146,7 @@ pub trait PerAttributePointBuffer: PointBuffer {
     fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_>;
 }
 
+/// Trait for `PointBuffer` types that are `PerAttributePointBuffer` and also provide mutable access to specific attributes
 pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
     /// Mutable version of [get_attribute_ref](PerAttributePointBuffer::get_attribute_ref)
     fn get_attribute_mut(
@@ -208,7 +209,7 @@ pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
     fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer;
 }
 
-/// PointBuffer type that uses interleaved Vec-based storage for the points
+/// `PointBuffer` type that uses Interleaved memory layout and `Vec`-based owning storage for point data
 pub struct InterleavedVecPointStorage {
     layout: PointLayout,
     points: Vec<u8>,
@@ -672,6 +673,7 @@ impl InterleavedPointBufferMut for InterleavedVecPointStorage {
     }
 }
 
+/// `PointBuffer` type that uses PerAttribute memory layout and `Vec`-based owning storage for point data
 pub struct PerAttributeVecPointStorage {
     layout: PointLayout,
     attributes: HashMap<&'static str, Vec<u8>>,
@@ -1400,6 +1402,7 @@ impl<'p> InterleavedPointBuffer for InterleavedPointBufferSlice<'p> {
     }
 }
 
+/// Non-owning, read-only slice of the data of a `PerAttributePointBuffer`
 pub struct PerAttributePointBufferSlice<'p> {
     buffer: &'p dyn PerAttributePointBuffer,
     range_in_buffer: Range<usize>,
@@ -1492,6 +1495,7 @@ impl<'p> PerAttributePointBuffer for PerAttributePointBufferSlice<'p> {
     }
 }
 
+/// Non-owning, mutable slice of the data of a `PerAttributePointBufferMut`
 pub struct PerAttributePointBufferSliceMut<'p> {
     buffer: &'p mut (dyn PerAttributePointBufferMut<'p> + 'p),
     range_in_buffer: Range<usize>,
