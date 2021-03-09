@@ -12,7 +12,8 @@ use pasture_algorithms::bounds::calculate_bounds;
 use pasture_core::{
     containers::PointBuffer,
     containers::{
-        attribute, InterleavedVecPointStorage, PerAttributeVecPointStorage, PointBufferWriteable,
+        InterleavedVecPointStorage, PerAttributeVecPointStorage, PointBufferExt,
+        PointBufferWriteable,
     },
     layout::attributes::POSITION_3D,
     math::reverse_bits,
@@ -152,7 +153,7 @@ fn hilbertize_chunk(
     };
 
     let mut indexed_morton_indices = {
-        let positions = attribute::<Vector3<f64>>(input_buffer, &POSITION_3D);
+        let positions = input_buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D);
 
         positions
             .map(|pos| reversed_morton_index(&Point3::new(pos.x, pos.y, pos.z), &bounds))

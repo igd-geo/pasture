@@ -1641,7 +1641,7 @@ mod tests {
     use std::{fs::File, io::BufReader};
 
     use las_rs::point::Format;
-    use pasture_core::containers::attribute;
+    use pasture_core::containers::PointBufferExt;
     use pasture_core::layout::PointAttributeDataType;
 
     use crate::las::{
@@ -1766,24 +1766,24 @@ mod tests {
 
                     reader.read_into(&mut buffer, 10)?;
 
-                    let positions = attribute::<Vector3<f32>>(
-                        &buffer,
-                        &attributes::POSITION_3D
-                            .with_custom_datatype(PointAttributeDataType::Vec3f32),
-                    )
-                    .collect::<Vec<_>>();
+                    let positions = buffer
+                        .iter_attribute::<Vector3<f32>>(
+                            &attributes::POSITION_3D
+                                .with_custom_datatype(PointAttributeDataType::Vec3f32),
+                        )
+                        .collect::<Vec<_>>();
                     let expected_positions = test_data_positions()
                         .into_iter()
                         .map(|p| Vector3::new(p.x as f32, p.y as f32, p.z as f32))
                         .collect::<Vec<_>>();
                     assert_eq!(expected_positions, positions, "Positions do not match");
 
-                    let classifications = attribute::<u32>(
-                        &buffer,
-                        &attributes::CLASSIFICATION
-                            .with_custom_datatype(PointAttributeDataType::U32),
-                    )
-                    .collect::<Vec<_>>();
+                    let classifications = buffer
+                        .iter_attribute::<u32>(
+                            &attributes::CLASSIFICATION
+                                .with_custom_datatype(PointAttributeDataType::U32),
+                        )
+                        .collect::<Vec<_>>();
                     let expected_classifications = test_data_classifications()
                         .into_iter()
                         .map(|c| c as u32)
@@ -1793,17 +1793,18 @@ mod tests {
                         "Classifications do not match"
                     );
 
-                    let point_source_ids =
-                        attribute::<u16>(&buffer, &attributes::POINT_SOURCE_ID).collect::<Vec<_>>();
+                    let point_source_ids = buffer
+                        .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .collect::<Vec<_>>();
                     let expected_point_source_ids = test_data_point_source_ids();
                     assert_eq!(
                         expected_point_source_ids, point_source_ids,
                         "Point source IDs do not match"
                     );
 
-                    let waveform_params =
-                        attribute::<Vector3<f32>>(&buffer, &attributes::WAVEFORM_PARAMETERS)
-                            .collect::<Vec<_>>();
+                    let waveform_params = buffer
+                        .iter_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .collect::<Vec<_>>();
                     let expected_waveform_params = if format.has_waveform {
                         test_data_wavepacket_parameters()
                     } else {

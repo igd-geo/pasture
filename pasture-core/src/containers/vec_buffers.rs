@@ -1217,8 +1217,10 @@ mod tests {
     use nalgebra::Vector3;
 
     use super::*;
-    use crate::containers::{attribute_slice, InterleavedPointView, PerAttributePointView};
-    use crate::{containers, util::view_raw_bytes};
+    use crate::containers::{
+        attribute_slice, InterleavedPointView, PerAttributePointView, PointBufferExt,
+    };
+    use crate::util::view_raw_bytes;
     use crate::{
         layout::{attributes, PointLayout},
         util::view_raw_bytes_mut,
@@ -2338,7 +2340,7 @@ mod tests {
 
         assert_eq!(2, interleaved_buffer.len());
 
-        let points = containers::points::<TestPointType>(&interleaved_buffer).collect::<Vec<_>>();
+        let points: Vec<TestPointType> = interleaved_buffer.iter_point().collect();
         assert_eq!(
             points,
             vec![TestPointType(42, 0.123), TestPointType(43, 0.456)]
@@ -2356,7 +2358,7 @@ mod tests {
 
         assert_eq!(2, per_attribute_buffer.len());
 
-        let points = containers::points::<TestPointType>(&per_attribute_buffer).collect::<Vec<_>>();
+        let points: Vec<TestPointType> = per_attribute_buffer.iter_point().collect();
         assert_eq!(
             points,
             vec![TestPointType(42, 0.123), TestPointType(43, 0.456)]
@@ -2380,7 +2382,7 @@ mod tests {
 
         assert_eq!(4, source_points.len());
 
-        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        let points: Vec<TestPointType> = source_points.iter_point().collect();
         assert_eq!(
             points,
             vec![
@@ -2409,7 +2411,7 @@ mod tests {
 
         assert_eq!(4, source_points.len());
 
-        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        let points: Vec<TestPointType> = source_points.iter_point().collect();
         assert_eq!(
             points,
             vec![
@@ -2438,7 +2440,7 @@ mod tests {
 
         assert_eq!(4, source_points.len());
 
-        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        let points: Vec<TestPointType> = source_points.iter_point().collect();
         assert_eq!(
             points,
             vec![
@@ -2467,7 +2469,7 @@ mod tests {
 
         assert_eq!(4, source_points.len());
 
-        let points = containers::points::<TestPointType>(&source_points).collect::<Vec<_>>();
+        let points: Vec<TestPointType> = source_points.iter_point().collect();
         assert_eq!(
             points,
             vec![
@@ -2565,7 +2567,7 @@ mod tests {
             assert_eq!(some_points.len(), non_empty_buffer.len());
             assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
 
-            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            let points: Vec<TestPointType> = non_empty_buffer.iter_point().collect();
             assert_eq!(some_points, points);
         }
     }
@@ -2587,7 +2589,7 @@ mod tests {
             assert_eq!(2, non_empty_buffer.len());
             assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
 
-            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            let points: Vec<TestPointType> = non_empty_buffer.iter_point().collect();
             assert_eq!(some_points, points);
         }
     }
@@ -2610,7 +2612,7 @@ mod tests {
             assert_eq!(some_points.len(), non_empty_buffer.len());
             assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
 
-            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            let points: Vec<TestPointType> = non_empty_buffer.iter_point().collect();
             assert_eq!(some_points, points);
         }
     }
@@ -2632,8 +2634,47 @@ mod tests {
             assert_eq!(2, non_empty_buffer.len());
             assert_eq!(TestPointType::layout(), *non_empty_buffer.point_layout());
 
-            let points = containers::points::<TestPointType>(&non_empty_buffer).collect::<Vec<_>>();
+            let points: Vec<TestPointType> = non_empty_buffer.iter_point().collect();
             assert_eq!(some_points, points);
+        }
+    }
+
+    #[test]
+    fn test_point_buffer_extension_trait() {
+        use crate::containers::PointBufferExt;
+
+        let reference_points = vec![TestPointType(42, 0.123), TestPointType(43, 0.456)];
+
+        // Interleaved
+        {
+            let buf = get_interleaved_point_buffer_from_points(reference_points.as_slice());
+
+            assert_eq!(TestPointType(42, 0.123), buf.get_point(0));
+            assert_eq!(TestPointType(43, 0.456), buf.get_point(1));
+
+            assert_eq!(42, buf.get_attribute::<u16>(&attributes::INTENSITY, 0));
+            assert_eq!(43, buf.get_attribute::<u16>(&attributes::INTENSITY, 1));
+            assert_eq!(0.123, buf.get_attribute::<f64>(&attributes::GPS_TIME, 0));
+            assert_eq!(0.456, buf.get_attribute::<f64>(&attributes::GPS_TIME, 1));
+
+            let all_points: Vec<TestPointType> = buf.iter_point().collect();
+            assert_eq!(all_points, reference_points);
+        }
+
+        // PerAttribute
+        {
+            let buf = get_per_attribute_point_buffer_from_points(reference_points.as_slice());
+
+            assert_eq!(TestPointType(42, 0.123), buf.get_point(0));
+            assert_eq!(TestPointType(43, 0.456), buf.get_point(1));
+
+            assert_eq!(42, buf.get_attribute::<u16>(&attributes::INTENSITY, 0));
+            assert_eq!(43, buf.get_attribute::<u16>(&attributes::INTENSITY, 1));
+            assert_eq!(0.123, buf.get_attribute::<f64>(&attributes::GPS_TIME, 0));
+            assert_eq!(0.456, buf.get_attribute::<f64>(&attributes::GPS_TIME, 1));
+
+            let all_points: Vec<TestPointType> = buf.iter_point().collect();
+            assert_eq!(all_points, reference_points);
         }
     }
 }

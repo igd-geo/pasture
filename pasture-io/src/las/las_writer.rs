@@ -55,7 +55,7 @@ mod tests {
 
     use las::{point::Format, Builder};
     use pasture_core::{
-        containers::points, containers::InterleavedVecPointStorage, layout::PointType,
+        containers::InterleavedVecPointStorage, containers::PointBufferExt, layout::PointType,
         nalgebra::Vector3,
     };
     use scopeguard::defer;
@@ -341,8 +341,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat0>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat0> = read_points_buffer.iter_point().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -378,8 +377,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat0>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat0> = read_points_buffer.iter_point().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -456,8 +454,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat1>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat1> = read_points_buffer.iter_point().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -493,8 +490,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat1>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat1> = read_points_buffer.iter_point().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -576,8 +572,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat2>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat2> = read_points_buffer.iter_point().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -613,8 +608,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat2>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat2> = read_points_buffer.iter_point().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -696,8 +690,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat3>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat3> = read_points_buffer.iter_point().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -733,8 +726,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat3>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat3> = read_points_buffer.iter_point().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -821,8 +813,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat4>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat4> = read_points_buffer.iter_point().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -858,8 +849,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat4>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat4> = read_points_buffer.iter_point().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -960,8 +950,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat5>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat5> = read_points_buffer.iter_point().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -997,8 +986,7 @@ mod tests {
         {
             let mut reader = LASReader::from_path(&test_file_path)?;
             let read_points_buffer = reader.read(source_points.len())?;
-            let read_points =
-                points::<LasPointFormat5>(read_points_buffer.as_ref()).collect::<Vec<_>>();
+            let read_points: Vec<LasPointFormat5> = read_points_buffer.iter_point().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(

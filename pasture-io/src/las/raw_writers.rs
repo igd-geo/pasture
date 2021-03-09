@@ -1189,7 +1189,7 @@ mod tests {
     use std::{fs::File, io::BufWriter};
 
     use las_rs::Builder;
-    use pasture_core::containers::{points, InterleavedVecPointStorage};
+    use pasture_core::containers::{InterleavedVecPointStorage, PointBufferExt};
     use pasture_core::layout::PointType;
     use pasture_core::math::AABB;
     use pasture_core::nalgebra::Point3;
@@ -1249,9 +1249,9 @@ mod tests {
                         assert_eq!(read_points.len(), test_data.len());
 
                         let expected_points =
-                            points::<$point_type>(test_data.as_ref()).collect::<Vec<_>>();
+                            test_data.iter_point::<$point_type>().collect::<Vec<_>>();
                         let actual_points =
-                            points::<$point_type>(read_points.as_ref()).collect::<Vec<_>>();
+                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
 
                         assert_eq!(expected_points, actual_points);
                     }
@@ -1339,7 +1339,7 @@ mod tests {
                         assert_eq!(read_points.len(), test_data.len());
 
                         let mut actual_points =
-                            points::<$point_type>(read_points.as_ref()).collect::<Vec<_>>();
+                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
 
                         // Expected positions were f32, converted to f64, this might yield rounding errors, so we compare positions separately
                         for (idx, (expected, actual)) in
@@ -1425,9 +1425,9 @@ mod tests {
                         assert_eq!(read_points.len(), test_data.len());
 
                         let expected_points =
-                            points::<$point_type>(test_data.as_ref()).collect::<Vec<_>>();
+                            test_data.iter_point::<$point_type>().collect::<Vec<_>>();
                         let actual_points =
-                            points::<$point_type>(read_points.as_ref()).collect::<Vec<_>>();
+                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
 
                         assert_eq!(expected_points, actual_points);
                     }
@@ -1515,7 +1515,7 @@ mod tests {
                         assert_eq!(read_points.len(), test_data.len());
 
                         let mut actual_points =
-                            points::<$point_type>(read_points.as_ref()).collect::<Vec<_>>();
+                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
 
                         // Expected positions were f32, converted to f64, this might yield rounding errors, so we compare positions separately
                         for (idx, (expected, actual)) in

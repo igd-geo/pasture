@@ -1,7 +1,5 @@
 use pasture_core::{
-    containers::attribute,
-    containers::attribute_as,
-    containers::PointBuffer,
+    containers::{PointBuffer, PointBufferExt},
     layout::attributes::POSITION_3D,
     math::AABB,
     nalgebra::{Point3, Vector3},
@@ -31,7 +29,7 @@ pub fn calculate_bounds<T: PointBuffer>(buffer: &T) -> Option<AABB<f64>> {
 fn calculate_bounds_from_default_positions<T: PointBuffer>(buffer: &T) -> AABB<f64> {
     let mut pos_min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
     let mut pos_max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
-    for pos in attribute::<Vector3<f64>>(buffer, &POSITION_3D) {
+    for pos in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
         if pos.x < pos_min.x {
             pos_min.x = pos.x;
         }
@@ -57,7 +55,7 @@ fn calculate_bounds_from_default_positions<T: PointBuffer>(buffer: &T) -> AABB<f
 fn calculate_bounds_from_custom_positions<T: PointBuffer>(buffer: &T) -> AABB<f64> {
     let mut pos_min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
     let mut pos_max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
-    for pos in attribute_as::<Vector3<f64>>(buffer, &POSITION_3D) {
+    for pos in buffer.iter_attribute_as::<Vector3<f64>>(&POSITION_3D) {
         if pos.x < pos_min.x {
             pos_min.x = pos.x;
         }

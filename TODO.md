@@ -7,6 +7,13 @@
         - [ ] Improve `push_attribute` and `push_attribute_range` by using the builder pattern
     - [x] Support iterator `collect`
         - [ ] `From<[T;N]>` is not possible at the moment because it requires support for const generics
+    - [ ] Extension traits with generic point/attribute accessors 
+        - [x] `PointBufferExt`
+        - [ ] `PointBufferMutExt`
+        - [ ] `InterleavedPointBufferExt`
+        - [ ] `InterleavedPointBufferMutExt`
+        - [ ] `PerAttributePointBufferExt`
+        - [ ] `PerAttributePointBufferMutExt`
 - [ ] Point Views
     - [x] Interleaved view
     - [x] PerAttribute view

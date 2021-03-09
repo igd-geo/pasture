@@ -1,5 +1,5 @@
 use pasture_core::{
-    containers::{self, PointBuffer},
+    containers::{PointBuffer, PointBufferExt},
     layout::{PointAttributeDefinition, PrimitiveType},
     math::MinMax,
 };
@@ -28,7 +28,7 @@ pub fn minmax_attribute<T: PrimitiveType + MinMax + Copy, B: PointBuffer>(
     let mut minmax = None;
 
     if T::data_type() == attribute.datatype() {
-        for val in containers::attribute::<T>(buffer, attribute) {
+        for val in buffer.iter_attribute::<T>(attribute) {
             match minmax {
                 None => minmax = Some((val, val)),
                 Some((old_min, old_max)) => {
@@ -37,7 +37,7 @@ pub fn minmax_attribute<T: PrimitiveType + MinMax + Copy, B: PointBuffer>(
             }
         }
     } else {
-        for val in containers::attribute_as::<T>(buffer, attribute) {
+        for val in buffer.iter_attribute_as::<T>(attribute) {
             match minmax {
                 None => minmax = Some((val, val)),
                 Some((old_min, old_max)) => {

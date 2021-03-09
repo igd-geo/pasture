@@ -1,8 +1,12 @@
-use std::ops::Range;
+use std::{mem::MaybeUninit, ops::Range};
 
-use crate::layout::{PointAttributeDefinition, PointLayout, PrimitiveType};
+use crate::layout::{PointAttributeDefinition, PointLayout, PointType, PrimitiveType};
 
-use super::{PerAttributePointBufferSlice, PerAttributePointBufferSliceMut};
+use super::{
+    attr1::{AttributeIteratorByValue, AttributeIteratorByValueWithConversion},
+    iterators::PointIteratorByValue,
+    PerAttributePointBufferSlice, PerAttributePointBufferSliceMut,
+};
 
 // TODO Can we maybe impl<T: PointBufferWriteable> &T and provide some push<U> methods?
 
@@ -63,7 +67,7 @@ pub trait PointBuffer {
 
 /// Trait for all mutable `PointBuffer`s, that is all `PointBuffer`s where it is possible to push points into. Distinguishing between
 /// read-only `PointBuffer` and mutable `PointBufferMut` traits enables read-only, non-owning views of a `PointBuffer` with the same interface
-/// as a owning `PointBuffer`!
+/// as an owning `PointBuffer`!
 pub trait PointBufferWriteable: PointBuffer {
     /// Appends the given `points` to the end of the associated `PointBuffer`
     ///
@@ -201,6 +205,102 @@ pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
     /// Helper method to access this `PerAttributePointBufferMut` as a `PerAttributePointBuffer`
     fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer;
 }
+
+/// Extension trait that provides generic methods for accessing point data in a `PointBuffer`
+pub trait PointBufferExt<B: PointBuffer + ?Sized> {
+    /// Returns the point at `index` from the associated `PointBuffer`, strongly typed to the `PointType` `T`
+    fn get_point<T: PointType>(&self, index: usize) -> T;
+    /// Returns the given `attribute` for the point at `index` from the associated `PointBuffer`, strongly typed to the `PrimitiveType` `T`
+    fn get_attribute<T: PrimitiveType>(
+        &self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+    ) -> T;
+
+    /// Returns an iterator over all points in the associated `PointBuffer`, strongly typed to the `PointType` `T`
+    fn iter_point<T: PointType>(&self) -> PointIteratorByValue<'_, T, B>;
+    /// Returns an iterator over the given `attribute` of all points in the associated `PointBuffer`, strongly typed to the `PrimitiveType` `T`.
+    ///
+    /// For iterating over multiple attributes at once, use the [attributes!] macro.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.<br>
+    /// Panics if the data type of `attribute` inside the associated `PointBuffer` is not equal to `T`. If you want a conversion, use `iter_attribute_as`.
+    fn iter_attribute<'a, T: PrimitiveType>(
+        &'a self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByValue<'a, T, B>;
+    /// Returns an iterator over the given `attribute` of all points in the associated `PointBuffer`, converted to the `PrimitiveType` `T`. This iterator
+    /// supports conversion of types, so it works even if the `attribute` inside the buffer is stored as some other type `U`, as long as there is a valid
+    /// conversion from `U` to `T`. Regarding conversions, see the [conversions module](crate::layout::conversion).
+    ///
+    /// For iterating over multiple attributes at once, use the [attributes!] macro.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.<br>
+    /// Panics if no valid conversion exists from the type that the attribute is stored as inside the buffer into type `T`.
+    fn iter_attribute_as<'a, T: PrimitiveType>(
+        &'a self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByValueWithConversion<'a, T, B>;
+}
+
+impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
+    fn get_point<T: PointType>(&self, index: usize) -> T {
+        let mut point = MaybeUninit::<T>::uninit();
+        unsafe {
+            self.get_point_by_copy(
+                index,
+                std::slice::from_raw_parts_mut(
+                    point.as_mut_ptr() as *mut u8,
+                    std::mem::size_of::<T>(),
+                ),
+            );
+            point.assume_init()
+        }
+    }
+
+    fn get_attribute<T: PrimitiveType>(
+        &self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+    ) -> T {
+        let mut attribute_data = MaybeUninit::<T>::uninit();
+        unsafe {
+            self.get_attribute_by_copy(
+                index,
+                attribute,
+                std::slice::from_raw_parts_mut(
+                    attribute_data.as_mut_ptr() as *mut u8,
+                    std::mem::size_of::<T>(),
+                ),
+            );
+            attribute_data.assume_init()
+        }
+    }
+
+    fn iter_point<T: PointType>(&self) -> PointIteratorByValue<'_, T, B> {
+        PointIteratorByValue::new(self)
+    }
+
+    fn iter_attribute<'a, T: PrimitiveType>(
+        &'a self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByValue<'a, T, B> {
+        AttributeIteratorByValue::new(self, attribute)
+    }
+
+    fn iter_attribute_as<'a, T: PrimitiveType>(
+        &'a self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByValueWithConversion<'a, T, B> {
+        AttributeIteratorByValueWithConversion::new(self, attribute)
+    }
+}
+
+// TODO More extension traits for interleaved/per attribute buffers
 
 /// Returns a slice of the given attribute data in the associated `PerAttributePointBuffer`
 ///

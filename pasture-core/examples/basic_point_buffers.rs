@@ -1,5 +1,5 @@
 use pasture_core::{
-    containers::{self, PerAttributeVecPointStorage},
+    containers::{self, PerAttributeVecPointStorage, PointBufferExt},
     nalgebra::Vector3,
 };
 use pasture_core::{
@@ -42,13 +42,13 @@ fn main() {
         buffer.push_points(points.as_slice());
 
         println!("Iterating over interleaved points:");
-        // The buffer itself is not strongly typed, but there are some helper methods to access the data in
-        // a strongly typed fashion. `points<T>` creates an iterator over strongly typed points in the buffer:
-        for point in containers::points::<SimplePoint>(&buffer) {
+        // The buffer itself is not strongly typed, but there are some helper methods in the `PointBufferExt` trait to access the data in
+        // a strongly typed fashion. `iter_point<T>` creates an iterator over strongly typed points in the buffer:
+        for point in buffer.iter_point::<SimplePoint>() {
             println!("{:?}", point);
         }
 
-        //`points<T>` returns the data by value. Let's try writing to the data instead:
+        //The iterator returned by `iter_point<T>` iterates over the points by value. Let's try mutating the points instead:
         for point_mut in containers::points_mut::<SimplePoint, _>(&mut buffer) {
             point_mut.intensity *= 2;
         }
@@ -56,7 +56,7 @@ fn main() {
         // We can also directly slice our buffer (also see the docs of the `slice` method which explains the syntax)
         println!("Iterating over interleaved points slice:");
         let sliced = buffer.slice(1..2);
-        for point in containers::points::<SimplePoint>(&sliced) {
+        for point in sliced.iter_point::<SimplePoint>() {
             println!("{:?}", point);
         }
     }
@@ -72,16 +72,16 @@ fn main() {
 
         //... and iterate it:
         println!("Iterating over per-attribute points:");
-        for point in containers::points::<SimplePoint>(&buffer) {
+        for point in buffer.iter_point::<SimplePoint>() {
             println!("{:?}", point);
         }
 
         // With the PerAttribute memory layout, we can iterate over specific attributes and even mutate them, instead of always
         // iterating over the whole point. This can give better performance in many cases.
-        // As the buffer is not strongly typed, we need to specify the type of the attribute, similar to the call to `containers::points<T>`
+        // As the buffer is not strongly typed, we need to specify the type of the attribute, similar to the call to `iter_point<T>`
         // before. In addition, we have to give Pasture an 'attribute specifier' to determine which attribute we want:
         println!("Iterating over a single attribute:");
-        for position in containers::attribute::<Vector3<f64>>(&buffer, &POSITION_3D) {
+        for position in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
             println!("Position: {:?}", position);
         }
 
@@ -98,7 +98,7 @@ fn main() {
         // Just as with the Interleaved buffer, we can slice (but make sure the `PerAttributePointBuffer` trait is in scope!):
         println!("Iterating over per-attribute point slice:");
         let sliced = buffer.slice(1..2);
-        for point in containers::points::<SimplePoint>(&sliced) {
+        for point in sliced.iter_point::<SimplePoint>() {
             println!("{:?}", point);
         }
     }

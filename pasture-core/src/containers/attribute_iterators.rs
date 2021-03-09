@@ -13,65 +13,9 @@ use std::mem::MaybeUninit;
 pub mod attr1 {
     use super::*;
 
-    // pub struct AttributeIteratorByValue<'a, T: PrimitiveType> {
-    //     buffer: &'a dyn PointBuffer,
-    //     attribute: &'a PointAttributeDefinition,
-    //     current_index: usize,
-    //     _unused: PhantomData<T>,
-    // }
-
-    // impl<'a, T: PrimitiveType> AttributeIteratorByValue<'a, T> {
-    //     pub fn new(buffer: &'a dyn PointBuffer, attribute: &'a PointAttributeDefinition) -> Self {
-    //         if attribute.datatype() != T::data_type() {
-    //             panic!("Type T does not match datatype of attribute {}", attribute);
-    //         }
-    //         if !buffer.point_layout().has_attribute(attribute) {
-    //             panic!(
-    //                 "Attribute {} not contained in PointLayout of buffer ({})",
-    //                 attribute,
-    //                 buffer.point_layout()
-    //             );
-    //         }
-    //         Self {
-    //             buffer,
-    //             attribute,
-    //             current_index: 0,
-    //             _unused: Default::default(),
-    //         }
-    //     }
-    // }
-
-    // impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByValue<'a, T> {
-    //     type Item = T;
-
-    //     fn next(&mut self) -> Option<Self::Item> {
-    //         if self.current_index == self.buffer.len() {
-    //             return None;
-    //         }
-
-    //         // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
-    //         let mut attribute = MaybeUninit::<T>::uninit();
-    //         unsafe {
-    //             let attribute_byte_slice = std::slice::from_raw_parts_mut(
-    //                 attribute.as_mut_ptr() as *mut u8,
-    //                 std::mem::size_of::<T>(),
-    //             );
-    //             self.buffer.get_attribute_by_copy(
-    //                 self.current_index,
-    //                 self.attribute,
-    //                 attribute_byte_slice,
-    //             );
-    //         }
-
-    //         self.current_index += 1;
-
-    //         unsafe { Some(attribute.assume_init()) }
-    //     }
-    // }
-
     /// Iterator over a `PointBuffer` that yields strongly typed data by value for a specific attribute for each point
-    pub struct AttributeIteratorByValue<'a, T: PrimitiveType> {
-        buffer: &'a dyn PointBuffer,
+    pub struct AttributeIteratorByValue<'a, T: PrimitiveType, B: PointBuffer + ?Sized> {
+        buffer: &'a B,
         attribute: &'a PointAttributeDefinition,
         current_index: usize,
         buffer_length: usize,
@@ -80,10 +24,10 @@ pub mod attr1 {
         _unused: PhantomData<T>,
     }
 
-    impl<'a, T: PrimitiveType> AttributeIteratorByValue<'a, T> {
+    impl<'a, T: PrimitiveType, B: PointBuffer + ?Sized> AttributeIteratorByValue<'a, T, B> {
         const INTERNAL_BUFFER_SIZE: usize = 50_000;
 
-        pub fn new(buffer: &'a dyn PointBuffer, attribute: &'a PointAttributeDefinition) -> Self {
+        pub fn new(buffer: &'a B, attribute: &'a PointAttributeDefinition) -> Self {
             if attribute.datatype() != T::data_type() {
                 panic!("Type T does not match datatype of attribute {}", attribute);
             }
@@ -136,7 +80,9 @@ pub mod attr1 {
         }
     }
 
-    impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByValue<'a, T> {
+    impl<'a, T: PrimitiveType, B: PointBuffer + ?Sized> Iterator
+        for AttributeIteratorByValue<'a, T, B>
+    {
         type Item = T;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -148,33 +94,17 @@ pub mod attr1 {
                 self.refill_internal_buffer();
             }
 
-            // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
-            // let mut attribute = MaybeUninit::<T>::uninit();
-            // unsafe {
-            //     let attribute_byte_slice = std::slice::from_raw_parts_mut(
-            //         attribute.as_mut_ptr() as *mut u8,
-            //         std::mem::size_of::<T>(),
-            //     );
-            //     self.buffer.get_attribute_by_copy(
-            //         self.current_index,
-            //         self.attribute,
-            //         attribute_byte_slice,
-            //     );
-            // }
-
             let ret = self.internal_buffer[self.index_in_internal_buffer];
 
             self.index_in_internal_buffer += 1;
             self.current_index += 1;
 
             Some(ret)
-
-            //unsafe { Some(attribute.assume_init()) }
         }
     }
 
-    pub struct AttributeIteratorByValueWithConversion<'a, T: PrimitiveType> {
-        buffer: &'a dyn PointBuffer,
+    pub struct AttributeIteratorByValueWithConversion<'a, T: PrimitiveType, B: PointBuffer + ?Sized> {
+        buffer: &'a B,
         source_attribute: PointAttributeDefinition,
         current_index: usize,
         converter: AttributeConversionFn,
@@ -182,11 +112,10 @@ pub mod attr1 {
         _unused: PhantomData<T>,
     }
 
-    impl<'a, T: PrimitiveType> AttributeIteratorByValueWithConversion<'a, T> {
-        pub fn new(
-            buffer: &'a dyn PointBuffer,
-            target_attribute: &'a PointAttributeDefinition,
-        ) -> Self {
+    impl<'a, T: PrimitiveType, B: PointBuffer + ?Sized>
+        AttributeIteratorByValueWithConversion<'a, T, B>
+    {
+        pub fn new(buffer: &'a B, target_attribute: &'a PointAttributeDefinition) -> Self {
             let source_attribute = match buffer
                 .point_layout()
                 .get_attribute_by_name(target_attribute.name())
@@ -215,7 +144,9 @@ pub mod attr1 {
         }
     }
 
-    impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByValueWithConversion<'a, T> {
+    impl<'a, T: PrimitiveType, B: PointBuffer + ?Sized> Iterator
+        for AttributeIteratorByValueWithConversion<'a, T, B>
+    {
         type Item = T;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -588,38 +519,6 @@ attributes_iter!(attr2, 2, T1, T2 and 0, 1);
 attributes_iter!(attr3, 3, T1, T2, T3 and 0, 1, 2);
 attributes_iter!(attr4, 4, T1, T2, T3, T4 and 0, 1, 2, 3);
 
-/// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`. Works
-/// with any type that implements the `PointBuffer` trait, but returns the attribute data by value, potentially copying it. If you want to iterate over
-/// (mutable) references to attribute data, use the `attribute_ref`/`attribute_mut` functions, which require a `PerAttributePointBuffer`. For iterating
-/// over multiple attributes at once, use the `attributes!` macro and its variants.
-///
-/// # Panics
-///
-/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.<br>
-/// Panics if the `PointAttributeDataType` of the `attribute` in the `buffer` is not `T`. If you want to convert the attribute into type `T`, use `attribute_as`
-pub fn attribute<'a, T: PrimitiveType + 'a>(
-    buffer: &'a dyn PointBuffer,
-    attribute: &'a PointAttributeDefinition,
-) -> attr1::AttributeIteratorByValue<'a, T> {
-    attr1::AttributeIteratorByValue::<T>::new(buffer, attribute)
-}
-
-/// Returns an iterator over the specific attribute for all points within the given `PointBuffer`, converted to the `PrimitiveType` `T`. Use this function
-/// when the `buffer` stores the attribute with a different datatype than `T`. This requires that a primitive conversion from the `PointAttributeDataType`
-/// of the `attribute` in the `buffer` into type `T` exists. See the documentation of the [conversion](crate::layout::conversion) module for more information
-/// on primitive type conversions in pasture.
-///
-/// # Panics
-///
-/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.<br>
-/// Panics if there is no valid primitive conversion between from the `PointAttributeDataType` of `attribute` into `T`.
-pub fn attribute_as<'a, T: PrimitiveType + 'a>(
-    buffer: &'a dyn PointBuffer,
-    attribute: &'a PointAttributeDefinition,
-) -> attr1::AttributeIteratorByValueWithConversion<'a, T> {
-    attr1::AttributeIteratorByValueWithConversion::<T>::new(buffer, attribute)
-}
-
 /// Returns an iterator over references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`.
 ///
 /// # Panics
@@ -798,7 +697,7 @@ macro_rules! attributes_mut {
 mod tests {
 
     use super::*;
-    use crate::layout::attributes;
+    use crate::{containers::PointBufferExt, layout::attributes};
     use crate::{
         containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage},
         layout::attributes::POSITION_3D,
@@ -847,8 +746,9 @@ mod tests {
         let modified_intensities = vec![84_u16, 86_u16];
 
         {
-            let attribute_by_val_view = attribute::<u16>(&storage, &attributes::INTENSITY);
-            let attribute_by_val_collected = attribute_by_val_view.collect::<Vec<_>>();
+            let attribute_by_val_collected = storage
+                .iter_attribute::<u16>(&attributes::INTENSITY)
+                .collect::<Vec<_>>();
             assert_eq!(modified_intensities, attribute_by_val_collected);
         }
 
@@ -922,7 +822,9 @@ mod tests {
         let mut storage = InterleavedVecPointStorage::new(PositionLowp::layout());
         storage.push_point(PositionLowp(Default::default()));
 
-        attribute::<Vector3<f64>>(&storage, &POSITION_3D).for_each(drop);
+        storage
+            .iter_attribute::<Vector3<f64>>(&POSITION_3D)
+            .for_each(drop);
     }
 
     #[test]
@@ -955,7 +857,9 @@ mod tests {
     #[should_panic(expected = "Type T does not match datatype of attribute")]
     fn test_attribute_with_wrong_type_fails() {
         let storage = InterleavedVecPointStorage::new(TestPointType::layout());
-        attribute::<u32>(&storage, &attributes::INTENSITY);
+        storage
+            .iter_attribute::<u32>(&attributes::INTENSITY)
+            .for_each(drop);
     }
 
     #[test]

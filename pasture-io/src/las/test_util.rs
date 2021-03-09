@@ -4,7 +4,7 @@ use anyhow::Result;
 use las_rs::point::Format;
 use pasture_core::{
     containers::PointBuffer,
-    containers::{attribute, PerAttributeVecPointStorage},
+    containers::{PerAttributeVecPointStorage, PointBufferExt},
     layout::attributes,
     math::AABB,
     nalgebra::{Point3, Vector3},
@@ -217,21 +217,27 @@ pub(crate) fn compare_to_reference_data_range(
     point_format: u8,
     range: Range<usize>,
 ) {
-    let positions = attribute::<Vector3<f64>>(points, &attributes::POSITION_3D).collect::<Vec<_>>();
+    let positions = points
+        .iter_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
+        .collect::<Vec<_>>();
     assert_eq!(
         &test_data_positions()[range.clone()],
         positions,
         "Positions do not match"
     );
 
-    let intensities = attribute::<u16>(points, &attributes::INTENSITY).collect::<Vec<_>>();
+    let intensities = points
+        .iter_attribute::<u16>(&attributes::INTENSITY)
+        .collect::<Vec<_>>();
     assert_eq!(
         &test_data_intensities()[range.clone()],
         intensities,
         "Intensities do not match"
     );
 
-    let return_numbers = attribute::<u8>(points, &attributes::RETURN_NUMBER).collect::<Vec<_>>();
+    let return_numbers = points
+        .iter_attribute::<u8>(&attributes::RETURN_NUMBER)
+        .collect::<Vec<_>>();
     let expected_return_numbers = if format_is_extended(point_format) {
         test_data_return_numbers_extended()
     } else {
@@ -243,8 +249,9 @@ pub(crate) fn compare_to_reference_data_range(
         "Return numbers do not match"
     );
 
-    let number_of_returns =
-        attribute::<u8>(points, &attributes::NUMBER_OF_RETURNS).collect::<Vec<_>>();
+    let number_of_returns = points
+        .iter_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
+        .collect::<Vec<_>>();
     let expected_number_of_returns = if format_is_extended(point_format) {
         test_data_number_of_returns_extended()
     } else {
@@ -257,16 +264,18 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     if format_is_extended(point_format) {
-        let classification_flags =
-            attribute::<u8>(points, &attributes::CLASSIFICATION_FLAGS).collect::<Vec<_>>();
+        let classification_flags = points
+            .iter_attribute::<u8>(&attributes::CLASSIFICATION_FLAGS)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_classification_flags()[range.clone()],
             classification_flags,
             "Classification flags do not match"
         );
 
-        let scanner_channels =
-            attribute::<u8>(points, &attributes::SCANNER_CHANNEL).collect::<Vec<_>>();
+        let scanner_channels = points
+            .iter_attribute::<u8>(&attributes::SCANNER_CHANNEL)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_scanner_channels()[range.clone()],
             scanner_channels,
@@ -274,22 +283,27 @@ pub(crate) fn compare_to_reference_data_range(
         );
     }
 
-    let scan_direction_flags =
-        attribute::<bool>(points, &attributes::SCAN_DIRECTION_FLAG).collect::<Vec<_>>();
+    let scan_direction_flags = points
+        .iter_attribute::<bool>(&attributes::SCAN_DIRECTION_FLAG)
+        .collect::<Vec<_>>();
     assert_eq!(
         &test_data_scan_direction_flags()[range.clone()],
         scan_direction_flags,
         "Scan direction flags do not match"
     );
 
-    let eof = attribute::<bool>(points, &attributes::EDGE_OF_FLIGHT_LINE).collect::<Vec<_>>();
+    let eof = points
+        .iter_attribute::<bool>(&attributes::EDGE_OF_FLIGHT_LINE)
+        .collect::<Vec<_>>();
     assert_eq!(
         &test_data_edge_of_flight_lines()[range.clone()],
         eof,
         "Edge of flight lines do not match"
     );
 
-    let classifications = attribute::<u8>(points, &attributes::CLASSIFICATION).collect::<Vec<_>>();
+    let classifications = points
+        .iter_attribute::<u8>(&attributes::CLASSIFICATION)
+        .collect::<Vec<_>>();
     assert_eq!(
         &test_data_classifications()[range.clone()],
         classifications,
@@ -297,15 +311,18 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     if point_format < 6 {
-        let scan_angle_ranks =
-            attribute::<i8>(points, &attributes::SCAN_ANGLE_RANK).collect::<Vec<_>>();
+        let scan_angle_ranks = points
+            .iter_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_scan_angle_ranks()[range.clone()],
             scan_angle_ranks,
             "Scan angle ranks do not match"
         );
     } else {
-        let scan_angles = attribute::<i16>(points, &attributes::SCAN_ANGLE).collect::<Vec<_>>();
+        let scan_angles = points
+            .iter_attribute::<i16>(&attributes::SCAN_ANGLE)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_scan_angles_extended()[range.clone()],
             scan_angles,
@@ -313,15 +330,18 @@ pub(crate) fn compare_to_reference_data_range(
         );
     }
 
-    let user_data = attribute::<u8>(points, &attributes::USER_DATA).collect::<Vec<_>>();
+    let user_data = points
+        .iter_attribute::<u8>(&attributes::USER_DATA)
+        .collect::<Vec<_>>();
     assert_eq!(
         &test_data_user_data()[range.clone()],
         user_data,
         "User data do not match"
     );
 
-    let point_source_ids =
-        attribute::<u16>(points, &attributes::POINT_SOURCE_ID).collect::<Vec<_>>();
+    let point_source_ids = points
+        .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+        .collect::<Vec<_>>();
     assert_eq!(
         &test_data_point_source_ids()[range.clone()],
         point_source_ids,
@@ -329,7 +349,9 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     if format_has_gps_times(point_format) {
-        let gps_times = attribute::<f64>(points, &attributes::GPS_TIME).collect::<Vec<_>>();
+        let gps_times = points
+            .iter_attribute::<f64>(&attributes::GPS_TIME)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_gps_times()[range.clone()],
             gps_times,
@@ -338,7 +360,9 @@ pub(crate) fn compare_to_reference_data_range(
     }
 
     if format_has_colors(point_format) {
-        let colors = attribute::<Vector3<u16>>(points, &attributes::COLOR_RGB).collect::<Vec<_>>();
+        let colors = points
+            .iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_colors()[range.clone()],
             colors,
@@ -347,7 +371,9 @@ pub(crate) fn compare_to_reference_data_range(
     }
 
     if format_has_nir(point_format) {
-        let nirs = attribute::<u16>(points, &attributes::NIR).collect::<Vec<_>>();
+        let nirs = points
+            .iter_attribute::<u16>(&attributes::NIR)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_nirs()[range.clone()],
             nirs,
@@ -356,41 +382,45 @@ pub(crate) fn compare_to_reference_data_range(
     }
 
     if format_has_wavepacket(point_format) {
-        let wp_indices =
-            attribute::<u8>(points, &attributes::WAVE_PACKET_DESCRIPTOR_INDEX).collect::<Vec<_>>();
+        let wp_indices = points
+            .iter_attribute::<u8>(&attributes::WAVE_PACKET_DESCRIPTOR_INDEX)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_index()[range.clone()],
             wp_indices,
             "Wave Packet Descriptor Indices do not match"
         );
 
-        let wp_offsets =
-            attribute::<u64>(points, &attributes::WAVEFORM_DATA_OFFSET).collect::<Vec<_>>();
+        let wp_offsets = points
+            .iter_attribute::<u64>(&attributes::WAVEFORM_DATA_OFFSET)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_offset()[range.clone()],
             wp_offsets,
             "Waveform data offsets do not match"
         );
 
-        let wp_sizes =
-            attribute::<u32>(points, &attributes::WAVEFORM_PACKET_SIZE).collect::<Vec<_>>();
+        let wp_sizes = points
+            .iter_attribute::<u32>(&attributes::WAVEFORM_PACKET_SIZE)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_size()[range.clone()],
             wp_sizes,
             "Waveform packet sizes do not match"
         );
 
-        let wp_return_points =
-            attribute::<f32>(points, &attributes::RETURN_POINT_WAVEFORM_LOCATION)
-                .collect::<Vec<_>>();
+        let wp_return_points = points
+            .iter_attribute::<f32>(&attributes::RETURN_POINT_WAVEFORM_LOCATION)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_location()[range.clone()],
             wp_return_points,
             "WAveform return point locations do not match"
         );
 
-        let wp_parameters =
-            attribute::<Vector3<f32>>(points, &attributes::WAVEFORM_PARAMETERS).collect::<Vec<_>>();
+        let wp_parameters = points
+            .iter_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+            .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_parameters()[range.clone()],
             wp_parameters,

@@ -2,9 +2,10 @@ use pasture_core::{
     attributes_mut,
     containers::points_mut,
     containers::points_ref,
+    containers::PointBuffer,
     containers::{
         self, InterleavedPointBufferMut, InterleavedPointView, PerAttributePointBufferMut,
-        PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable,
+        PerAttributeVecPointStorage, PointBufferExt, PointBufferWriteable,
     },
     layout::attributes::COLOR_RGB,
     nalgebra::Vector3,
@@ -83,7 +84,7 @@ fn main() {
 
         // You will rarely have to use these low-level methods to access untyped data. Instead, even with a polymorphic
         // `PointBuffer`, we can use some of the helper methods that we have seen in the previous example:
-        let points = containers::points::<XYZIntensity>(poly_buffer.as_ref());
+        let points = poly_buffer.as_ref().iter_point::<XYZIntensity>();
         let point_with_max_intensity = points.max_by_key(|p| p.intensity).unwrap();
         println!(
             "Point with maximum intensity: {:?}",

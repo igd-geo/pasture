@@ -1,12 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_core::{
-    containers,
     containers::attribute_ref,
-    containers::points,
     containers::points_ref,
     containers::{
         InterleavedPointBuffer, InterleavedVecPointStorage, PerAttributePointBuffer,
-        PerAttributeVecPointStorage, PointBuffer,
+        PerAttributeVecPointStorage, PointBuffer, PointBufferExt,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,
@@ -77,7 +75,7 @@ fn points_iterator_performance_opaque_buffer<T: PointType + Default>(
     buffer: &dyn PointBuffer,
 ) -> T {
     let mut ret = Default::default();
-    for point in points::<T>(buffer) {
+    for point in buffer.iter_point::<T>() {
         ret = point;
     }
     ret
@@ -90,7 +88,7 @@ fn points_iterator_performance_interleaved_buffer<
     buffer: &B,
 ) -> T {
     let mut ret = Default::default();
-    for point in points::<T>(buffer) {
+    for point in buffer.iter_point::<T>() {
         ret = point;
     }
     ret
@@ -103,7 +101,7 @@ fn points_iterator_performance_per_attribute_buffer<
     buffer: &B,
 ) -> T {
     let mut ret = Default::default();
-    for point in points::<T>(buffer) {
+    for point in buffer.iter_point::<T>() {
         ret = point;
     }
     ret
@@ -122,7 +120,7 @@ fn attribute_iterator_performance_opaque_buffer<T: PrimitiveType + Default>(
     attribute: &PointAttributeDefinition,
 ) -> T {
     let mut ret: T = Default::default();
-    for val in containers::attribute::<T>(buffer, attribute) {
+    for val in buffer.iter_attribute::<T>(attribute) {
         ret = val;
     }
     ret
@@ -136,7 +134,7 @@ fn attribute_iterator_performance_interleaved_buffer<
     attribute: &PointAttributeDefinition,
 ) -> T {
     let mut ret: T = Default::default();
-    for val in containers::attribute::<T>(buffer, attribute) {
+    for val in buffer.iter_attribute::<T>(attribute) {
         ret = val;
     }
     ret
@@ -150,7 +148,7 @@ fn attribute_iterator_performance_perattribute_buffer<
     attribute: &PointAttributeDefinition,
 ) -> T {
     let mut ret: T = Default::default();
-    for val in containers::attribute::<T>(buffer, attribute) {
+    for val in buffer.iter_attribute::<T>(attribute) {
         ret = val;
     }
     ret
