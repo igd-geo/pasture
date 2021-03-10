@@ -185,8 +185,8 @@ pub mod attr1 {
     }
 
     impl<'a, T: PrimitiveType> AttributeIteratorByRef<'a, T> {
-        pub fn new(
-            buffer: &'a dyn PerAttributePointBuffer,
+        pub fn new<B: PerAttributePointBuffer + ?Sized>(
+            buffer: &'a B,
             attribute: &'a PointAttributeDefinition,
         ) -> Self {
             if attribute.datatype() != T::data_type() {
@@ -236,8 +236,8 @@ pub mod attr1 {
     }
 
     impl<'a, T: PrimitiveType> AttributeIteratorByMut<'a, T> {
-        pub fn new(
-            buffer: &'a mut dyn PerAttributePointBufferMut,
+        pub fn new<'b, B: PerAttributePointBufferMut<'b> + ?Sized>(
+            buffer: &'a mut B,
             attribute: &'a PointAttributeDefinition,
         ) -> Self {
             if attribute.datatype() != T::data_type() {
@@ -519,30 +519,6 @@ attributes_iter!(attr2, 2, T1, T2 and 0, 1);
 attributes_iter!(attr3, 3, T1, T2, T3 and 0, 1, 2);
 attributes_iter!(attr4, 4, T1, T2, T3, T4 and 0, 1, 2, 3);
 
-/// Returns an iterator over references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`.
-///
-/// # Panics
-///
-/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.
-pub fn attribute_ref<'a, T: PrimitiveType + 'a>(
-    buffer: &'a dyn PerAttributePointBuffer,
-    attribute: &'a PointAttributeDefinition,
-) -> attr1::AttributeIteratorByRef<'a, T> {
-    attr1::AttributeIteratorByRef::<T>::new(buffer, attribute)
-}
-
-/// Returns an iterator over mutable references to the specific attribute for all points within the given `PointBuffer`, strongly typed over the `PrimitiveType` `T`.
-///
-/// # Panics
-///
-/// Panics if `attribute` is not part of the `PointLayout` of the `buffer`.
-pub fn attribute_mut<'a, T: PrimitiveType + 'a>(
-    buffer: &'a mut dyn PerAttributePointBufferMut,
-    attribute: &'a PointAttributeDefinition,
-) -> attr1::AttributeIteratorByMut<'a, T> {
-    attr1::AttributeIteratorByMut::<T>::new(buffer, attribute)
-}
-
 /// Create an iterator over multiple attributes within a `PointBuffer`. This macro uses some special syntax  to determine the attributes
 /// and their types:
 ///
@@ -696,10 +672,12 @@ macro_rules! attributes_mut {
 #[cfg(test)]
 mod tests {
 
-    use super::*;
     use crate::{containers::PointBufferExt, layout::attributes};
     use crate::{
-        containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage},
+        containers::{
+            InterleavedVecPointStorage, PerAttributePointBufferExt, PerAttributePointBufferMutExt,
+            PerAttributeVecPointStorage,
+        },
         layout::attributes::POSITION_3D,
         layout::PointType,
     };
@@ -737,7 +715,7 @@ mod tests {
 
         {
             let first_attribute_mut_view =
-                attribute_mut::<u16>(&mut storage, &attributes::INTENSITY);
+                storage.iter_attribute_mut::<u16>(&attributes::INTENSITY);
             first_attribute_mut_view.for_each(|a| {
                 *a *= 2;
             });
@@ -753,7 +731,7 @@ mod tests {
         }
 
         {
-            let attribute_by_ref_view = attribute_ref::<u16>(&storage, &attributes::INTENSITY);
+            let attribute_by_ref_view = storage.iter_attribute_ref::<u16>(&attributes::INTENSITY);
             let attribute_by_ref_collected = attribute_by_ref_view.map(|a| *a).collect::<Vec<_>>();
             assert_eq!(modified_intensities, attribute_by_ref_collected);
         }
@@ -837,7 +815,9 @@ mod tests {
         let mut storage = PerAttributeVecPointStorage::new(PositionLowp::layout());
         storage.push_point(PositionLowp(Default::default()));
 
-        attribute_ref::<Vector3<f64>>(&storage, &POSITION_3D).for_each(drop);
+        storage
+            .iter_attribute_ref::<Vector3<f64>>(&POSITION_3D)
+            .for_each(drop);
     }
 
     #[test]
@@ -850,7 +830,9 @@ mod tests {
         let mut storage = PerAttributeVecPointStorage::new(PositionLowp::layout());
         storage.push_point(PositionLowp(Default::default()));
 
-        attribute_mut::<Vector3<f64>>(&mut storage, &POSITION_3D).for_each(drop);
+        storage
+            .iter_attribute_mut::<Vector3<f64>>(&POSITION_3D)
+            .for_each(drop);
     }
 
     #[test]
@@ -866,14 +848,14 @@ mod tests {
     #[should_panic(expected = "Type T does not match datatype of attribute")]
     fn test_attribute_ref_with_wrong_type_fails() {
         let storage = PerAttributeVecPointStorage::new(TestPointType::layout());
-        attribute_ref::<u32>(&storage, &attributes::INTENSITY);
+        storage.iter_attribute_ref::<u32>(&attributes::INTENSITY);
     }
 
     #[test]
     #[should_panic(expected = "Type T does not match datatype of attribute")]
     fn test_attribute_mut_with_wrong_type_fails() {
         let mut storage = PerAttributeVecPointStorage::new(TestPointType::layout());
-        attribute_mut::<u32>(&mut storage, &attributes::INTENSITY);
+        storage.iter_attribute_mut::<u32>(&attributes::INTENSITY);
     }
 
     #[test]

@@ -3,7 +3,10 @@ use std::{mem::MaybeUninit, ops::Range};
 use crate::layout::{PointAttributeDefinition, PointLayout, PointType, PrimitiveType};
 
 use super::{
-    attr1::{AttributeIteratorByValue, AttributeIteratorByValueWithConversion},
+    attr1::AttributeIteratorByRef,
+    attr1::{
+        AttributeIteratorByMut, AttributeIteratorByValue, AttributeIteratorByValueWithConversion,
+    },
     iterators::PointIteratorByMut,
     iterators::PointIteratorByRef,
     iterators::PointIteratorByValue,
@@ -307,7 +310,7 @@ impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
 }
 
 /// Extension trait that provides generic methods for accessing point data in an `InterleavedPointBuffer`
-pub trait InterleavedPointBufferExt<B: InterleavedPointBuffer + ?Sized> {
+pub trait InterleavedPointBufferExt {
     /// Returns a reference to the point at `point_index` from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
     ///
     /// # Panics
@@ -328,7 +331,7 @@ pub trait InterleavedPointBufferExt<B: InterleavedPointBuffer + ?Sized> {
     fn iter_point_ref<T: PointType>(&self) -> PointIteratorByRef<'_, T>;
 }
 
-impl<B: InterleavedPointBuffer + ?Sized> InterleavedPointBufferExt<B> for B {
+impl<B: InterleavedPointBuffer + ?Sized> InterleavedPointBufferExt for B {
     fn get_point_ref<T: PointType>(&self, point_index: usize) -> &T {
         let raw_point = self.get_raw_point_ref(point_index);
         unsafe {
@@ -349,7 +352,7 @@ impl<B: InterleavedPointBuffer + ?Sized> InterleavedPointBufferExt<B> for B {
 }
 
 /// Extension trait that provides generic methods for accessing point data in an `InterleavedPointBufferMut`
-pub trait InterleavedPointBufferMutExt<B: InterleavedPointBufferMut + ?Sized> {
+pub trait InterleavedPointBufferMutExt {
     /// Returns a mutable reference to the point at `point_index` from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
     ///
     /// # Panics
@@ -370,7 +373,7 @@ pub trait InterleavedPointBufferMutExt<B: InterleavedPointBufferMut + ?Sized> {
     fn iter_point_mut<T: PointType>(&mut self) -> PointIteratorByMut<'_, T>;
 }
 
-impl<B: InterleavedPointBufferMut + ?Sized> InterleavedPointBufferMutExt<B> for B {
+impl<B: InterleavedPointBufferMut + ?Sized> InterleavedPointBufferMutExt for B {
     fn get_point_mut<T: PointType>(&mut self, point_index: usize) -> &mut T {
         let raw_point = self.get_raw_point_mut(point_index);
         unsafe {
@@ -390,71 +393,130 @@ impl<B: InterleavedPointBufferMut + ?Sized> InterleavedPointBufferMutExt<B> for 
     }
 }
 
-// TODO More extension traits for interleaved/per attribute buffers
-
-/// Returns a slice of the given attribute data in the associated `PerAttributePointBuffer`
-///
-/// # Examples
-///
-/// ```
-/// # use pasture_core::containers::*;
-/// # use pasture_core::layout::*;
-/// # use pasture_derive::PointType;
-///
-/// #[repr(C)]
-/// #[derive(PointType)]
-/// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
-///
-/// let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
-/// storage.push_points(&[MyPointType(42, 0.123), MyPointType(43, 0.456)]);
-///
-/// let slice = attribute_slice::<u16>(&storage, 0..2, &attributes::INTENSITY);
-/// assert_eq!(2, slice.len());
-/// assert_eq!(42, slice[0]);
-/// assert_eq!(43, slice[1]);
-///
-/// ```
-pub fn attribute_slice<'a, T: PrimitiveType>(
-    buffer: &'a dyn PerAttributePointBuffer,
-    range: Range<usize>,
-    attribute: &PointAttributeDefinition,
-) -> &'a [T] {
-    let range_size = range.end - range.start;
-    let slice = buffer.get_raw_attribute_range_ref(range, attribute);
-    unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const T, range_size) }
+/// Extension trait that provides generic methods for accessing attribute data in an `PerAttributePointBuffer`
+pub trait PerAttributePointBufferExt {
+    /// Returns a reference to the given `attribute` of the point at `point_index` in the associated `PerAttributePointBuffer`, strongly typed to the `PrimitiveType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
+    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
+    /// Panics if `point_index` is >= `self.len()`
+    fn get_attribute_ref<T: PrimitiveType>(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &T;
+    /// Returns a reference to the `attribute` for the `range` of points in the associated `PerAttributePointBuffer`, strongly typed to the `PrimitiveType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
+    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
+    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
+    fn get_attribute_range_ref<T: PrimitiveType>(
+        &self,
+        range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+    ) -> &[T];
+    /// Returns an iterator over references to the given `attribute` for all points in the associated `PerAttributePointBuffer`, strongly typed to the `PrimitiveType` `T`
+    fn iter_attribute_ref<'a, T: PrimitiveType>(
+        &'a self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByRef<'a, T>;
 }
 
-/// Returns a mutable slice of the given attribute data in the associated `PerAttributeVecPointStorage`
-///
-/// # Examples
-///
-/// ```
-/// # use pasture_core::containers::*;
-/// # use pasture_core::layout::*;
-/// # use pasture_derive::PointType;
-///
-/// #[repr(C)]
-/// #[derive(PointType)]
-/// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
-///
-/// let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
-/// storage.push_points(&[MyPointType(42, 0.123), MyPointType(42, 0.456)]);
-///
-/// {
-///     let mut_slice = attribute_slice_mut::<u16>(&mut storage, 0..2, &attributes::INTENSITY);
-///     mut_slice[0] = 84;
-/// }
-///
-/// let slice = attribute_slice::<u16>(&storage, 0..2, &attributes::INTENSITY);
-/// assert_eq!(84, slice[0]);
-///
-/// ```
-pub fn attribute_slice_mut<'a, T: PrimitiveType>(
-    buffer: &'a mut dyn PerAttributePointBufferMut,
-    range: Range<usize>,
-    attribute: &PointAttributeDefinition,
-) -> &'a mut [T] {
-    let range_size = range.end - range.start;
-    let slice = buffer.get_raw_attribute_range_mut(range, attribute);
-    unsafe { std::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut T, range_size) }
+impl<B: PerAttributePointBuffer + ?Sized> PerAttributePointBufferExt for B {
+    fn get_attribute_ref<T: PrimitiveType>(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &T {
+        let raw_attribute = self.get_raw_attribute_ref(point_index, attribute);
+        unsafe {
+            let raw_ptr = raw_attribute.as_ptr() as *const T;
+            raw_ptr.as_ref().expect("raw_attribute point was null")
+        }
+    }
+
+    fn get_attribute_range_ref<T: PrimitiveType>(
+        &self,
+        range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+    ) -> &[T] {
+        let num_points = range.len();
+        let raw_attributes = self.get_raw_attribute_range_ref(range, attribute);
+        unsafe { std::slice::from_raw_parts(raw_attributes.as_ptr() as *const T, num_points) }
+    }
+
+    fn iter_attribute_ref<'a, T: PrimitiveType>(
+        &'a self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByRef<'a, T> {
+        AttributeIteratorByRef::new(self, attribute)
+    }
+}
+
+/// Extension trait that provides generic methods for accessing attribute data in an `PerAttributePointBufferMut`
+pub trait PerAttributePointBufferMutExt {
+    /// Returns a mutable reference to the given `attribute` of the point at `point_index` in the associated `PerAttributePointBufferMut`, strongly typed to the `PrimitiveType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
+    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
+    /// Panics if `point_index` is >= `self.len()`
+    fn get_attribute_mut<T: PrimitiveType>(
+        &mut self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &mut T;
+    /// Returns a mutable reference to the `attribute` for the `range` of points in the associated `PerAttributePointBufferMut`, strongly typed to the `PrimitiveType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
+    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
+    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
+    fn get_attribute_range_mut<T: PrimitiveType>(
+        &mut self,
+        range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+    ) -> &mut [T];
+    /// Returns an iterator over mutable references to the given `attribute` for all points in the associated `PerAttributePointBufferMut`, strongly typed to the `PrimitiveType` `T`
+    fn iter_attribute_mut<'a, T: PrimitiveType>(
+        &'a mut self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByMut<'a, T>;
+}
+
+impl<'b, B: PerAttributePointBufferMut<'b> + ?Sized> PerAttributePointBufferMutExt for B {
+    fn get_attribute_mut<T: PrimitiveType>(
+        &mut self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &mut T {
+        let raw_attribute = self.get_raw_attribute_mut(point_index, attribute);
+        unsafe {
+            let raw_ptr = raw_attribute.as_ptr() as *mut T;
+            raw_ptr.as_mut().expect("raw_attribute point was null")
+        }
+    }
+
+    fn get_attribute_range_mut<T: PrimitiveType>(
+        &mut self,
+        range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+    ) -> &mut [T] {
+        let num_points = range.len();
+        let raw_attributes = self.get_raw_attribute_range_mut(range, attribute);
+        unsafe { std::slice::from_raw_parts_mut(raw_attributes.as_ptr() as *mut T, num_points) }
+    }
+
+    fn iter_attribute_mut<'a, T: PrimitiveType>(
+        &'a mut self,
+        attribute: &'a PointAttributeDefinition,
+    ) -> AttributeIteratorByMut<'a, T> {
+        AttributeIteratorByMut::new(self, attribute)
+    }
 }

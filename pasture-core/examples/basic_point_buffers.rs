@@ -1,5 +1,8 @@
 use pasture_core::{
-    containers::{self, InterleavedPointBufferMutExt, PerAttributeVecPointStorage, PointBufferExt},
+    containers::{
+        InterleavedPointBufferMutExt, PerAttributePointBufferMutExt, PerAttributeVecPointStorage,
+        PointBufferExt,
+    },
     nalgebra::Vector3,
 };
 use pasture_core::{
@@ -84,6 +87,8 @@ fn main() {
         // before. In addition, we have to give Pasture an 'attribute specifier' to determine which attribute we want:
         println!("Iterating over a single attribute:");
         for position in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+            // Notice that `iter_attribute<T>` returns `T` by value. It is available for all point buffer types, at the expense of
+            // only receiving a copy of the attribute.
             println!("Position: {:?}", position);
         }
 
@@ -92,8 +97,10 @@ fn main() {
         // name to identify the attribute, as well as the default datatype of the attribute. Using the builtin specifiers guarantees that
         // all attributes are always correctly addressed.
 
-        // Let's try mutating a specific attribute:
-        for intensity in containers::attribute_mut::<u16>(&mut buffer, &INTENSITY) {
+        // Let's try mutating a specific attribute. This is only possible for a buffer that stores data in PerAttribute memory layout. We
+        // can use the `PerAttributePointBufferMutExt` extension trait, which gives us a method to obtain an iterator over mutable references
+        // to attribute values:
+        for intensity in buffer.iter_attribute_mut::<u16>(&INTENSITY) {
             *intensity *= 2;
         }
 

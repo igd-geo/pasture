@@ -1,9 +1,9 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_core::{
-    containers::attribute_ref,
     containers::{
         InterleavedPointBuffer, InterleavedPointBufferExt, InterleavedVecPointStorage,
-        PerAttributePointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferExt,
+        PerAttributePointBuffer, PerAttributePointBufferExt, PerAttributeVecPointStorage,
+        PointBuffer, PointBufferExt,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,
@@ -157,7 +157,7 @@ fn attribute_ref_iterator_performance_small_type(
     buffer: &dyn PerAttributePointBuffer,
 ) -> Vector3<f64> {
     let mut ret = Vector3::new(0.0, 0.0, 0.0);
-    for position in attribute_ref::<Vector3<f64>>(buffer, &POSITION_3D) {
+    for position in buffer.iter_attribute_ref::<Vector3<f64>>(&POSITION_3D) {
         ret = position.clone();
     }
     ret

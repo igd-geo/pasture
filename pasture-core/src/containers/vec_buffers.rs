@@ -1222,7 +1222,7 @@ mod tests {
 
     use super::*;
     use crate::containers::{
-        attribute_slice, InterleavedPointView, PerAttributePointView, PointBufferExt,
+        InterleavedPointView, PerAttributePointBufferExt, PerAttributePointView, PointBufferExt,
     };
     use crate::util::view_raw_bytes;
     use crate::{
@@ -2256,10 +2256,12 @@ mod tests {
         per_attribute_buffer.push(&interleaved_buffer);
 
         assert_eq!(2, per_attribute_buffer.len());
-        let attrib1 = attribute_slice::<u16>(&per_attribute_buffer, 0..2, &attributes::INTENSITY);
+        let attrib1 =
+            per_attribute_buffer.get_attribute_range_ref::<u16>(0..2, &attributes::INTENSITY);
         assert_eq!(attrib1, &[42, 43]);
 
-        let attrib2 = attribute_slice::<f64>(&per_attribute_buffer, 0..2, &attributes::GPS_TIME);
+        let attrib2 =
+            per_attribute_buffer.get_attribute_range_ref::<f64>(0..2, &attributes::GPS_TIME);
         assert_eq!(attrib2, &[0.123, 0.456]);
     }
 
@@ -2272,10 +2274,12 @@ mod tests {
 
         assert_eq!(1, per_attribute_buffer.len());
 
-        let attrib1 = attribute_slice::<u16>(&per_attribute_buffer, 0..1, &attributes::INTENSITY);
+        let attrib1 =
+            per_attribute_buffer.get_attribute_range_ref::<u16>(0..1, &attributes::INTENSITY);
         assert_eq!(attrib1, &[42]);
 
-        let attrib2 = attribute_slice::<f64>(&per_attribute_buffer, 0..1, &attributes::GPS_TIME);
+        let attrib2 =
+            per_attribute_buffer.get_attribute_range_ref::<f64>(0..1, &attributes::GPS_TIME);
         assert_eq!(attrib2, &[0.123]);
     }
 
@@ -2299,10 +2303,12 @@ mod tests {
 
         assert_eq!(2, per_attribute_buffer.len());
 
-        let attrib1 = attribute_slice::<u16>(&per_attribute_buffer, 0..2, &attributes::INTENSITY);
+        let attrib1 =
+            per_attribute_buffer.get_attribute_range_ref::<u16>(0..2, &attributes::INTENSITY);
         assert_eq!(attrib1, &[42, 43]);
 
-        let attrib2 = attribute_slice::<f64>(&per_attribute_buffer, 0..2, &attributes::GPS_TIME);
+        let attrib2 =
+            per_attribute_buffer.get_attribute_range_ref::<f64>(0..2, &attributes::GPS_TIME);
         assert_eq!(attrib2, &[0.123, 0.456]);
     }
 
