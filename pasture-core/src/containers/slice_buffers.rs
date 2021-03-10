@@ -33,12 +33,12 @@ impl<'p> InterleavedPointBufferSlice<'p> {
 }
 
 impl<'p> PointBuffer for InterleavedPointBufferSlice<'p> {
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
-        self.buffer.get_point_by_copy(point_index_in_buffer, buf);
+        self.buffer.get_raw_point(point_index_in_buffer, buf);
     }
 
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
@@ -46,16 +46,16 @@ impl<'p> PointBuffer for InterleavedPointBufferSlice<'p> {
     ) {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_by_copy(point_index_in_buffer, attribute, buf);
+            .get_raw_attribute(point_index_in_buffer, attribute, buf);
     }
 
-    fn get_points_by_copy(&self, index_range: Range<usize>, buf: &mut [u8]) {
+    fn get_raw_points(&self, index_range: Range<usize>, buf: &mut [u8]) {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
-        self.buffer.get_points_by_copy(range_in_buffer, buf);
+        self.buffer.get_raw_points(range_in_buffer, buf);
     }
 
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -64,7 +64,7 @@ impl<'p> PointBuffer for InterleavedPointBufferSlice<'p> {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_range_by_copy(range_in_buffer, attribute, buf);
+            .get_raw_attribute_range(range_in_buffer, attribute, buf);
     }
 
     fn len(&self) -> usize {
@@ -81,15 +81,15 @@ impl<'p> PointBuffer for InterleavedPointBufferSlice<'p> {
 }
 
 impl<'p> InterleavedPointBuffer for InterleavedPointBufferSlice<'p> {
-    fn get_point_ref(&self, point_index: usize) -> &[u8] {
+    fn get_raw_point_ref(&self, point_index: usize) -> &[u8] {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
-        self.buffer.get_point_ref(point_index_in_buffer)
+        self.buffer.get_raw_point_ref(point_index_in_buffer)
     }
 
-    fn get_points_ref(&self, index_range: Range<usize>) -> &[u8] {
+    fn get_raw_points_ref(&self, index_range: Range<usize>) -> &[u8] {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
-        self.buffer.get_points_ref(range_in_buffer)
+        self.buffer.get_raw_points_ref(range_in_buffer)
     }
 }
 
@@ -120,12 +120,12 @@ impl<'p> PerAttributePointBufferSlice<'p> {
 }
 
 impl<'p> PointBuffer for PerAttributePointBufferSlice<'p> {
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
-        self.buffer.get_point_by_copy(point_index_in_buffer, buf);
+        self.buffer.get_raw_point(point_index_in_buffer, buf);
     }
 
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
@@ -133,16 +133,16 @@ impl<'p> PointBuffer for PerAttributePointBufferSlice<'p> {
     ) {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_by_copy(point_index_in_buffer, attribute, buf);
+            .get_raw_attribute(point_index_in_buffer, attribute, buf);
     }
 
-    fn get_points_by_copy(&self, index_range: Range<usize>, buf: &mut [u8]) {
+    fn get_raw_points(&self, index_range: Range<usize>, buf: &mut [u8]) {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
-        self.buffer.get_points_by_copy(range_in_buffer, buf);
+        self.buffer.get_raw_points(range_in_buffer, buf);
     }
 
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -151,7 +151,7 @@ impl<'p> PointBuffer for PerAttributePointBufferSlice<'p> {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_range_by_copy(range_in_buffer, attribute, buf);
+            .get_raw_attribute_range(range_in_buffer, attribute, buf);
     }
 
     fn len(&self) -> usize {
@@ -168,13 +168,17 @@ impl<'p> PointBuffer for PerAttributePointBufferSlice<'p> {
 }
 
 impl<'p> PerAttributePointBuffer for PerAttributePointBufferSlice<'p> {
-    fn get_attribute_ref(&self, point_index: usize, attribute: &PointAttributeDefinition) -> &[u8] {
+    fn get_raw_attribute_ref(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &[u8] {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_ref(point_index_in_buffer, attribute)
+            .get_raw_attribute_ref(point_index_in_buffer, attribute)
     }
 
-    fn get_attribute_range_ref(
+    fn get_raw_attribute_range_ref(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -182,7 +186,7 @@ impl<'p> PerAttributePointBuffer for PerAttributePointBufferSlice<'p> {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_range_ref(range_in_buffer, attribute)
+            .get_raw_attribute_range_ref(range_in_buffer, attribute)
     }
 
     fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_> {
@@ -246,12 +250,12 @@ impl<'p> PerAttributePointBufferSliceMut<'p> {
 }
 
 impl<'p> PointBuffer for PerAttributePointBufferSliceMut<'p> {
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
-        self.buffer.get_point_by_copy(point_index_in_buffer, buf);
+        self.buffer.get_raw_point(point_index_in_buffer, buf);
     }
 
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
@@ -259,16 +263,16 @@ impl<'p> PointBuffer for PerAttributePointBufferSliceMut<'p> {
     ) {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_by_copy(point_index_in_buffer, attribute, buf);
+            .get_raw_attribute(point_index_in_buffer, attribute, buf);
     }
 
-    fn get_points_by_copy(&self, index_range: Range<usize>, buf: &mut [u8]) {
+    fn get_raw_points(&self, index_range: Range<usize>, buf: &mut [u8]) {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
-        self.buffer.get_points_by_copy(range_in_buffer, buf);
+        self.buffer.get_raw_points(range_in_buffer, buf);
     }
 
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -277,7 +281,7 @@ impl<'p> PointBuffer for PerAttributePointBufferSliceMut<'p> {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_range_by_copy(range_in_buffer, attribute, buf);
+            .get_raw_attribute_range(range_in_buffer, attribute, buf);
     }
 
     fn len(&self) -> usize {
@@ -294,13 +298,17 @@ impl<'p> PointBuffer for PerAttributePointBufferSliceMut<'p> {
 }
 
 impl<'p> PerAttributePointBuffer for PerAttributePointBufferSliceMut<'p> {
-    fn get_attribute_ref(&self, point_index: usize, attribute: &PointAttributeDefinition) -> &[u8] {
+    fn get_raw_attribute_ref(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &[u8] {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_ref(point_index_in_buffer, attribute)
+            .get_raw_attribute_ref(point_index_in_buffer, attribute)
     }
 
-    fn get_attribute_range_ref(
+    fn get_raw_attribute_range_ref(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -308,7 +316,7 @@ impl<'p> PerAttributePointBuffer for PerAttributePointBufferSliceMut<'p> {
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_range_ref(range_in_buffer, attribute)
+            .get_raw_attribute_range_ref(range_in_buffer, attribute)
     }
 
     fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_> {
@@ -317,17 +325,17 @@ impl<'p> PerAttributePointBuffer for PerAttributePointBufferSliceMut<'p> {
 }
 
 impl<'p> PerAttributePointBufferMut<'p> for PerAttributePointBufferSliceMut<'p> {
-    fn get_attribute_mut(
+    fn get_raw_attribute_mut(
         &mut self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
     ) -> &mut [u8] {
         let point_index_in_buffer = point_index + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_mut(point_index_in_buffer, attribute)
+            .get_raw_attribute_mut(point_index_in_buffer, attribute)
     }
 
-    fn get_attribute_range_mut(
+    fn get_raw_attribute_range_mut(
         &mut self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -335,7 +343,7 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributePointBufferSliceMut<'p> 
         let range_in_buffer = index_range.start + self.range_in_buffer.start
             ..index_range.end + self.range_in_buffer.start;
         self.buffer
-            .get_attribute_range_mut(range_in_buffer, attribute)
+            .get_raw_attribute_range_mut(range_in_buffer, attribute)
     }
 
     fn slice_mut(&'p mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'p> {

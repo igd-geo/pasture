@@ -19,11 +19,11 @@ pub trait PointBuffer {
     /// Get the data for a single point from this PointBuffer and store it inside the given memory region.
     /// Panics if point_index is out of bounds. buf must be at least as big as a single point entry in the
     /// corresponding PointLayout of this PointBuffer
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]);
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]);
     /// Get the data for the given attribute of a single point from this PointBuffer and store it inside the
     /// given memory region. Panics if point_index is out of bounds or if the attribute is not part of the point_layout
     /// of this PointBuffer. buf must be at least as big as a single attribute entry of the given attribute.
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
@@ -33,12 +33,12 @@ pub trait PointBuffer {
     /// Panics if any index in index_range is out of bounds. buf must be at least as big as the size of a single
     /// point entry in the corresponding PointLayout of this PointBuffer multiplied by the number of point indices
     /// in index_range
-    fn get_points_by_copy(&self, index_range: Range<usize>, buf: &mut [u8]);
+    fn get_raw_points(&self, index_range: Range<usize>, buf: &mut [u8]);
     // Get the data for the given attribute for a range of points from this PointBuffer and stores it inside the
     // given memory region. Panics if any index in index_range is out of bounds or if the attribute is not part of
     // the point_layout of this PointBuffer. buf must be at least as big as the size of a single entry of the given
     // attribute multiplied by the number of point indices in index_range.
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -99,21 +99,21 @@ pub trait PointBufferWriteable: PointBuffer {
 /// ` |------Point 1-------| |------Point 2-------| |--...`<br>
 pub trait InterleavedPointBuffer: PointBuffer {
     /// Returns a pointer to the raw memory of the point entry at the given index in this PointBuffer. In contrast
-    /// to [get_point_by_copy](PointBuffer::get_point_by_copy), this function performs no copy operations and thus can
+    /// to [get_raw_point](PointBuffer::get_raw_point), this function performs no copy operations and thus can
     /// yield better performance. Panics if point_index is out of bounds.
-    fn get_point_ref(&self, point_index: usize) -> &[u8];
+    fn get_raw_point_ref(&self, point_index: usize) -> &[u8];
     /// Returns a pointer to the raw memory of a range of point entries in this PointBuffer. In contrast to
-    /// [get_point_by_copy](PointBuffer::get_point_by_copy), this function performs no copy operations and thus can
+    /// [get_raw_point](PointBuffer::get_raw_point), this function performs no copy operations and thus can
     /// yield better performance. Panics if any index in index_range is out of bounds.
-    fn get_points_ref(&self, index_range: Range<usize>) -> &[u8];
+    fn get_raw_points_ref(&self, index_range: Range<usize>) -> &[u8];
 }
 
 /// Trait for `InterleavedPointBuffer` types that provide mutable access to the point data
 pub trait InterleavedPointBufferMut: InterleavedPointBuffer {
-    /// Mutable version of [get_point_ref](InterleavedPointBuffer::get_point_ref)
-    fn get_point_mut(&mut self, point_index: usize) -> &mut [u8];
-    /// Mutable version of [get_points_ref](InterleavedPointBuffer::get_points_ref)
-    fn get_points_mut(&mut self, index_range: Range<usize>) -> &mut [u8];
+    /// Mutable version of [get_raw_point_ref](InterleavedPointBuffer::get_raw_point_ref)
+    fn get_raw_point_mut(&mut self, point_index: usize) -> &mut [u8];
+    /// Mutable version of [get_raw_points_ref](InterleavedPointBuffer::get_raw_points_ref)
+    fn get_raw_points_mut(&mut self, index_range: Range<usize>) -> &mut [u8];
 }
 
 /// Trait for `PointBuffer` types that store point data in PerAttribute memory layout. In buffers of this type, the data for a single
@@ -125,15 +125,19 @@ pub trait InterleavedPointBufferMut: InterleavedPointBuffer {
 /// `[u8, u8, u8, ...]`<br>
 pub trait PerAttributePointBuffer: PointBuffer {
     /// Returns a pointer to the raw memory for the attribute entry of the given point in this PointBuffer. In contrast
-    /// to [get_attribute_by_copy](PointBuffer::get_attribute_by_copy), this function performs no copy operations and
+    /// to [get_raw_attribute](PointBuffer::get_raw_attribute), this function performs no copy operations and
     /// thus can yield better performance. Panics if point_index is out of bounds or if the attribute is not part of
     /// the point_layout of this PointBuffer.
-    fn get_attribute_ref(&self, point_index: usize, attribute: &PointAttributeDefinition) -> &[u8];
+    fn get_raw_attribute_ref(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &[u8];
     /// Returns a pointer to the raw memory for the given attribute of a range of points in this PointBuffer. In contrast
-    /// to [get_attribute_range_by_copy](PointBuffer::get_attribute_range_by_copy), this function performs no copy operations
+    /// to [get_raw_attribute_range](PointBuffer::get_raw_attribute_range), this function performs no copy operations
     /// and thus can yield better performance. Panics if any index in index_range is out of bounds or if the attribute is
     /// not part of the point_layout of this PointBuffer.
-    fn get_attribute_range_ref(
+    fn get_raw_attribute_range_ref(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -145,14 +149,14 @@ pub trait PerAttributePointBuffer: PointBuffer {
 
 /// Trait for `PerAttributePointBuffer` types that provide mutable access to specific attributes
 pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
-    /// Mutable version of [get_attribute_ref](PerAttributePointBuffer::get_attribute_ref)
-    fn get_attribute_mut(
+    /// Mutable version of [get_raw_attribute_ref](PerAttributePointBuffer::get_raw_attribute_ref)
+    fn get_raw_attribute_mut(
         &mut self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
     ) -> &mut [u8];
-    /// Mutable version of [get_attribute_range_ref](PerAttributePointBuffer::get_attribute_range_ref)
-    fn get_attribute_range_mut(
+    /// Mutable version of [get_raw_attribute_range_ref](PerAttributePointBuffer::get_raw_attribute_range_ref)
+    fn get_raw_attribute_range_mut(
         &mut self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -251,7 +255,7 @@ impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
     fn get_point<T: PointType>(&self, index: usize) -> T {
         let mut point = MaybeUninit::<T>::uninit();
         unsafe {
-            self.get_point_by_copy(
+            self.get_raw_point(
                 index,
                 std::slice::from_raw_parts_mut(
                     point.as_mut_ptr() as *mut u8,
@@ -269,7 +273,7 @@ impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
     ) -> T {
         let mut attribute_data = MaybeUninit::<T>::uninit();
         unsafe {
-            self.get_attribute_by_copy(
+            self.get_raw_attribute(
                 index,
                 attribute,
                 std::slice::from_raw_parts_mut(
@@ -330,7 +334,7 @@ pub fn attribute_slice<'a, T: PrimitiveType>(
     attribute: &PointAttributeDefinition,
 ) -> &'a [T] {
     let range_size = range.end - range.start;
-    let slice = buffer.get_attribute_range_ref(range, attribute);
+    let slice = buffer.get_raw_attribute_range_ref(range, attribute);
     unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const T, range_size) }
 }
 
@@ -365,6 +369,6 @@ pub fn attribute_slice_mut<'a, T: PrimitiveType>(
     attribute: &PointAttributeDefinition,
 ) -> &'a mut [T] {
     let range_size = range.end - range.start;
-    let slice = buffer.get_attribute_range_mut(range, attribute);
+    let slice = buffer.get_raw_attribute_range_mut(range, attribute);
     unsafe { std::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut T, range_size) }
 }

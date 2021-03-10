@@ -98,10 +98,10 @@ impl<'d> InterleavedPointView<'d> {
 
 impl<'d> PointBuffer for InterleavedPointView<'d> {
     // TODO Refactor the code here and in InterleavedVecPointStorage (they are basically identical) by extracting them into a standalone function
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         if point_index >= self.len() {
             panic!(
-                "InterleavedPointView::get_point_by_copy: Point index {} out of bounds",
+                "InterleavedPointView::get_raw_point: Point index {} out of bounds",
                 point_index
             );
         }
@@ -112,7 +112,7 @@ impl<'d> PointBuffer for InterleavedPointView<'d> {
         buf.copy_from_slice(point_slice);
     }
 
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
@@ -120,7 +120,7 @@ impl<'d> PointBuffer for InterleavedPointView<'d> {
     ) {
         if point_index >= self.len() {
             panic!(
-                "InterleavedPointView::get_attribute_by_copy: Point index {} out of bounds!",
+                "InterleavedPointView::get_raw_attribute: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -134,16 +134,16 @@ impl<'d> PointBuffer for InterleavedPointView<'d> {
                 &self.point_data[offset_to_attribute..offset_to_attribute + attribute_size],
             );
         } else {
-            panic!("InterleavedPointView::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("InterleavedPointView::get_raw_attribute: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
     }
 
-    fn get_points_by_copy(&self, index_range: std::ops::Range<usize>, buf: &mut [u8]) {
-        let points_ref = self.get_points_ref(index_range);
+    fn get_raw_points(&self, index_range: std::ops::Range<usize>, buf: &mut [u8]) {
+        let points_ref = self.get_raw_points_ref(index_range);
         buf[0..points_ref.len()].copy_from_slice(points_ref);
     }
 
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         index_range: std::ops::Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -151,7 +151,7 @@ impl<'d> PointBuffer for InterleavedPointView<'d> {
     ) {
         if index_range.end > self.len() {
             panic!(
-                "InterleavedPointView::get_attribute_range_by_copy: Point indices {:?} out of bounds!",
+                "InterleavedPointView::get_raw_attribute_range: Point indices {:?} out of bounds!",
                 index_range
             );
         }
@@ -173,7 +173,7 @@ impl<'d> PointBuffer for InterleavedPointView<'d> {
                 );
             }
         } else {
-            panic!("InterleavedPointView::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("InterleavedPointView::get_raw_attribute: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
     }
 
@@ -191,10 +191,10 @@ impl<'d> PointBuffer for InterleavedPointView<'d> {
 }
 
 impl<'d> InterleavedPointBuffer for InterleavedPointView<'d> {
-    fn get_point_ref(&self, point_index: usize) -> &[u8] {
+    fn get_raw_point_ref(&self, point_index: usize) -> &[u8] {
         if point_index >= self.len() {
             panic!(
-                "InterleavedPointView::get_point_ref: Point index {} out of bounds!",
+                "InterleavedPointView::get_raw_point_ref: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -203,10 +203,10 @@ impl<'d> InterleavedPointBuffer for InterleavedPointView<'d> {
         &self.point_data[offset_to_point..offset_to_point + self.size_of_point_entry as usize]
     }
 
-    fn get_points_ref(&self, index_range: std::ops::Range<usize>) -> &[u8] {
+    fn get_raw_points_ref(&self, index_range: std::ops::Range<usize>) -> &[u8] {
         if index_range.end > self.len() {
             panic!(
-                "InterleavedPointView::get_points_ref: Point indices {:?} out of bounds!",
+                "InterleavedPointView::get_raw_points_ref: Point indices {:?} out of bounds!",
                 index_range
             );
         }
@@ -468,10 +468,10 @@ impl<'d> PerAttributePointView<'d> {
 }
 
 impl<'d> PointBuffer for PerAttributePointView<'d> {
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         if point_index >= self.len() {
             panic!(
-                "PerAttributePointView::get_point_by_copy: Point index {} out of bounds!",
+                "PerAttributePointView::get_raw_point: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -489,20 +489,20 @@ impl<'d> PointBuffer for PerAttributePointView<'d> {
         }
     }
 
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
         buf: &mut [u8],
     ) {
-        let attribute_slice = self.get_attribute_ref(point_index, attribute);
+        let attribute_slice = self.get_raw_attribute_ref(point_index, attribute);
         buf.copy_from_slice(attribute_slice);
     }
 
-    fn get_points_by_copy(&self, index_range: std::ops::Range<usize>, buf: &mut [u8]) {
+    fn get_raw_points(&self, index_range: std::ops::Range<usize>, buf: &mut [u8]) {
         if index_range.end > self.len() {
             panic!(
-                "PerAttributePointView::get_points_by_copy: Point indices {:?} out of bounds!",
+                "PerAttributePointView::get_raw_points: Point indices {:?} out of bounds!",
                 index_range
             );
         }
@@ -528,13 +528,13 @@ impl<'d> PointBuffer for PerAttributePointView<'d> {
         }
     }
 
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         index_range: std::ops::Range<usize>,
         attribute: &PointAttributeDefinition,
         buf: &mut [u8],
     ) {
-        let attribute_buffer_slice = self.get_attribute_range_ref(index_range, attribute);
+        let attribute_buffer_slice = self.get_raw_attribute_range_ref(index_range, attribute);
         buf.copy_from_slice(attribute_buffer_slice);
     }
 
@@ -552,17 +552,21 @@ impl<'d> PointBuffer for PerAttributePointView<'d> {
 }
 
 impl<'d> PerAttributePointBuffer for PerAttributePointView<'d> {
-    fn get_attribute_ref(&self, point_index: usize, attribute: &PointAttributeDefinition) -> &[u8] {
+    fn get_raw_attribute_ref(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &[u8] {
         if point_index >= self.len() {
             panic!(
-                "PerAttributePointView::get_attribute_ref: Point index {} out of bounds!",
+                "PerAttributePointView::get_raw_attribute_ref: Point index {} out of bounds!",
                 point_index
             );
         }
 
         let attribute_index = match self.point_layout.index_of(attribute) {
             Some(idx) => idx,
-            None => panic!("PerAttributePointView::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
+            None => panic!("PerAttributePointView::get_raw_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
         };
 
         let attribute_buffer = self.point_data[attribute_index];
@@ -571,21 +575,21 @@ impl<'d> PerAttributePointBuffer for PerAttributePointView<'d> {
         &attribute_buffer[offset_in_attribute_buffer..offset_in_attribute_buffer + attribute_size]
     }
 
-    fn get_attribute_range_ref(
+    fn get_raw_attribute_range_ref(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
     ) -> &[u8] {
         if index_range.end > self.len() {
             panic!(
-                "PerAttributePointView::get_attribute_range_ref: Point indices {:?} out of bounds!",
+                "PerAttributePointView::get_raw_attribute_range_ref: Point indices {:?} out of bounds!",
                 index_range
             );
         }
 
         let attribute_index = match self.point_layout.index_of(attribute) {
             Some(idx) => idx,
-            None => panic!("PerAttributePointView::get_attribute_range_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
+            None => panic!("PerAttributePointView::get_raw_attribute_range_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
         };
 
         let attribute_buffer = self.point_data[attribute_index];

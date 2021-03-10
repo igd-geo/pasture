@@ -80,7 +80,7 @@ fn main() {
         //...and some low-level methods to access untyped point data
         let mut untyped_point_data =
             vec![0; poly_buffer.point_layout().size_of_point_entry() as usize];
-        poly_buffer.get_point_by_copy(0, untyped_point_data.as_mut());
+        poly_buffer.get_raw_point(0, untyped_point_data.as_mut());
 
         // You will rarely have to use these low-level methods to access untyped data. Instead, even with a polymorphic
         // `PointBuffer`, we can use some of the helper methods that we have seen in the previous example:

@@ -219,7 +219,7 @@ impl InterleavedVecPointStorage {
 
     fn push_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
         self.points
-            .extend_from_slice(points.get_points_ref(0..points.len()));
+            .extend_from_slice(points.get_raw_points_ref(0..points.len()));
     }
 
     fn push_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
@@ -230,7 +230,7 @@ impl InterleavedVecPointStorage {
             .map(|attribute| {
                 (
                     attribute,
-                    points.get_attribute_range_ref(0..points.len(), &attribute.into()),
+                    points.get_raw_attribute_range_ref(0..points.len(), &attribute.into()),
                 )
             })
             .collect::<Vec<_>>();
@@ -265,7 +265,7 @@ impl InterleavedVecPointStorage {
         let this_offset = range.start * self.size_of_point_entry as usize;
         let this_range_len = range.len() * self.size_of_point_entry as usize;
         let this_slice = &mut self.points[this_offset..(this_offset + this_range_len)];
-        let other_slice = points.get_points_ref(0..range.len());
+        let other_slice = points.get_raw_points_ref(0..range.len());
         this_slice.copy_from_slice(other_slice);
     }
 
@@ -291,7 +291,7 @@ impl InterleavedVecPointStorage {
             .map(|attribute| {
                 (
                     attribute,
-                    points.get_attribute_range_ref(0..range.len(), &attribute.into()),
+                    points.get_raw_attribute_range_ref(0..range.len(), &attribute.into()),
                 )
             })
             .collect::<Vec<_>>();
@@ -313,10 +313,10 @@ impl InterleavedVecPointStorage {
 }
 
 impl PointBuffer for InterleavedVecPointStorage {
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         if point_index >= self.len() {
             panic!(
-                "InterleavedVecPointStorage::get_point_by_copy: Point index {} out of bounds!",
+                "InterleavedVecPointStorage::get_raw_point: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -328,7 +328,7 @@ impl PointBuffer for InterleavedVecPointStorage {
         );
     }
 
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
@@ -336,7 +336,7 @@ impl PointBuffer for InterleavedVecPointStorage {
     ) {
         if point_index >= self.len() {
             panic!(
-                "InterleavedVecPointStorage::get_attribute_by_copy: Point index {} out of bounds!",
+                "InterleavedVecPointStorage::get_raw_attribute: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -350,16 +350,16 @@ impl PointBuffer for InterleavedVecPointStorage {
                 &self.points[offset_to_attribute..offset_to_attribute + attribute_size],
             );
         } else {
-            panic!("InterleavedVecPointStorage::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("InterleavedVecPointStorage::get_raw_attribute: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
     }
 
-    fn get_points_by_copy(&self, point_indices: Range<usize>, buf: &mut [u8]) {
-        let points_ref = self.get_points_ref(point_indices);
+    fn get_raw_points(&self, point_indices: Range<usize>, buf: &mut [u8]) {
+        let points_ref = self.get_raw_points_ref(point_indices);
         buf[0..points_ref.len()].copy_from_slice(points_ref);
     }
 
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         point_indices: Range<usize>,
         attribute: &PointAttributeDefinition,
@@ -367,7 +367,7 @@ impl PointBuffer for InterleavedVecPointStorage {
     ) {
         if point_indices.end > self.len() {
             panic!(
-                "InterleavedVecPointStorage::get_attribute_range_by_copy: Point indices {:?} out of bounds!",
+                "InterleavedVecPointStorage::get_raw_attribute_range: Point indices {:?} out of bounds!",
                 point_indices
             );
         }
@@ -389,7 +389,7 @@ impl PointBuffer for InterleavedVecPointStorage {
                 );
             }
         } else {
-            panic!("InterleavedVecPointStorage::get_attribute_by_copy: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("InterleavedVecPointStorage::get_raw_attribute: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
     }
 
@@ -433,10 +433,10 @@ impl PointBufferWriteable for InterleavedVecPointStorage {
 }
 
 impl InterleavedPointBuffer for InterleavedVecPointStorage {
-    fn get_point_ref(&self, point_index: usize) -> &[u8] {
+    fn get_raw_point_ref(&self, point_index: usize) -> &[u8] {
         if point_index >= self.len() {
             panic!(
-                "InterleavedVecPointStorage::get_point_ref: Point index {} out of bounds!",
+                "InterleavedVecPointStorage::get_raw_point_ref: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -445,10 +445,10 @@ impl InterleavedPointBuffer for InterleavedVecPointStorage {
         &self.points[offset_to_point..offset_to_point + self.size_of_point_entry as usize]
     }
 
-    fn get_points_ref(&self, index_range: Range<usize>) -> &[u8] {
+    fn get_raw_points_ref(&self, index_range: Range<usize>) -> &[u8] {
         if index_range.end > self.len() {
             panic!(
-                "InterleavedVecPointStorage::get_points_ref: Point indices {:?} out of bounds!",
+                "InterleavedVecPointStorage::get_raw_points_ref: Point indices {:?} out of bounds!",
                 index_range
             );
         }
@@ -461,10 +461,10 @@ impl InterleavedPointBuffer for InterleavedVecPointStorage {
 }
 
 impl InterleavedPointBufferMut for InterleavedVecPointStorage {
-    fn get_point_mut(&mut self, point_index: usize) -> &mut [u8] {
+    fn get_raw_point_mut(&mut self, point_index: usize) -> &mut [u8] {
         if point_index >= self.len() {
             panic!(
-                "InterleavedVecPointStorage::get_point_mut: Point index {} out of bounds!",
+                "InterleavedVecPointStorage::get_raw_point_mut: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -473,10 +473,10 @@ impl InterleavedPointBufferMut for InterleavedVecPointStorage {
         &mut self.points[offset_to_point..offset_to_point + self.size_of_point_entry as usize]
     }
 
-    fn get_points_mut(&mut self, index_range: Range<usize>) -> &mut [u8] {
+    fn get_raw_points_mut(&mut self, index_range: Range<usize>) -> &mut [u8] {
         if index_range.end > self.len() {
             panic!(
-                "InterleavedVecPointStorage::get_points_mut: Point indices {:?} out of bounds!",
+                "InterleavedVecPointStorage::get_raw_points_mut: Point indices {:?} out of bounds!",
                 index_range
             );
         }
@@ -849,7 +849,7 @@ impl PerAttributeVecPointStorage {
             panic!("PerAttributeVecPointStorage::push_points_interleaved: Layout of 'points' does not match layout of this buffer!");
         }
 
-        let raw_point_data = points.get_points_ref(0..points.len());
+        let raw_point_data = points.get_raw_points_ref(0..points.len());
         let stride = self.layout.size_of_point_entry() as usize;
 
         for (attribute_name, attribute_data) in self.attributes.iter_mut() {
@@ -878,7 +878,7 @@ impl PerAttributeVecPointStorage {
                 .get_mut(attribute.name())
                 .unwrap()
                 .extend_from_slice(
-                    points.get_attribute_range_ref(0..points.len(), &attribute.into()),
+                    points.get_raw_attribute_range_ref(0..points.len(), &attribute.into()),
                 );
         }
     }
@@ -897,7 +897,7 @@ impl PerAttributeVecPointStorage {
             panic!("PerAttributeVecPointStorage::splice_interleaved: points layout does not match this PointLayout!");
         }
 
-        let raw_point_data = points.get_points_ref(0..range.len());
+        let raw_point_data = points.get_raw_points_ref(0..range.len());
         let stride = self.layout.size_of_point_entry() as usize;
 
         for (attribute_name, attribute_data) in self.attributes.iter_mut() {
@@ -940,7 +940,7 @@ impl PerAttributeVecPointStorage {
                     ..this_attribute_offset + range.len() * attribute.size() as usize];
 
             let new_attribute_slice =
-                points.get_attribute_range_ref(0..range.len(), &attribute.into());
+                points.get_raw_attribute_range_ref(0..range.len(), &attribute.into());
 
             this_attribute_slice.copy_from_slice(new_attribute_slice);
         }
@@ -948,10 +948,10 @@ impl PerAttributeVecPointStorage {
 }
 
 impl PointBuffer for PerAttributeVecPointStorage {
-    fn get_point_by_copy(&self, point_index: usize, buf: &mut [u8]) {
+    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         if point_index >= self.len() {
             panic!(
-                "PerAttributeVecPointStorage::get_point_by_copy: Point index {} out of bounds!",
+                "PerAttributeVecPointStorage::get_raw_point: Point index {} out of bounds!",
                 point_index
             );
         }
@@ -969,20 +969,20 @@ impl PointBuffer for PerAttributeVecPointStorage {
         }
     }
 
-    fn get_attribute_by_copy(
+    fn get_raw_attribute(
         &self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
         buf: &mut [u8],
     ) {
-        let attribute_slice = self.get_attribute_ref(point_index, attribute);
+        let attribute_slice = self.get_raw_attribute_ref(point_index, attribute);
         buf.copy_from_slice(attribute_slice);
     }
 
-    fn get_points_by_copy(&self, point_indices: Range<usize>, buf: &mut [u8]) {
+    fn get_raw_points(&self, point_indices: Range<usize>, buf: &mut [u8]) {
         if point_indices.end > self.len() {
             panic!(
-                "PerAttributeVecPointStorage::get_points_by_copy: Point indices {:?} out of bounds!",
+                "PerAttributeVecPointStorage::get_raw_points: Point indices {:?} out of bounds!",
                 point_indices
             );
         }
@@ -1008,13 +1008,13 @@ impl PointBuffer for PerAttributeVecPointStorage {
         }
     }
 
-    fn get_attribute_range_by_copy(
+    fn get_raw_attribute_range(
         &self,
         point_indices: Range<usize>,
         attribute: &PointAttributeDefinition,
         buf: &mut [u8],
     ) {
-        let attribute_buffer_slice = self.get_attribute_range_ref(point_indices, attribute);
+        let attribute_buffer_slice = self.get_raw_attribute_range_ref(point_indices, attribute);
         buf.copy_from_slice(attribute_buffer_slice);
     }
 
@@ -1062,16 +1062,20 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
 }
 
 impl PerAttributePointBuffer for PerAttributeVecPointStorage {
-    fn get_attribute_ref(&self, point_index: usize, attribute: &PointAttributeDefinition) -> &[u8] {
+    fn get_raw_attribute_ref(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+    ) -> &[u8] {
         if point_index >= self.len() {
             panic!(
-                "PerAttributeVecPointStorage::get_attribute_ref: Point index {} out of bounds!",
+                "PerAttributeVecPointStorage::get_raw_attribute_ref: Point index {} out of bounds!",
                 point_index
             );
         }
 
         if !self.layout.has_attribute(attribute) {
-            panic!("PerAttributeVecPointStorage::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("PerAttributeVecPointStorage::get_raw_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
         let attribute_buffer = self.attributes.get(attribute.name()).unwrap();
@@ -1080,20 +1084,20 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
         &attribute_buffer[offset_in_attribute_buffer..offset_in_attribute_buffer + attribute_size]
     }
 
-    fn get_attribute_range_ref(
+    fn get_raw_attribute_range_ref(
         &self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
     ) -> &[u8] {
         if index_range.end > self.len() {
             panic!(
-                "PerAttributeVecPointStorage::get_attribute_range_ref: Point indices {:?} out of bounds!",
+                "PerAttributeVecPointStorage::get_raw_attribute_range_ref: Point indices {:?} out of bounds!",
                 index_range
             );
         }
 
         if !self.layout.has_attribute(attribute) {
-            panic!("PerAttributeVecPointStorage::get_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("PerAttributeVecPointStorage::get_raw_attribute_ref: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
         let attribute_buffer = self.attributes.get(attribute.name()).unwrap();
@@ -1109,20 +1113,20 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
 }
 
 impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
-    fn get_attribute_mut(
+    fn get_raw_attribute_mut(
         &mut self,
         point_index: usize,
         attribute: &PointAttributeDefinition,
     ) -> &mut [u8] {
         if point_index >= self.len() {
             panic!(
-                "PerAttributeVecPointStorage::get_attribute_mut: Point index {} out of bounds!",
+                "PerAttributeVecPointStorage::get_raw_attribute_mut: Point index {} out of bounds!",
                 point_index
             );
         }
 
         if !self.layout.has_attribute(attribute) {
-            panic!("PerAttributeVecPointStorage::get_attribute_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("PerAttributeVecPointStorage::get_raw_attribute_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
         let attribute_buffer = self.attributes.get_mut(attribute.name()).unwrap();
@@ -1132,20 +1136,20 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
             [offset_in_attribute_buffer..offset_in_attribute_buffer + attribute_size]
     }
 
-    fn get_attribute_range_mut(
+    fn get_raw_attribute_range_mut(
         &mut self,
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
     ) -> &mut [u8] {
         if index_range.end > self.len() {
             panic!(
-                "PerAttributeVecPointStorage::get_attribute_range_mut: Point indices {:?} out of bounds!",
+                "PerAttributeVecPointStorage::get_raw_attribute_range_mut: Point indices {:?} out of bounds!",
                 index_range
             );
         }
 
         if !self.layout.has_attribute(attribute) {
-            panic!("PerAttributeVecPointStorage::get_attribute_range_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
+            panic!("PerAttributeVecPointStorage::get_raw_attribute_range_mut: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute);
         }
 
         let attribute_buffer = self.attributes.get_mut(attribute.name()).unwrap();
@@ -1308,13 +1312,13 @@ mod tests {
     }
 
     #[test]
-    fn test_point_buffer_get_point_by_copy() {
+    fn test_point_buffer_get_raw_point() {
         let interleaved_buffer =
             get_interleaved_point_buffer_from_points(&[TestPointType(42, 0.123)]);
 
         let mut ref_point = TestPointType(0, 0.0);
         unsafe {
-            interleaved_buffer.get_point_by_copy(0, view_raw_bytes_mut(&mut ref_point));
+            interleaved_buffer.get_raw_point(0, view_raw_bytes_mut(&mut ref_point));
         }
 
         assert_eq!(TestPointType(42, 0.123), ref_point);
@@ -1322,7 +1326,7 @@ mod tests {
         let per_attribute_buffer =
             get_per_attribute_point_buffer_from_points(&[TestPointType(43, 0.456)]);
         unsafe {
-            per_attribute_buffer.get_point_by_copy(0, view_raw_bytes_mut(&mut ref_point));
+            per_attribute_buffer.get_raw_point(0, view_raw_bytes_mut(&mut ref_point));
         }
 
         assert_eq!(TestPointType(43, 0.456), ref_point);
@@ -1330,34 +1334,34 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_point_by_copy_on_empty_interleaved_buffer() {
+    fn test_point_buffer_get_raw_point_on_empty_interleaved_buffer() {
         let buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
 
         let mut ref_point = TestPointType(0, 0.0);
         unsafe {
-            buffer.get_point_by_copy(0, view_raw_bytes_mut(&mut ref_point));
+            buffer.get_raw_point(0, view_raw_bytes_mut(&mut ref_point));
         }
     }
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_point_by_copy_on_empty_per_attribute_buffer() {
+    fn test_point_buffer_get_raw_point_on_empty_per_attribute_buffer() {
         let buffer = get_empty_per_attribute_point_buffer(TestPointType::layout());
 
         let mut ref_point = TestPointType(0, 0.0);
         unsafe {
-            buffer.get_point_by_copy(0, view_raw_bytes_mut(&mut ref_point));
+            buffer.get_raw_point(0, view_raw_bytes_mut(&mut ref_point));
         }
     }
 
     #[test]
-    fn test_point_buffer_get_attribute_by_copy() {
+    fn test_point_buffer_get_raw_attribute() {
         let interleaved_buffer =
             get_interleaved_point_buffer_from_points(&[TestPointType(42, 0.123)]);
 
         let mut ref_attribute: u16 = 0;
         unsafe {
-            interleaved_buffer.get_attribute_by_copy(
+            interleaved_buffer.get_raw_attribute(
                 0,
                 &attributes::INTENSITY,
                 view_raw_bytes_mut(&mut ref_attribute),
@@ -1369,7 +1373,7 @@ mod tests {
         let per_attribute_buffer =
             get_per_attribute_point_buffer_from_points(&[TestPointType(43, 0.456)]);
         unsafe {
-            per_attribute_buffer.get_attribute_by_copy(
+            per_attribute_buffer.get_raw_attribute(
                 0,
                 &attributes::INTENSITY,
                 view_raw_bytes_mut(&mut ref_attribute),
@@ -1381,12 +1385,12 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_attribute_by_copy_on_empty_interleaved_buffer() {
+    fn test_point_buffer_get_raw_attribute_on_empty_interleaved_buffer() {
         let buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
 
         let mut ref_attribute: u16 = 0;
         unsafe {
-            buffer.get_attribute_by_copy(
+            buffer.get_raw_attribute(
                 0,
                 &attributes::INTENSITY,
                 view_raw_bytes_mut(&mut ref_attribute),
@@ -1396,12 +1400,12 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_attribute_by_copy_on_empty_per_attribute_buffer() {
+    fn test_point_buffer_get_raw_attribute_on_empty_per_attribute_buffer() {
         let buffer = get_empty_per_attribute_point_buffer(TestPointType::layout());
 
         let mut ref_attribute: u16 = 0;
         unsafe {
-            buffer.get_attribute_by_copy(
+            buffer.get_raw_attribute(
                 0,
                 &attributes::INTENSITY,
                 view_raw_bytes_mut(&mut ref_attribute),
@@ -1411,12 +1415,12 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_attribute_by_copy_for_invalid_attribute_interleaved() {
+    fn test_point_buffer_get_raw_attribute_for_invalid_attribute_interleaved() {
         let buffer = get_interleaved_point_buffer_from_points(&[TestPointType(42, 0.123)]);
 
         let mut ref_attribute: u16 = 0;
         unsafe {
-            buffer.get_attribute_by_copy(
+            buffer.get_raw_attribute(
                 0,
                 &attributes::POSITION_3D,
                 view_raw_bytes_mut(&mut ref_attribute),
@@ -1426,12 +1430,12 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_attribute_by_copy_for_invalid_attribute_per_attribute() {
+    fn test_point_buffer_get_raw_attribute_for_invalid_attribute_per_attribute() {
         let buffer = get_per_attribute_point_buffer_from_points(&[TestPointType(43, 0.456)]);
 
         let mut ref_attribute: u16 = 0;
         unsafe {
-            buffer.get_attribute_by_copy(
+            buffer.get_raw_attribute(
                 0,
                 &attributes::POSITION_3D,
                 view_raw_bytes_mut(&mut ref_attribute),
@@ -1440,14 +1444,14 @@ mod tests {
     }
 
     #[test]
-    fn test_point_buffer_get_points_by_copy() {
+    fn test_point_buffer_get_raw_points() {
         let interleaved_buffer = get_interleaved_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
         let mut ref_points = [TestPointType(0, 0.0), TestPointType(0, 0.0)];
-        unsafe { interleaved_buffer.get_points_by_copy(0..2, view_raw_bytes_mut(&mut ref_points)) }
+        unsafe { interleaved_buffer.get_raw_points(0..2, view_raw_bytes_mut(&mut ref_points)) }
 
         assert_eq!(TestPointType(42, 0.123), ref_points[0]);
         assert_eq!(TestPointType(43, 0.456), ref_points[1]);
@@ -1457,7 +1461,7 @@ mod tests {
             TestPointType(45, 0.654),
         ]);
         unsafe {
-            per_attribute_buffer.get_points_by_copy(0..2, view_raw_bytes_mut(&mut ref_points));
+            per_attribute_buffer.get_raw_points(0..2, view_raw_bytes_mut(&mut ref_points));
         }
 
         assert_eq!(TestPointType(44, 0.321), ref_points[0]);
@@ -1466,20 +1470,20 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_points_by_copy_out_of_bounds_interleaved() {
+    fn test_point_buffer_get_raw_points_out_of_bounds_interleaved() {
         let interleaved_buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
-        interleaved_buffer.get_points_by_copy(0..2, &mut [0]);
+        interleaved_buffer.get_raw_points(0..2, &mut [0]);
     }
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_points_by_copy_out_of_bounds_per_attribute() {
+    fn test_point_buffer_get_raw_points_out_of_bounds_per_attribute() {
         let interleaved_buffer = get_empty_per_attribute_point_buffer(TestPointType::layout());
-        interleaved_buffer.get_points_by_copy(0..2, &mut [0]);
+        interleaved_buffer.get_raw_points(0..2, &mut [0]);
     }
 
     #[test]
-    fn test_point_buffer_get_attribute_range_by_copy() {
+    fn test_point_buffer_get_raw_attribute_range() {
         let interleaved_buffer = get_interleaved_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
@@ -1487,7 +1491,7 @@ mod tests {
 
         let mut ref_attributes: [u16; 2] = [0, 0];
         unsafe {
-            interleaved_buffer.get_attribute_range_by_copy(
+            interleaved_buffer.get_raw_attribute_range(
                 0..2,
                 &attributes::INTENSITY,
                 view_raw_bytes_mut(&mut ref_attributes),
@@ -1501,7 +1505,7 @@ mod tests {
             TestPointType(45, 0.654),
         ]);
         unsafe {
-            per_attribute_buffer.get_attribute_range_by_copy(
+            per_attribute_buffer.get_raw_attribute_range(
                 0..2,
                 &attributes::INTENSITY,
                 view_raw_bytes_mut(&mut ref_attributes),
@@ -1513,22 +1517,22 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_attribute_range_by_copy_invalid_attribute_interleaved() {
+    fn test_point_buffer_get_raw_attribute_range_invalid_attribute_interleaved() {
         let buffer = get_interleaved_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
-        buffer.get_attribute_range_by_copy(0..2, &attributes::POINT_ID, &mut [0]);
+        buffer.get_raw_attribute_range(0..2, &attributes::POINT_ID, &mut [0]);
     }
 
     #[test]
     #[should_panic]
-    fn test_point_buffer_get_attribute_range_by_copy_invalid_attribute_per_attribute() {
+    fn test_point_buffer_get_raw_attribute_range_invalid_attribute_per_attribute() {
         let buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
-        buffer.get_attribute_range_by_copy(0..2, &attributes::POINT_ID, &mut [0]);
+        buffer.get_raw_attribute_range(0..2, &attributes::POINT_ID, &mut [0]);
     }
 
     #[test]
@@ -1560,7 +1564,7 @@ mod tests {
         assert_eq!(2, interleaved_buffer.len());
 
         let mut ref_points = [TestPointType(0, 0.0), TestPointType(0, 0.0)];
-        unsafe { interleaved_buffer.get_points_by_copy(0..2, view_raw_bytes_mut(&mut ref_points)) }
+        unsafe { interleaved_buffer.get_raw_points(0..2, view_raw_bytes_mut(&mut ref_points)) }
 
         assert_eq!(TestPointType(42, 0.123), ref_points[0]);
         assert_eq!(TestPointType(43, 0.456), ref_points[1]);
@@ -1574,9 +1578,7 @@ mod tests {
 
         assert_eq!(2, per_attribute_buffer.len());
 
-        unsafe {
-            per_attribute_buffer.get_points_by_copy(0..2, view_raw_bytes_mut(&mut ref_points))
-        }
+        unsafe { per_attribute_buffer.get_raw_points(0..2, view_raw_bytes_mut(&mut ref_points)) }
 
         assert_eq!(TestPointType(44, 0.321), ref_points[0]);
         assert_eq!(TestPointType(45, 0.654), ref_points[1]);
@@ -1596,7 +1598,7 @@ mod tests {
         assert_eq!(2, interleaved_buffer.len());
 
         let mut ref_points = [TestPointType(0, 0.0), TestPointType(0, 0.0)];
-        unsafe { interleaved_buffer.get_points_by_copy(0..2, view_raw_bytes_mut(&mut ref_points)) }
+        unsafe { interleaved_buffer.get_raw_points(0..2, view_raw_bytes_mut(&mut ref_points)) }
 
         assert_eq!(TestPointType(42, 0.123), ref_points[0]);
         assert_eq!(TestPointType(43, 0.456), ref_points[1]);
@@ -1610,9 +1612,7 @@ mod tests {
         ref_points[0] = TestPointType(0, 0.0);
         ref_points[1] = TestPointType(0, 0.0);
 
-        unsafe {
-            per_attribute_buffer.get_points_by_copy(0..2, view_raw_bytes_mut(&mut ref_points))
-        }
+        unsafe { per_attribute_buffer.get_raw_points(0..2, view_raw_bytes_mut(&mut ref_points)) }
 
         assert_eq!(TestPointType(42, 0.123), ref_points[0]);
         assert_eq!(TestPointType(43, 0.456), ref_points[1]);
@@ -1637,18 +1637,18 @@ mod tests {
     }
 
     #[test]
-    fn test_interleaved_point_buffer_get_point_ref() {
+    fn test_interleaved_point_buffer_get_raw_point_ref() {
         let interleaved_buffer = get_interleaved_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
-        let first_point_ref = interleaved_buffer.get_point_ref(0);
+        let first_point_ref = interleaved_buffer.get_raw_point_ref(0);
         let first_point_ref_typed = unsafe { *(first_point_ref.as_ptr() as *const TestPointType) };
 
         assert_eq!(TestPointType(42, 0.123), first_point_ref_typed);
 
-        let second_point_ref = interleaved_buffer.get_point_ref(1);
+        let second_point_ref = interleaved_buffer.get_raw_point_ref(1);
         let second_point_ref_typed =
             unsafe { *(second_point_ref.as_ptr() as *const TestPointType) };
 
@@ -1657,20 +1657,20 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_interleaved_point_buffer_get_point_ref_on_empty_buffer() {
+    fn test_interleaved_point_buffer_get_raw_point_ref_on_empty_buffer() {
         let buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
 
-        buffer.get_point_ref(0);
+        buffer.get_raw_point_ref(0);
     }
 
     #[test]
-    fn test_interleaved_point_buffer_get_points_ref() {
+    fn test_interleaved_point_buffer_get_raw_points_ref() {
         let interleaved_buffer = get_interleaved_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
-        let points_ref = interleaved_buffer.get_points_ref(0..2);
+        let points_ref = interleaved_buffer.get_raw_points_ref(0..2);
         let typed_points_ref =
             unsafe { std::slice::from_raw_parts(points_ref.as_ptr() as *const TestPointType, 2) };
 
@@ -1681,28 +1681,28 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_interleaved_point_buffer_get_points_ref_on_empty_buffer() {
+    fn test_interleaved_point_buffer_get_raw_points_ref_on_empty_buffer() {
         let buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
 
-        buffer.get_points_ref(0..2);
+        buffer.get_raw_points_ref(0..2);
     }
 
     #[test]
-    fn test_interleaved_point_buffer_mut_get_point_mut() {
+    fn test_interleaved_point_buffer_mut_get_raw_point_mut() {
         let mut interleaved_buffer = get_interleaved_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
         {
-            let mut_point = interleaved_buffer.get_point_mut(0);
+            let mut_point = interleaved_buffer.get_raw_point_mut(0);
             let mut_point_typed = unsafe { &mut *(mut_point.as_mut_ptr() as *mut TestPointType) };
 
             mut_point_typed.0 = 128;
             mut_point_typed.1 = 3.14159;
         }
 
-        let point_ref = interleaved_buffer.get_point_ref(0);
+        let point_ref = interleaved_buffer.get_raw_point_ref(0);
         let point_ref_typed = unsafe { *(point_ref.as_ptr() as *const TestPointType) };
 
         assert_eq!(TestPointType(128, 3.14159), point_ref_typed);
@@ -1710,13 +1710,13 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_interleaved_point_buffer_mut_get_point_mut_on_empty_buffer() {
+    fn test_interleaved_point_buffer_mut_get_raw_point_mut_on_empty_buffer() {
         let mut buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
-        buffer.get_point_mut(0);
+        buffer.get_raw_point_mut(0);
     }
 
     #[test]
-    fn test_interleaved_point_buffer_mut_get_points_mut() {
+    fn test_interleaved_point_buffer_mut_get_raw_points_mut() {
         let mut interleaved_buffer = get_interleaved_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
@@ -1725,7 +1725,7 @@ mod tests {
         let reference_points = &[TestPointType(128, 3.14159), TestPointType(129, 2.71828)];
 
         {
-            let mut_points = interleaved_buffer.get_points_mut(0..2);
+            let mut_points = interleaved_buffer.get_raw_points_mut(0..2);
             let mut_points_typed = unsafe {
                 std::slice::from_raw_parts_mut(mut_points.as_mut_ptr() as *mut TestPointType, 2)
             };
@@ -1734,7 +1734,7 @@ mod tests {
             mut_points_typed[1] = reference_points[1];
         }
 
-        let points_ref = interleaved_buffer.get_points_ref(0..2);
+        let points_ref = interleaved_buffer.get_raw_points_ref(0..2);
         let typed_points_ref =
             unsafe { std::slice::from_raw_parts(points_ref.as_ptr() as *const TestPointType, 2) };
 
@@ -1743,25 +1743,25 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_interleaved_point_buffer_mut_get_points_mut_on_empty_buffer() {
+    fn test_interleaved_point_buffer_mut_get_raw_points_mut_on_empty_buffer() {
         let mut buffer = get_empty_interleaved_point_buffer(TestPointType::layout());
-        buffer.get_points_mut(0..2);
+        buffer.get_raw_points_mut(0..2);
     }
 
     #[test]
-    fn test_per_attribute_point_buffer_get_attribute_ref() {
+    fn test_per_attribute_point_buffer_get_raw_attribute_ref() {
         let buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
-        let first_point_attribute_ref = buffer.get_attribute_ref(0, &attributes::INTENSITY);
+        let first_point_attribute_ref = buffer.get_raw_attribute_ref(0, &attributes::INTENSITY);
         let first_point_attribute_ref_typed =
             unsafe { *(first_point_attribute_ref.as_ptr() as *const u16) };
 
         assert_eq!(42, first_point_attribute_ref_typed);
 
-        let second_point_attribute_ref = buffer.get_attribute_ref(1, &attributes::GPS_TIME);
+        let second_point_attribute_ref = buffer.get_raw_attribute_ref(1, &attributes::GPS_TIME);
         let second_point_attribute_ref_typed =
             unsafe { *(second_point_attribute_ref.as_ptr() as *const f64) };
 
@@ -1770,37 +1770,38 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_per_attribute_point_buffer_get_attribute_ref_out_of_bounds() {
+    fn test_per_attribute_point_buffer_get_raw_attribute_ref_out_of_bounds() {
         let buffer = get_empty_per_attribute_point_buffer(TestPointType::layout());
-        buffer.get_attribute_ref(0, &attributes::INTENSITY);
+        buffer.get_raw_attribute_ref(0, &attributes::INTENSITY);
     }
 
     #[test]
     #[should_panic]
-    fn test_per_attribute_point_buffer_get_attribute_ref_invalid_attribute() {
+    fn test_per_attribute_point_buffer_get_raw_attribute_ref_invalid_attribute() {
         let buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
-        buffer.get_attribute_ref(0, &attributes::SCAN_ANGLE_RANK);
+        buffer.get_raw_attribute_ref(0, &attributes::SCAN_ANGLE_RANK);
     }
 
     #[test]
-    fn test_per_attribute_point_buffer_get_attribute_range_ref() {
+    fn test_per_attribute_point_buffer_get_raw_attribute_range_ref() {
         let buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
         let intensity_attribute_range =
-            buffer.get_attribute_range_ref(0..2, &attributes::INTENSITY);
+            buffer.get_raw_attribute_range_ref(0..2, &attributes::INTENSITY);
         let intensity_attribute_range_typed = unsafe {
             std::slice::from_raw_parts(intensity_attribute_range.as_ptr() as *const u16, 2)
         };
 
         assert_eq!(&[42, 43], intensity_attribute_range_typed);
 
-        let gps_time_attribute_range = buffer.get_attribute_range_ref(0..2, &attributes::GPS_TIME);
+        let gps_time_attribute_range =
+            buffer.get_raw_attribute_range_ref(0..2, &attributes::GPS_TIME);
         let gps_time_attribute_range_typed = unsafe {
             std::slice::from_raw_parts(gps_time_attribute_range.as_ptr() as *const f64, 2)
         };
@@ -1810,49 +1811,49 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_per_attribute_point_buffer_get_attribute_range_ref_out_of_bounds() {
+    fn test_per_attribute_point_buffer_get_raw_attribute_range_ref_out_of_bounds() {
         let buffer = get_empty_per_attribute_point_buffer(TestPointType::layout());
-        buffer.get_attribute_range_ref(0..2, &attributes::INTENSITY);
+        buffer.get_raw_attribute_range_ref(0..2, &attributes::INTENSITY);
     }
 
     #[test]
     #[should_panic]
-    fn test_per_attribute_point_buffer_get_attribute_range_ref_invalid_attribute() {
+    fn test_per_attribute_point_buffer_get_raw_attribute_range_ref_invalid_attribute() {
         let buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
-        buffer.get_attribute_range_ref(0..2, &attributes::SCAN_ANGLE_RANK);
+        buffer.get_raw_attribute_range_ref(0..2, &attributes::SCAN_ANGLE_RANK);
     }
 
     #[test]
-    fn test_per_attribute_point_buffer_mut_get_attribute_mut() {
+    fn test_per_attribute_point_buffer_mut_get_raw_attribute_mut() {
         let mut buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
         {
-            let first_point_attribute_mut = buffer.get_attribute_mut(0, &attributes::INTENSITY);
+            let first_point_attribute_mut = buffer.get_raw_attribute_mut(0, &attributes::INTENSITY);
             let first_point_attribute_mut_typed =
                 unsafe { &mut *(first_point_attribute_mut.as_mut_ptr() as *mut u16) };
             *first_point_attribute_mut_typed = 128;
         }
 
-        let first_point_attribute_ref = buffer.get_attribute_ref(0, &attributes::INTENSITY);
+        let first_point_attribute_ref = buffer.get_raw_attribute_ref(0, &attributes::INTENSITY);
         let first_point_attribute_ref_typed =
             unsafe { *(first_point_attribute_ref.as_ptr() as *const u16) };
 
         assert_eq!(128, first_point_attribute_ref_typed);
 
         {
-            let second_point_attribute_mut = buffer.get_attribute_mut(1, &attributes::GPS_TIME);
+            let second_point_attribute_mut = buffer.get_raw_attribute_mut(1, &attributes::GPS_TIME);
             let second_point_attribute_mut_typed =
                 unsafe { &mut *(second_point_attribute_mut.as_mut_ptr() as *mut f64) };
             *second_point_attribute_mut_typed = 3.14159;
         }
 
-        let second_point_attribute_ref = buffer.get_attribute_ref(1, &attributes::GPS_TIME);
+        let second_point_attribute_ref = buffer.get_raw_attribute_ref(1, &attributes::GPS_TIME);
         let second_point_attribute_ref_typed =
             unsafe { *(second_point_attribute_ref.as_ptr() as *const f64) };
 
@@ -1861,30 +1862,30 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_per_attribute_point_buffer_mut_get_attribute_mut_out_of_bounds() {
+    fn test_per_attribute_point_buffer_mut_get_raw_attribute_mut_out_of_bounds() {
         let mut buffer = get_empty_per_attribute_point_buffer(TestPointType::layout());
-        buffer.get_attribute_mut(0, &attributes::INTENSITY);
+        buffer.get_raw_attribute_mut(0, &attributes::INTENSITY);
     }
 
     #[test]
     #[should_panic]
-    fn test_per_attribute_point_buffer_mut_get_attribute_mut_invalid_attribute() {
+    fn test_per_attribute_point_buffer_mut_get_raw_attribute_mut_invalid_attribute() {
         let mut buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
-        buffer.get_attribute_mut(0, &attributes::SCAN_ANGLE_RANK);
+        buffer.get_raw_attribute_mut(0, &attributes::SCAN_ANGLE_RANK);
     }
 
     #[test]
-    fn test_per_attribute_point_buffer_mut_get_attribute_range_mut() {
+    fn test_per_attribute_point_buffer_mut_get_raw_attribute_range_mut() {
         let mut buffer = get_per_attribute_point_buffer_from_points(&[
             TestPointType(42, 0.123),
             TestPointType(43, 0.456),
         ]);
 
         {
-            let intensities_mut = buffer.get_attribute_range_mut(0..2, &attributes::INTENSITY);
+            let intensities_mut = buffer.get_raw_attribute_range_mut(0..2, &attributes::INTENSITY);
             let intensities_mut_typed = unsafe {
                 std::slice::from_raw_parts_mut(intensities_mut.as_mut_ptr() as *mut u16, 2)
             };
@@ -1894,7 +1895,7 @@ mod tests {
         }
 
         let intensity_attribute_range =
-            buffer.get_attribute_range_ref(0..2, &attributes::INTENSITY);
+            buffer.get_raw_attribute_range_ref(0..2, &attributes::INTENSITY);
         let intensity_attribute_range_typed = unsafe {
             std::slice::from_raw_parts(intensity_attribute_range.as_ptr() as *const u16, 2)
         };
@@ -1902,7 +1903,7 @@ mod tests {
         assert_eq!(&[128, 129], intensity_attribute_range_typed);
 
         {
-            let gps_times_mut = buffer.get_attribute_range_mut(0..2, &attributes::GPS_TIME);
+            let gps_times_mut = buffer.get_raw_attribute_range_mut(0..2, &attributes::GPS_TIME);
             let gps_times_mut_typed = unsafe {
                 std::slice::from_raw_parts_mut(gps_times_mut.as_mut_ptr() as *mut f64, 2)
             };
@@ -1911,7 +1912,8 @@ mod tests {
             gps_times_mut_typed[1] = 2.71828;
         }
 
-        let gps_time_attribute_range = buffer.get_attribute_range_ref(0..2, &attributes::GPS_TIME);
+        let gps_time_attribute_range =
+            buffer.get_raw_attribute_range_ref(0..2, &attributes::GPS_TIME);
         let gps_time_attribute_range_typed = unsafe {
             std::slice::from_raw_parts(gps_time_attribute_range.as_ptr() as *const f64, 2)
         };
@@ -1950,37 +1952,37 @@ mod tests {
 
         let mut buf: Vec<u8> = vec![0; reference_bytes_1.len()];
 
-        storage.get_point_by_copy(0, &mut buf[..]);
+        storage.get_raw_point(0, &mut buf[..]);
         assert_eq!(
             reference_bytes_1, buf,
-            "get_point_by_copy: Bytes are not equal!"
+            "get_raw_point: Bytes are not equal!"
         );
-        storage.get_point_by_copy(1, &mut buf[..]);
+        storage.get_raw_point(1, &mut buf[..]);
         assert_eq!(
             reference_bytes_2, buf,
-            "get_point_by_copy: Bytes are not equal!"
+            "get_raw_point: Bytes are not equal!"
         );
 
         let mut buf_for_both_points: Vec<u8> = vec![0; reference_bytes_all.len()];
-        storage.get_points_by_copy(0..2, &mut buf_for_both_points[..]);
+        storage.get_raw_points(0..2, &mut buf_for_both_points[..]);
         assert_eq!(
             reference_bytes_all, buf_for_both_points,
-            "get_points_by_copy: Bytes are not equal!"
+            "get_raw_points: Bytes are not equal!"
         );
 
-        let point_1_bytes_ref = storage.get_point_ref(0);
+        let point_1_bytes_ref = storage.get_raw_point_ref(0);
         assert_eq!(
             reference_bytes_1, point_1_bytes_ref,
             "get_point_by_ref: Bytes are not equal!"
         );
 
-        let point_2_bytes_ref = storage.get_point_ref(1);
+        let point_2_bytes_ref = storage.get_raw_point_ref(1);
         assert_eq!(
             reference_bytes_2, point_2_bytes_ref,
             "get_point_by_ref: Bytes are not equal!"
         );
 
-        let both_points_bytes_ref = storage.get_points_ref(0..2);
+        let both_points_bytes_ref = storage.get_raw_points_ref(0..2);
         assert_eq!(
             reference_bytes_all, both_points_bytes_ref,
             "get_points_by_ref: Bytes are not equal!"
@@ -2014,49 +2016,41 @@ mod tests {
         let mut attribute_1_buf: Vec<u8> = vec![0; 2];
         let mut attribute_2_buf: Vec<u8> = vec![0; 8];
 
-        storage.get_attribute_by_copy(0, &attributes::INTENSITY, &mut attribute_1_buf[..]);
+        storage.get_raw_attribute(0, &attributes::INTENSITY, &mut attribute_1_buf[..]);
         assert_eq!(
             ref_bytes_p1_a1, attribute_1_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
-        storage.get_attribute_by_copy(1, &attributes::INTENSITY, &mut attribute_1_buf[..]);
+        storage.get_raw_attribute(1, &attributes::INTENSITY, &mut attribute_1_buf[..]);
         assert_eq!(
             ref_bytes_p2_a1, attribute_1_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
 
-        storage.get_attribute_by_copy(0, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
+        storage.get_raw_attribute(0, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
         assert_eq!(
             ref_bytes_p1_a2, attribute_2_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
-        storage.get_attribute_by_copy(1, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
+        storage.get_raw_attribute(1, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
         assert_eq!(
             ref_bytes_p2_a2, attribute_2_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
 
         let mut all_attribute_1_buf: Vec<u8> = vec![0; 4];
         let mut all_attribute_2_buf: Vec<u8> = vec![0; 16];
 
-        storage.get_attribute_range_by_copy(
-            0..2,
-            &attributes::INTENSITY,
-            &mut all_attribute_1_buf[..],
-        );
+        storage.get_raw_attribute_range(0..2, &attributes::INTENSITY, &mut all_attribute_1_buf[..]);
         assert_eq!(
             ref_bytes_all_a1, all_attribute_1_buf,
-            "get_attribute_range_by_copy: Bytes are not equal"
+            "get_raw_attribute_range: Bytes are not equal"
         );
 
-        storage.get_attribute_range_by_copy(
-            0..2,
-            &attributes::GPS_TIME,
-            &mut all_attribute_2_buf[..],
-        );
+        storage.get_raw_attribute_range(0..2, &attributes::GPS_TIME, &mut all_attribute_2_buf[..]);
         assert_eq!(
             ref_bytes_all_a2, all_attribute_2_buf,
-            "get_attribute_range_by_copy: Bytes are not equal"
+            "get_raw_attribute_range: Bytes are not equal"
         );
     }
 
@@ -2086,7 +2080,7 @@ mod tests {
         let slice = buffer.slice(0..1);
         assert_eq!(1, slice.len());
 
-        let first_point_ref = slice.get_point_ref(0);
+        let first_point_ref = slice.get_raw_point_ref(0);
         let first_point_ref_typed = unsafe { &*(first_point_ref.as_ptr() as *const TestPointType) };
 
         assert_eq!(&reference_point_1, first_point_ref_typed);
@@ -2122,22 +2116,22 @@ mod tests {
 
         let mut buf: Vec<u8> = vec![0; reference_bytes_1.len()];
 
-        storage.get_point_by_copy(0, &mut buf[..]);
+        storage.get_raw_point(0, &mut buf[..]);
         assert_eq!(
             reference_bytes_1, buf,
-            "get_point_by_copy: Bytes are not equal!"
+            "get_raw_point: Bytes are not equal!"
         );
-        storage.get_point_by_copy(1, &mut buf[..]);
+        storage.get_raw_point(1, &mut buf[..]);
         assert_eq!(
             reference_bytes_2, buf,
-            "get_point_by_copy: Bytes are not equal!"
+            "get_raw_point: Bytes are not equal!"
         );
 
         let mut buf_for_both_points: Vec<u8> = vec![0; reference_bytes_all.len()];
-        storage.get_points_by_copy(0..2, &mut buf_for_both_points[..]);
+        storage.get_raw_points(0..2, &mut buf_for_both_points[..]);
         assert_eq!(
             reference_bytes_all, buf_for_both_points,
-            "get_points_by_copy: Bytes are not equal!"
+            "get_raw_points: Bytes are not equal!"
         );
     }
 
@@ -2168,80 +2162,72 @@ mod tests {
         let mut attribute_1_buf: Vec<u8> = vec![0; 2];
         let mut attribute_2_buf: Vec<u8> = vec![0; 8];
 
-        storage.get_attribute_by_copy(0, &attributes::INTENSITY, &mut attribute_1_buf[..]);
+        storage.get_raw_attribute(0, &attributes::INTENSITY, &mut attribute_1_buf[..]);
         assert_eq!(
             ref_bytes_p1_a1, attribute_1_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
-        storage.get_attribute_by_copy(1, &attributes::INTENSITY, &mut attribute_1_buf[..]);
+        storage.get_raw_attribute(1, &attributes::INTENSITY, &mut attribute_1_buf[..]);
         assert_eq!(
             ref_bytes_p2_a1, attribute_1_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
 
         assert_eq!(
             ref_bytes_p1_a1,
-            storage.get_attribute_ref(0, &attributes::INTENSITY),
+            storage.get_raw_attribute_ref(0, &attributes::INTENSITY),
             "get_attribute_by_ref: Bytes are not equal"
         );
         assert_eq!(
             ref_bytes_p2_a1,
-            storage.get_attribute_ref(1, &attributes::INTENSITY),
+            storage.get_raw_attribute_ref(1, &attributes::INTENSITY),
             "get_attribute_by_ref: Bytes are not equal"
         );
 
-        storage.get_attribute_by_copy(0, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
+        storage.get_raw_attribute(0, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
         assert_eq!(
             ref_bytes_p1_a2, attribute_2_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
-        storage.get_attribute_by_copy(1, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
+        storage.get_raw_attribute(1, &attributes::GPS_TIME, &mut attribute_2_buf[..]);
         assert_eq!(
             ref_bytes_p2_a2, attribute_2_buf,
-            "get_attribute_by_copy: Bytes are not equal"
+            "get_raw_attribute: Bytes are not equal"
         );
 
         assert_eq!(
             ref_bytes_p1_a2,
-            storage.get_attribute_ref(0, &attributes::GPS_TIME),
+            storage.get_raw_attribute_ref(0, &attributes::GPS_TIME),
             "get_attribute_by_ref: Bytes are not equal"
         );
         assert_eq!(
             ref_bytes_p2_a2,
-            storage.get_attribute_ref(1, &attributes::GPS_TIME),
+            storage.get_raw_attribute_ref(1, &attributes::GPS_TIME),
             "get_attribute_by_ref: Bytes are not equal"
         );
 
         let mut all_attribute_1_buf: Vec<u8> = vec![0; 4];
         let mut all_attribute_2_buf: Vec<u8> = vec![0; 16];
 
-        storage.get_attribute_range_by_copy(
-            0..2,
-            &attributes::INTENSITY,
-            &mut all_attribute_1_buf[..],
-        );
+        storage.get_raw_attribute_range(0..2, &attributes::INTENSITY, &mut all_attribute_1_buf[..]);
         assert_eq!(
             ref_bytes_all_a1, all_attribute_1_buf,
-            "get_attribute_range_by_copy: Bytes are not equal"
+            "get_raw_attribute_range: Bytes are not equal"
         );
         assert_eq!(
             ref_bytes_all_a1,
-            storage.get_attribute_range_ref(0..2, &attributes::INTENSITY),
+            storage.get_raw_attribute_range_ref(0..2, &attributes::INTENSITY),
             "get_attribute_range_by_ref: Bytes are not equal"
         );
 
-        storage.get_attribute_range_by_copy(
-            0..2,
-            &attributes::GPS_TIME,
-            &mut all_attribute_2_buf[..],
-        );
+        storage.get_raw_attribute_range(0..2, &attributes::GPS_TIME, &mut all_attribute_2_buf[..]);
         assert_eq!(
             ref_bytes_all_a2, all_attribute_2_buf,
-            "get_attribute_range_by_copy: Bytes are not equal"
+            "get_raw_attribute_range: Bytes are not equal"
         );
         assert_eq!(
             ref_bytes_all_a2,
-            storage.get_attribute_range_ref(0..2, &attributes::GPS_TIME),
+            storage.get_raw_attribute_range_ref(0..2, &attributes::GPS_TIME),
             "get_attribute_range_by_ref: Bytes are not equal"
         );
     }

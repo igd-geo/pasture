@@ -71,7 +71,7 @@ pub mod attr1 {
                 )
             };
 
-            self.buffer.get_attribute_range_by_copy(
+            self.buffer.get_raw_attribute_range(
                 self.current_index..(self.current_index + remaining_points),
                 self.attribute,
                 buffer_slice_untyped,
@@ -160,7 +160,7 @@ pub mod attr1 {
                     target_attribute.as_mut_ptr() as *mut u8,
                     std::mem::size_of::<T>(),
                 );
-                self.buffer.get_attribute_by_copy(
+                self.buffer.get_raw_attribute(
                     self.current_index,
                     &self.source_attribute,
                     self.source_attribute_buffer.as_mut_slice(),
@@ -204,7 +204,7 @@ pub mod attr1 {
             let attribute_data = unsafe {
                 std::slice::from_raw_parts(
                     buffer
-                        .get_attribute_range_ref(0..buffer_len, attribute)
+                        .get_raw_attribute_range_ref(0..buffer_len, attribute)
                         .as_ptr() as *const T,
                     buffer_len,
                 )
@@ -255,7 +255,7 @@ pub mod attr1 {
             let attribute_data = unsafe {
                 std::slice::from_raw_parts_mut(
                     buffer
-                        .get_attribute_range_mut(0..buffer_len, attribute)
+                        .get_raw_attribute_range_mut(0..buffer_len, attribute)
                         .as_mut_ptr() as *mut T,
                     buffer_len,
                 )
@@ -294,7 +294,7 @@ macro_rules! extract_attributes {
     ($attributes:ident, $buffer:expr, $current_index:expr, $self_attributes:expr, $($idx:tt),+ ) => {{
         $(unsafe {
             let attribute_bytes = view_raw_bytes_mut(&mut $attributes.$idx);
-            $buffer.get_attribute_by_copy($current_index, $self_attributes[$idx], attribute_bytes);
+            $buffer.get_raw_attribute($current_index, $self_attributes[$idx], attribute_bytes);
         })+
     }};
 }
@@ -304,7 +304,7 @@ macro_rules! extract_and_convert_attributes {
         $(unsafe {
             let cur_attribute = &mut $self_attributes[$idx];
             let target_attribute_bytes = view_raw_bytes_mut(&mut $attributes.$idx);
-            $buffer.get_attribute_by_copy($current_index, &cur_attribute.0, cur_attribute.2.as_mut_slice());
+            $buffer.get_raw_attribute($current_index, &cur_attribute.0, cur_attribute.2.as_mut_slice());
             let converter = cur_attribute.1;
             converter(cur_attribute.2.as_slice(), target_attribute_bytes);
         })+
@@ -428,7 +428,7 @@ macro_rules! attributes_iter {
                         $(unsafe {
                         std::slice::from_raw_parts(
                             buffer
-                                .get_attribute_range_ref(0..buffer_len, attributes[$idx])
+                                .get_raw_attribute_range_ref(0..buffer_len, attributes[$idx])
                                 .as_ptr() as *const $t,
                             buffer_len,
                         )
@@ -474,7 +474,7 @@ macro_rules! attributes_iter {
                         $(unsafe {
                         std::slice::from_raw_parts_mut(
                             buffer
-                                .get_attribute_range_mut(0..buffer_len, attributes[$idx])
+                                .get_raw_attribute_range_mut(0..buffer_len, attributes[$idx])
                                 .as_ptr() as *mut $t,
                             buffer_len,
                         )

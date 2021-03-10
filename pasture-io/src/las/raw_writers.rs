@@ -202,7 +202,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_points_by_copy(
+            points.get_raw_points(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer[..points_in_cur_chunk * size_of_single_point],
             );
@@ -435,7 +435,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_points_by_copy(
+            points.get_raw_points(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer[0..(points_in_cur_chunk * size_of_single_point)],
             );
@@ -736,7 +736,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_points_by_copy(
+            points.get_raw_points(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer,
             );
@@ -975,7 +975,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_points_by_copy(
+            points.get_raw_points(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer[0..(points_in_cur_chunk * size_of_single_point)],
             );

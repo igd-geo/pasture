@@ -44,7 +44,7 @@ pub mod iterators {
                 return None;
             }
 
-            // Create an uninitialized T which is filled by the call to `buffer.get_point_by_copy`
+            // Create an uninitialized T which is filled by the call to `buffer.get_raw_point`
             let mut point = MaybeUninit::<T>::uninit();
             unsafe {
                 let point_byte_slice = std::slice::from_raw_parts_mut(
@@ -52,7 +52,7 @@ pub mod iterators {
                     std::mem::size_of::<T>(),
                 );
                 self.buffer
-                    .get_point_by_copy(self.current_index, point_byte_slice);
+                    .get_raw_point(self.current_index, point_byte_slice);
             }
 
             self.current_index += 1;
@@ -73,7 +73,7 @@ pub mod iterators {
             let buffer_len = buffer.len();
             let point_data = unsafe {
                 std::slice::from_raw_parts(
-                    buffer.get_points_ref(0..buffer_len).as_ptr() as *const T,
+                    buffer.get_raw_points_ref(0..buffer_len).as_ptr() as *const T,
                     buffer_len,
                 )
             };
@@ -109,7 +109,7 @@ pub mod iterators {
             let buffer_len = buffer.len();
             let point_data = unsafe {
                 std::slice::from_raw_parts_mut(
-                    buffer.get_points_mut(0..buffer_len).as_mut_ptr() as *mut T,
+                    buffer.get_raw_points_mut(0..buffer_len).as_mut_ptr() as *mut T,
                     buffer_len,
                 )
             };
