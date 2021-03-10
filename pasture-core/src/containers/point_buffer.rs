@@ -4,6 +4,8 @@ use crate::layout::{PointAttributeDefinition, PointLayout, PointType, PrimitiveT
 
 use super::{
     attr1::{AttributeIteratorByValue, AttributeIteratorByValueWithConversion},
+    iterators::PointIteratorByMut,
+    iterators::PointIteratorByRef,
     iterators::PointIteratorByValue,
     PerAttributePointBufferSlice, PerAttributePointBufferSliceMut,
 };
@@ -301,6 +303,90 @@ impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
         attribute: &'a PointAttributeDefinition,
     ) -> AttributeIteratorByValueWithConversion<'a, T, B> {
         AttributeIteratorByValueWithConversion::new(self, attribute)
+    }
+}
+
+/// Extension trait that provides generic methods for accessing point data in an `InterleavedPointBuffer`
+pub trait InterleavedPointBufferExt<B: InterleavedPointBuffer + ?Sized> {
+    /// Returns a reference to the point at `point_index` from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `point_index` is >= `self.len()`
+    fn get_point_ref<T: PointType>(&self, point_index: usize) -> &T;
+    /// Returns a reference to the given `range` of points from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
+    fn get_points_ref<T: PointType>(&self, range: Range<usize>) -> &[T];
+    /// Returns an iterator over references to all points within the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the associated `InterleavedPointBuffer` does not store points with type `T`
+    fn iter_point_ref<T: PointType>(&self) -> PointIteratorByRef<'_, T>;
+}
+
+impl<B: InterleavedPointBuffer + ?Sized> InterleavedPointBufferExt<B> for B {
+    fn get_point_ref<T: PointType>(&self, point_index: usize) -> &T {
+        let raw_point = self.get_raw_point_ref(point_index);
+        unsafe {
+            let ptr = raw_point.as_ptr() as *const T;
+            ptr.as_ref().expect("raw_point pointer was null")
+        }
+    }
+
+    fn get_points_ref<T: PointType>(&self, range: Range<usize>) -> &[T] {
+        let num_points = range.len();
+        let raw_points = self.get_raw_points_ref(range);
+        unsafe { std::slice::from_raw_parts(raw_points.as_ptr() as *const T, num_points) }
+    }
+
+    fn iter_point_ref<T: PointType>(&self) -> PointIteratorByRef<'_, T> {
+        PointIteratorByRef::new(self)
+    }
+}
+
+/// Extension trait that provides generic methods for accessing point data in an `InterleavedPointBufferMut`
+pub trait InterleavedPointBufferMutExt<B: InterleavedPointBufferMut + ?Sized> {
+    /// Returns a mutable reference to the point at `point_index` from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `point_index` is >= `self.len()`
+    fn get_point_mut<T: PointType>(&mut self, point_index: usize) -> &mut T;
+    /// Returns a mutable reference to the given `range` of points from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
+    fn get_points_mut<T: PointType>(&mut self, range: Range<usize>) -> &mut [T];
+    /// Returns an iterator over mutable references to all points within the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the associated `InterleavedPointBuffer` does not store points with type `T`
+    fn iter_point_mut<T: PointType>(&mut self) -> PointIteratorByMut<'_, T>;
+}
+
+impl<B: InterleavedPointBufferMut + ?Sized> InterleavedPointBufferMutExt<B> for B {
+    fn get_point_mut<T: PointType>(&mut self, point_index: usize) -> &mut T {
+        let raw_point = self.get_raw_point_mut(point_index);
+        unsafe {
+            let ptr = raw_point.as_ptr() as *mut T;
+            ptr.as_mut().expect("raw_point pointer was null")
+        }
+    }
+
+    fn get_points_mut<T: PointType>(&mut self, range: Range<usize>) -> &mut [T] {
+        let num_points = range.len();
+        let raw_points = self.get_raw_points_mut(range);
+        unsafe { std::slice::from_raw_parts_mut(raw_points.as_ptr() as *mut T, num_points) }
+    }
+
+    fn iter_point_mut<T: PointType>(&mut self) -> PointIteratorByMut<'_, T> {
+        PointIteratorByMut::new(self)
     }
 }
 

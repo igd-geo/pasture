@@ -1,5 +1,5 @@
 use pasture_core::{
-    containers::{self, PerAttributeVecPointStorage, PointBufferExt},
+    containers::{self, InterleavedPointBufferMutExt, PerAttributeVecPointStorage, PointBufferExt},
     nalgebra::Vector3,
 };
 use pasture_core::{
@@ -48,8 +48,10 @@ fn main() {
             println!("{:?}", point);
         }
 
-        //The iterator returned by `iter_point<T>` iterates over the points by value. Let's try mutating the points instead:
-        for point_mut in containers::points_mut::<SimplePoint, _>(&mut buffer) {
+        // The iterator returned by `iter_point<T>` iterates over the points by value. Let's try mutating the points instead. For this, we
+        // can use the `InterleavedPointBufferMutExt` trait. `iter_point_mut<T>` creates an iterator over strongly typed mutable references
+        // to the points in the buffer:
+        for point_mut in buffer.iter_point_mut::<SimplePoint>() {
             point_mut.intensity *= 2;
         }
 

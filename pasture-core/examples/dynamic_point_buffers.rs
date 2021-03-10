@@ -1,11 +1,10 @@
 use pasture_core::{
     attributes_mut,
-    containers::points_mut,
-    containers::points_ref,
     containers::PointBuffer,
     containers::{
-        self, InterleavedPointBufferMut, InterleavedPointView, PerAttributePointBufferMut,
-        PerAttributeVecPointStorage, PointBufferExt, PointBufferWriteable,
+        self, InterleavedPointBufferExt, InterleavedPointBufferMut, InterleavedPointBufferMutExt,
+        InterleavedPointView, PerAttributePointBufferMut, PerAttributeVecPointStorage,
+        PointBufferExt, PointBufferWriteable,
     },
     layout::attributes::COLOR_RGB,
     nalgebra::Vector3,
@@ -143,15 +142,15 @@ fn main() {
 
         let mut interleaved_buffer = read_as_interleaved_buffer::<XYZIntensity>();
         // `InterleavedPointBuffer` provides some low-level methods for accessing point data by reference, which should be rarely
-        // used by users. Instead, any type that implements `InterleavedPointBuffer` can be used with the helper method `points_ref<T>`
-        // (or `points_mut<T>` if `InterleavedPointBufferMut` is implemented) to get point data as (mutable) reference:
-        for point_ref in points_ref::<XYZIntensity, _>(interleaved_buffer.as_ref()) {
+        // used by users. Instead, we can use the `InterleavedPointBufferExt` extension trait to get an iterator over strongly
+        // typed point references:
+        for point_ref in interleaved_buffer.iter_point_ref::<XYZIntensity>() {
             println!("Point: {:?}", *point_ref);
         }
 
-        // Iterating over point data by reference is substantially faster than by value! It also provides a very convenient way of mutating
-        // point data:
-        for point_mut in points_mut::<XYZIntensity, _>(interleaved_buffer.as_mut()) {
+        // Iterating over point data by reference is substantially faster than by value! If we want to mutate our points, we can
+        // use the `InterleavedPointBufferMutExt` trait, which provides the `iter_point_mut<T>` method:
+        for point_mut in interleaved_buffer.iter_point_mut::<XYZIntensity>() {
             point_mut.intensity *= 2;
         }
 

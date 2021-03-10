@@ -1,7 +1,3 @@
-use crate::layout::PointType;
-
-use super::{InterleavedPointBuffer, InterleavedPointBufferMut};
-
 pub mod iterators {
 
     //! Contains `Iterator` implementations through which the untyped contents of `PointBuffer` structures
@@ -70,6 +66,9 @@ pub mod iterators {
     impl<'a, T: PointType + 'a> PointIteratorByRef<'a, T> {
         /// Creates a new `InterleavedPointIterator` over all points in the given `PointBuffer`
         pub fn new<B: InterleavedPointBuffer + ?Sized>(buffer: &'a B) -> Self {
+            if *buffer.point_layout() != T::layout() {
+                panic!("PointLayout of type T does not match PointLayout of buffer (buffer layout: {}, T layout: {})", buffer.point_layout(), T::layout());
+            }
             let buffer_len = buffer.len();
             let point_data = unsafe {
                 std::slice::from_raw_parts(
@@ -106,6 +105,9 @@ pub mod iterators {
     impl<'a, T: PointType + 'a> PointIteratorByMut<'a, T> {
         /// Creates a new `PointIteratorByMut` that iterates over the points in the given buffer
         pub fn new<B: InterleavedPointBufferMut + ?Sized>(buffer: &'a mut B) -> Self {
+            if *buffer.point_layout() != T::layout() {
+                panic!("PointLayout of type T does not match PointLayout of buffer (buffer layout: {}, T layout: {})", buffer.point_layout(), T::layout());
+            }
             let buffer_len = buffer.len();
             let point_data = unsafe {
                 std::slice::from_raw_parts_mut(
@@ -142,56 +144,12 @@ pub mod iterators {
     }
 }
 
-// TODO points() should be more powerful. It should be able to return the points in any type T that is convertible from
-// the underlying PointLayout of the buffer
-
-/// Returns an iterator over references to all points within the given `PointBuffer`, strongly typed to the `PointType` `T`.
-///
-/// # Panics
-///
-/// Panics if the `PointLayout` of `buffer` does not match the default `PointLayout` of type `T`
-pub fn points_ref<'a, T: PointType + 'a, B: InterleavedPointBuffer + ?Sized>(
-    buffer: &'a B,
-) -> iterators::PointIteratorByRef<'a, T> {
-    let point_layout = T::layout();
-    if point_layout != *buffer.point_layout() {
-        panic!(
-            "points_ref: PointLayouts do not match (type T has layout {}, buffer has layout {})",
-            point_layout,
-            buffer.point_layout()
-        );
-    }
-
-    iterators::PointIteratorByRef::new(buffer)
-}
-
-/// Returns an iterator over mutable references to all points within the given `PointBuffer`, strongly typed to the `PointType` `T`.
-///
-/// # Panics
-///
-/// Panics if the `PointLayout` of `buffer` does not match the default `PointLayout` of type `T`
-pub fn points_mut<'a, T: PointType + 'a, B: InterleavedPointBufferMut + ?Sized>(
-    buffer: &'a mut B,
-) -> iterators::PointIteratorByMut<'a, T> {
-    let point_layout = T::layout();
-    if point_layout != *buffer.point_layout() {
-        panic!(
-            "points_mut: PointLayouts do not match (type T has layout {}, buffer has layout {})",
-            point_layout,
-            buffer.point_layout()
-        );
-    }
-
-    iterators::PointIteratorByMut::new(buffer)
-}
-
 #[cfg(test)]
 mod tests {
 
-    use super::*;
-
     use crate::containers::{
-        InterleavedVecPointStorage, PerAttributeVecPointStorage, PointBufferExt,
+        InterleavedPointBufferExt, InterleavedPointBufferMutExt, InterleavedVecPointStorage,
+        PerAttributeVecPointStorage, PointBufferExt,
     };
     use pasture_derive::PointType;
 
@@ -223,7 +181,7 @@ mod tests {
         let mut storage = InterleavedVecPointStorage::from(reference_points.as_slice());
 
         {
-            let points_by_mut_view = points_mut::<TestPointType, _>(&mut storage);
+            let points_by_mut_view = storage.iter_point_mut::<TestPointType>();
             points_by_mut_view.for_each(|point| {
                 point.intensity *= 2;
                 point.gps_time += 1.0;
@@ -247,7 +205,7 @@ mod tests {
         }
 
         {
-            let points_by_ref_view = points_ref::<TestPointType, _>(&storage);
+            let points_by_ref_view = storage.iter_point_ref::<TestPointType>();
             let points_by_ref_collected = points_by_ref_view.map(|r| *r).collect::<Vec<_>>();
             assert_eq!(modified_points, points_by_ref_collected);
         }
