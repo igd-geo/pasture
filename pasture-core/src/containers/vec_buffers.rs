@@ -218,11 +218,20 @@ impl InterleavedVecPointStorage {
     }
 
     fn push_interleaved(&mut self, points: &dyn InterleavedPointBuffer) {
+        if points.point_layout() != self.point_layout() {
+            panic!("InterleavedVecPointStorage::push_interleaved: Layout of points in new buffer does not match this PointLayout");
+        }
         self.points
             .extend_from_slice(points.get_raw_points_ref(0..points.len()));
     }
 
     fn push_per_attribute(&mut self, points: &dyn PerAttributePointBuffer) {
+        if !points
+            .point_layout()
+            .compare_without_offsets(self.point_layout())
+        {
+            panic!("InterleavedVecPointStorage::push_per_attribute: Layout of points in new buffer does not match this PointLayout");
+        }
         // This function is essentially a data transpose!
         let attribute_buffers = self
             .layout
@@ -2668,5 +2677,49 @@ mod tests {
             let all_points: Vec<TestPointType> = buf.iter_point().collect();
             assert_eq!(all_points, reference_points);
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match this PointLayout")]
+    fn test_interleaved_point_buffer_push_from_interleaved_wrong_layout() {
+        let mut source_points = InterleavedVecPointStorage::new(TestPointType::layout());
+
+        let mut other_points = InterleavedVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.push(&other_points);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match this PointLayout")]
+    fn test_interleaved_point_buffer_push_from_per_attribute_wrong_layout() {
+        let mut source_points = InterleavedVecPointStorage::new(TestPointType::layout());
+
+        let mut other_points = PerAttributeVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.push(&other_points);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match")]
+    fn test_per_attribute_point_buffer_push_from_interleaved_wrong_layout() {
+        let mut source_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        let mut other_points = InterleavedVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.push(&other_points);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not match")]
+    fn test_per_attribute_point_buffer_push_from_per_attribute_wrong_layout() {
+        let mut source_points = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        let mut other_points = PerAttributeVecPointStorage::new(OtherPointType::layout());
+        other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
+
+        source_points.push(&other_points);
     }
 }

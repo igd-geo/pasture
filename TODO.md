@@ -7,13 +7,13 @@
         - [ ] Improve `push_attribute` and `push_attribute_range` by using the builder pattern
     - [x] Support iterator `collect`
         - [ ] `From<[T;N]>` is not possible at the moment because it requires support for const generics
-    - [ ] Extension traits with generic point/attribute accessors 
+    - [x] Extension traits with generic point/attribute accessors 
         - [x] `PointBufferExt`
-        - [ ] `PointBufferMutExt`
-        - [ ] `InterleavedPointBufferExt`
-        - [ ] `InterleavedPointBufferMutExt`
-        - [ ] `PerAttributePointBufferExt`
-        - [ ] `PerAttributePointBufferMutExt`
+        - [x] `PointBufferMutExt`
+        - [x] `InterleavedPointBufferExt`
+        - [x] `InterleavedPointBufferMutExt`
+        - [x] `PerAttributePointBufferExt`
+        - [x] `PerAttributePointBufferMutExt`
 - [ ] Point Views
     - [x] Interleaved view
     - [x] PerAttribute view
@@ -81,7 +81,7 @@
         - [ ] Support for VLRs
             - [ ] Define how VLRs should be represented 
     - [x] Benchmarks
-        - [ ] Basic benchmarks for LAS and LAZ with default and custom format
+        - [x] Basic benchmarks for LAS and LAZ with default and custom format
         - [ ] Extend the benchmarks for more point layouts
         - [ ] Read and write with `PerAttributePointBuffer`
     - [ ] Examples
