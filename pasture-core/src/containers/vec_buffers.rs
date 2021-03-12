@@ -663,98 +663,9 @@ impl PerAttributeVecPointStorage {
         }
     }
 
-    /// Pushes a single attribute into the associated `PerAttributeVecPointStorage`. *Note:* This function adds only part
-    /// of a point to the storage, thus leaving the interal data structure in a state where one attribute buffer might contain
-    /// more entries than the buffer for another attribute. It is the users responsibility to ensure that all attributes for
-    /// all points are fully added before iterating over the contents of the associated `PerAttributeVecPointStorage`!
-    ///
-    /// TODO its probably better to create a separate type that takes ownership of the `PerAttributeVecPointStorage`, allows only
-    /// these edit operations and then has a method that checks correctness of the internal datastructure before yielding the
-    /// `PerAttributeVecPointStorage` again
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// # use pasture_derive::PointType;
-    ///
-    /// #[repr(C)]
-    /// #[derive(PointType)]
-    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
-    ///
-    /// {
-    ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
-    ///   storage.push_attribute(&attributes::INTENSITY, 42_u16);
-    ///   storage.push_attribute(&attributes::GPS_TIME, 0.123);
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
-    pub fn push_attribute<T: PrimitiveType>(
-        &mut self,
-        attribute: &PointAttributeDefinition,
-        value: T,
-    ) {
-        if T::data_type() != attribute.datatype() {
-            panic!("PerAttributeVecPointStorage::push_attribute: Was called with generic argument {} but the datatype in the PointAttributeDefinition is {}!", T::data_type(), attribute.datatype());
-        }
-        match self.attributes.get_mut(attribute.name()) {
-            None => panic!("PerAttributeVecPointStorage::push_attribute: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
-            Some(attribute_buffer) => {
-                let value_bytes = unsafe { view_raw_bytes(&value) };
-                attribute_buffer.extend_from_slice(value_bytes);
-            },
-        }
-    }
-
-    /// Pushes a range of values for a single attribute into the associated `PerAttributeVecPointStorage`. *Note:* This function adds only
-    /// part of a point to the storage, thus leaving the interal data structure in a state where one attribute buffer might contain
-    /// more entries than the buffer for another attribute. It is the users responsibility to ensure that all attributes for
-    /// all points are fully added before iterating over the contents of the associated `PerAttributeVecPointStorage`!
-    ///
-    /// TODO its probably better to create a separate type that takes ownership of the `PerAttributeVecPointStorage`, allows only
-    /// these edit operations and then has a method that checks correctness of the internal datastructure before yielding the
-    /// `PerAttributeVecPointStorage` again
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// # use pasture_derive::PointType;
-    ///
-    /// #[repr(C)]
-    /// #[derive(PointType)]
-    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
-    ///
-    /// {
-    ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
-    ///   storage.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16, 44_u16]);
-    ///   storage.push_attribute_range(&attributes::GPS_TIME, &[0.123, 0.456, 0.789]);
-    /// }
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
-    pub fn push_attribute_range<T: PrimitiveType>(
-        &mut self,
-        attribute: &PointAttributeDefinition,
-        values: &[T],
-    ) {
-        if T::data_type() != attribute.datatype() {
-            panic!("PerAttributeVecPointStorage::push_attribute: Was called with generic argument {} but the datatype in the PointAttributeDefinition is {}!", T::data_type(), attribute.datatype());
-        }
-        match self.attributes.get_mut(attribute.name()) {
-            None => panic!("PerAttributeVecPointStorage::push_attributes: Attribute {:?} is not part of this PointBuffer's PointLayout!", attribute),
-            Some(attribute_buffer) => {
-                let value_bytes = unsafe { std::slice::from_raw_parts(values.as_ptr() as *const u8, values.len() * std::mem::size_of::<T>()) };
-                attribute_buffer.extend_from_slice(value_bytes);
-            },
-        }
+    /// Create a builder for pushing attribute data into the associated `PerAttributeVecPointStorage` one by one
+    pub fn begin_push_attributes(&mut self) -> PerAttributeVecPointStoragePusher {
+        PerAttributeVecPointStoragePusher::new(self)
     }
 
     /// Sorts all points in the associated `PerAttributePointBuffer` using the order of the `PointType` `T`.
@@ -1221,6 +1132,151 @@ impl<T: PointType> From<&'_ mut [T]> for PerAttributeVecPointStorage {
 impl<T: PointType> From<Vec<T>> for PerAttributeVecPointStorage {
     fn from(vec: Vec<T>) -> Self {
         Self::from(vec.as_slice())
+    }
+}
+
+/**
+ * Helper structure for pushing separate attributes into a `PerAttributeVecPointStorage`. Only through this type,
+ * using the builder pattern, is it possible to correctly push data for one attribute at a time into the buffer.
+ * This type enforces that, at the end of all attribute push operations, the `PointLayout` of the newly pushed
+ * attributes exactly matches the `PointLayout` of the buffer.
+ */
+pub struct PerAttributeVecPointStoragePusher<'a> {
+    buffer: &'a mut PerAttributeVecPointStorage,
+    new_attribute_data: HashMap<&'static str, Vec<u8>>,
+}
+
+impl<'a> PerAttributeVecPointStoragePusher<'a> {
+    pub(crate) fn new(buffer: &'a mut PerAttributeVecPointStorage) -> Self {
+        let new_attribute_data = buffer
+            .attributes
+            .keys()
+            .map(|key| (*key, Vec::new()))
+            .collect();
+        Self {
+            buffer,
+            new_attribute_data,
+        }
+    }
+
+    /// Pushes the `attribute` data for a single point into the underlying `PerAttributeVecPointStorage` of this builder.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
+    ///
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
+    ///
+    /// {
+    ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
+    ///   let mut builder = storage.begin_push_attributes();
+    ///   builder.push_attribute(&attributes::INTENSITY, 42_u16);
+    ///   builder.push_attribute(&attributes::GPS_TIME, 0.123);
+    ///   builder.done();
+    ///
+    ///   assert_eq!(1, storage.len());
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
+    pub fn push_attribute<T: PrimitiveType>(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        value: T,
+    ) {
+        if T::data_type() != attribute.datatype() {
+            panic!("Datatype of attribute {} is not T!", attribute);
+        }
+        if !self.buffer.point_layout().has_attribute(attribute) {
+            panic!(
+                "Attribute {} is not part of this PointBuffer's PointLayout",
+                attribute
+            );
+        }
+        let attribute_buffer = self.new_attribute_data.get_mut(attribute.name()).unwrap();
+        let value_bytes = unsafe { view_raw_bytes(&value) };
+        attribute_buffer.extend_from_slice(value_bytes);
+    }
+
+    /// Pushes a range of values for a single attribute into the underlying `PerAttributeVecPointStorage`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
+    ///
+    /// #[repr(C)]
+    /// #[derive(PointType)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16, #[pasture(BUILTIN_GPS_TIME)] f64);
+    ///
+    /// {
+    ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
+    ///   let mut builder = storage.begin_push_attributes();
+    ///   builder.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16, 44_u16]);
+    ///   builder.push_attribute_range(&attributes::GPS_TIME, &[0.123, 0.456, 0.789]);
+    ///   builder.done();
+    ///
+    ///   assert_eq!(3, storage.len());
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the given `PointAttributeDefinition` is not part of the internal `PointLayout` of the associated `PerAttributeVecPointStorage`
+    pub fn push_attribute_range<T: PrimitiveType>(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        values: &[T],
+    ) {
+        if T::data_type() != attribute.datatype() {
+            panic!("Datatype of attribute {} is not T!", attribute);
+        }
+        if !self.buffer.point_layout().has_attribute(attribute) {
+            panic!(
+                "Attribute {} is not part of this PointBuffer's PointLayout",
+                attribute
+            );
+        }
+        let attribute_buffer = self.new_attribute_data.get_mut(attribute.name()).unwrap();
+        let value_bytes = unsafe {
+            std::slice::from_raw_parts(
+                values.as_ptr() as *const u8,
+                values.len() * std::mem::size_of::<T>(),
+            )
+        };
+        attribute_buffer.extend_from_slice(value_bytes);
+    }
+
+    /// Finish the attribute pushing operation, submitting all data to the underlying buffer
+    pub fn done(self) {
+        let mut num_new_points = None;
+        for attribute in self.buffer.point_layout().attributes() {
+            let new_data_for_attribute = self.new_attribute_data.get(attribute.name()).unwrap();
+            let num_points = new_data_for_attribute.len() / attribute.size() as usize;
+            match num_new_points {
+                None => num_new_points = Some(num_points),
+                Some(expected_points) => {
+                    if expected_points != num_points {
+                        panic!("Not all attributes have the same number of points! Calling push() is only valid if the same number of points have been added for each attribute in the PointLayout of the underlying PointBuffer!");
+                    }
+                    num_new_points = Some(expected_points);
+                }
+            }
+        }
+
+        for (k, mut v) in self.new_attribute_data.into_iter() {
+            let attribute_data = self.buffer.attributes.get_mut(k).unwrap();
+            attribute_data.append(&mut v);
+        }
     }
 }
 
@@ -2278,8 +2334,10 @@ mod tests {
     fn test_per_attribute_vec_storage_push_attribute() {
         let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
 
-        per_attribute_buffer.push_attribute(&attributes::INTENSITY, 42_u16);
-        per_attribute_buffer.push_attribute(&attributes::GPS_TIME, 0.123);
+        let mut builder = per_attribute_buffer.begin_push_attributes();
+        builder.push_attribute(&attributes::INTENSITY, 42_u16);
+        builder.push_attribute(&attributes::GPS_TIME, 0.123);
+        builder.done();
 
         assert_eq!(1, per_attribute_buffer.len());
 
@@ -2300,15 +2358,19 @@ mod tests {
         // This is a subtle bug that absolutely has to be caught by pasture: The attribute INTENSITY has default datatype U16,
         // however integer literals are i32 by default. Since we don't specify the generic argument of 'push_attribute' it is
         // deduced as 'i32', which doesn't match the datatype of the INTENSITY attribute!
-        per_attribute_buffer.push_attribute(&attributes::INTENSITY, 42);
+        per_attribute_buffer
+            .begin_push_attributes()
+            .push_attribute(&attributes::INTENSITY, 42);
     }
 
     #[test]
     fn test_per_attribute_vec_storage_push_attribute_range() {
         let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
 
-        per_attribute_buffer.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16]);
-        per_attribute_buffer.push_attribute_range(&attributes::GPS_TIME, &[0.123, 0.456]);
+        let mut builder = per_attribute_buffer.begin_push_attributes();
+        builder.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16]);
+        builder.push_attribute_range(&attributes::GPS_TIME, &[0.123, 0.456]);
+        builder.done();
 
         assert_eq!(2, per_attribute_buffer.len());
 
@@ -2327,7 +2389,42 @@ mod tests {
         let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
 
         // See comment in test_per_attribute_vec_storage_push_attribute_wrong_type()
-        per_attribute_buffer.push_attribute_range(&attributes::INTENSITY, &[42, 43]);
+        per_attribute_buffer
+            .begin_push_attributes()
+            .push_attribute_range(&attributes::INTENSITY, &[42, 43]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Not all attributes have the same number of points")]
+    fn test_per_attribute_vec_storage_push_attribute_range_wrong_count() {
+        // Demonstrates that one has to push an equal number of entries for each attribute using the builder
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        let mut builder = per_attribute_buffer.begin_push_attributes();
+        builder.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16]);
+        builder.push_attribute_range(&attributes::GPS_TIME, &[0.123]);
+        builder.done();
+    }
+
+    #[test]
+    #[should_panic(expected = "Not all attributes have the same number of points")]
+    fn test_per_attribute_vec_storage_push_attribute_range_missing_attribute() {
+        // Demonstrates that one has to push data for ALL attributes in the PointLayout of the PointBuffer using the builder
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        let mut builder = per_attribute_buffer.begin_push_attributes();
+        builder.push_attribute_range(&attributes::INTENSITY, &[42_u16, 43_u16]);
+        builder.done();
+    }
+
+    #[test]
+    #[should_panic(expected = "is not part of this PointBuffer\'s PointLayout")]
+    fn test_per_attribute_vec_storage_push_attribute_range_invalid_attribute() {
+        // Demonstrates that pushing an attribute that does not belong to the PointLayout panics
+        let mut per_attribute_buffer = PerAttributeVecPointStorage::new(TestPointType::layout());
+
+        let mut builder = per_attribute_buffer.begin_push_attributes();
+        builder.push_attribute_range(&attributes::POINT_SOURCE_ID, &[42_u16, 43_u16]);
     }
 
     #[test]

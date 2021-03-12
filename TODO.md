@@ -4,7 +4,7 @@
     - [x] InterleavedPointBuffer
         - [ ] Figure out ways of accessing the point data in known (but variable) formats, such as the 11 LAS formats
     - [x] PerAttributePointBuffer
-        - [ ] Improve `push_attribute` and `push_attribute_range` by using the builder pattern
+        - [x] Improve `push_attribute` and `push_attribute_range` by using the builder pattern
     - [x] Support iterator `collect`
         - [ ] `From<[T;N]>` is not possible at the moment because it requires support for const generics
     - [x] Extension traits with generic point/attribute accessors 

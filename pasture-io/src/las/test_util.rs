@@ -438,103 +438,106 @@ pub(crate) fn get_test_points_in_las_format(point_format: u8) -> Result<Box<dyn 
     let format = Format::new(point_format)?;
     let layout = point_layout_from_las_point_format(&format)?;
     let mut buffer = PerAttributeVecPointStorage::with_capacity(10, layout);
-    buffer.push_attribute_range(&attributes::POSITION_3D, test_data_positions().as_slice());
-    buffer.push_attribute_range(&attributes::INTENSITY, test_data_intensities().as_slice());
+    let mut pusher = buffer.begin_push_attributes();
+    pusher.push_attribute_range(&attributes::POSITION_3D, test_data_positions().as_slice());
+    pusher.push_attribute_range(&attributes::INTENSITY, test_data_intensities().as_slice());
 
     if format.is_extended {
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::RETURN_NUMBER,
             test_data_return_numbers_extended().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::NUMBER_OF_RETURNS,
             test_data_number_of_returns_extended().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::CLASSIFICATION_FLAGS,
             test_data_classification_flags().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::SCANNER_CHANNEL,
             test_data_scanner_channels().as_slice(),
         );
     } else {
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::RETURN_NUMBER,
             test_data_return_numbers().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::NUMBER_OF_RETURNS,
             test_data_number_of_returns().as_slice(),
         );
     }
 
-    buffer.push_attribute_range(
+    pusher.push_attribute_range(
         &attributes::SCAN_DIRECTION_FLAG,
         test_data_scan_direction_flags().as_slice(),
     );
-    buffer.push_attribute_range(
+    pusher.push_attribute_range(
         &attributes::EDGE_OF_FLIGHT_LINE,
         test_data_edge_of_flight_lines().as_slice(),
     );
-    buffer.push_attribute_range(
+    pusher.push_attribute_range(
         &attributes::CLASSIFICATION,
         test_data_classifications().as_slice(),
     );
 
     if format.is_extended {
-        buffer.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
+        pusher.push_attribute_range(
             &attributes::SCAN_ANGLE,
             test_data_scan_angles_extended().as_slice(),
         );
     } else {
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::SCAN_ANGLE_RANK,
             test_data_scan_angle_ranks().as_slice(),
         );
-        buffer.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
+        pusher.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
     }
 
-    buffer.push_attribute_range(
+    pusher.push_attribute_range(
         &attributes::POINT_SOURCE_ID,
         test_data_point_source_ids().as_slice(),
     );
 
     if format.has_gps_time {
-        buffer.push_attribute_range(&attributes::GPS_TIME, test_data_gps_times().as_slice());
+        pusher.push_attribute_range(&attributes::GPS_TIME, test_data_gps_times().as_slice());
     }
 
     if format.has_color {
-        buffer.push_attribute_range(&attributes::COLOR_RGB, test_data_colors().as_slice());
+        pusher.push_attribute_range(&attributes::COLOR_RGB, test_data_colors().as_slice());
     }
 
     if format.has_nir {
-        buffer.push_attribute_range(&attributes::NIR, test_data_nirs().as_slice());
+        pusher.push_attribute_range(&attributes::NIR, test_data_nirs().as_slice());
     }
 
     if format.has_waveform {
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
             test_data_wavepacket_index().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::WAVEFORM_DATA_OFFSET,
             test_data_wavepacket_offset().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::WAVEFORM_PACKET_SIZE,
             test_data_wavepacket_size().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::RETURN_POINT_WAVEFORM_LOCATION,
             test_data_wavepacket_location().as_slice(),
         );
-        buffer.push_attribute_range(
+        pusher.push_attribute_range(
             &attributes::WAVEFORM_PARAMETERS,
             test_data_wavepacket_parameters().as_slice(),
         );
     }
+
+    pusher.done();
 
     Ok(Box::new(buffer))
 }
