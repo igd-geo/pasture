@@ -75,6 +75,7 @@
         - [ ] Attribute conversions (e.g. positions as I32, F32, F64)
         - [ ] SeekToPoint
             - [ ] Support SeekToPoint in Writer? 
+        - [ ] Writing less than `chunk_size` (i.e. 50k) Points in `LASWriter::write` is quite slow (for example calling `write` with a buffer containing one point multiple times in a loop). Part of this might be the allocation of an internal buffer for `chunk_size` points inside `write`
     - [ ] Metadata
         - [x] Basic metadata structure
         - [ ] Support for additional attributes in header

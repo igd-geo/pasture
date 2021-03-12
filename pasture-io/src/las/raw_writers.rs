@@ -79,7 +79,10 @@ fn finalize_las_header(las_header: &mut las::raw::Header) {
     if large_file.number_of_point_records > u32::MAX as u64 {
         return;
     }
-    if las_header.point_data_record_format > 5 {
+    // las-rs encodes the information about compression in the higher bits of the point_data_record_format, which is not
+    // conforming with the LAS specification I think. So we extract the lower bits here to make sure that this check works
+    let conforming_point_record_format = las_header.point_data_record_format & 0b1111;
+    if conforming_point_record_format > 5 {
         return;
     }
 
@@ -106,10 +109,10 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         // Sanitize header, i.e. clear point counts and bounds
         // TODO Add flag to prevent recalculating bounds
         let mut raw_header = header.clone().into_raw()?;
-        raw_header.version = Version::new(1, 4);
+        //raw_header.version = Version::new(1, 2);
         raw_header.number_of_point_records = 0;
         raw_header.number_of_points_by_return = [0; 5];
-        // Pasture always writes LAS/LAZ in Format 1.4, so the large_file field is mandatory!
+        // Pasture always uses the 'large_file' field for keeping track of the number of points
         raw_header.large_file = Some(Default::default());
         raw_header.min_x = std::f64::MAX;
         raw_header.min_y = std::f64::MAX;
@@ -637,10 +640,10 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         }
 
         let mut raw_header = header.clone().into_raw()?;
-        raw_header.version = Version::new(1, 4);
+        // raw_header.version = Version::new(1, 2);
         raw_header.number_of_point_records = 0;
         raw_header.number_of_points_by_return = [0; 5];
-        // Pasture always writes LAS/LAZ in Format 1.4, so the large_file field is mandatory!
+        // Pasture always uses the 'large_file' field for keeping track of the number of points
         raw_header.large_file = Some(Default::default());
         raw_header.min_x = std::f64::MAX;
         raw_header.min_y = std::f64::MAX;
@@ -1417,6 +1420,7 @@ mod tests {
                         let mut reader = LASReader::from_path(&out_path)?;
                         let metadata = reader.get_metadata();
                         assert_eq!(Some(test_data_bounds()), metadata.bounds());
+                        assert_eq!(Some(test_data.len()), metadata.number_of_points());
                         assert_eq!(test_data.len(), reader.remaining_points());
 
                         let read_points = reader.read(test_data.len())?;
@@ -1508,6 +1512,7 @@ mod tests {
                             actual_bounds
                         );
 
+                        assert_eq!(Some(test_data.len()), metadata.number_of_points());
                         assert_eq!(test_data.len(), reader.remaining_points());
 
                         let read_points = reader.read(test_data.len())?;

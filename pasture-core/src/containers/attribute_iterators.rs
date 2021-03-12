@@ -539,19 +539,19 @@ attributes_iter!(attr4, 4, T1, T2, T3, T4 and 0, 1, 2, 3);
 #[macro_export]
 macro_rules! attributes {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
-        crate::containers::attr2::AttributeIteratorByValue::<$t1, $t2>::new(
+        $crate::containers::attr2::AttributeIteratorByValue::<$t1, $t2>::new(
             $buffer,
             [$attr1, $attr2],
         )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByValue::<$t1, $t2, $t3>::new(
+        $crate::containers::attr3::AttributeIteratorByValue::<$t1, $t2, $t3>::new(
             $buffer,
             [$attr1, $attr2, $attr3],
         )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByValue::<$t1, $t2, $t3, $t4>::new(
+        $crate::containers::attr3::AttributeIteratorByValue::<$t1, $t2, $t3, $t4>::new(
             $buffer,
             [$attr1, $attr2, $attr3, $attr4],
         )
@@ -578,19 +578,19 @@ macro_rules! attributes {
 #[macro_export]
 macro_rules! attributes_as {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
-        crate::containers::attr2::AttributeIteratorByValueWithConversion::<$t1, $t2>::new(
+        $crate::containers::attr2::AttributeIteratorByValueWithConversion::<$t1, $t2>::new(
             $buffer,
             [$attr1, $attr2],
         )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3>::new(
+        $crate::containers::attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3>::new(
             $buffer,
             [$attr1, $attr2, $attr3],
         )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3, $t4>::new(
+        $crate::containers::attr3::AttributeIteratorByValueWithConversion::<$t1, $t2, $t3, $t4>::new(
             $buffer,
             [$attr1, $attr2, $attr3, $attr4],
         )
@@ -617,16 +617,19 @@ macro_rules! attributes_as {
 #[macro_export]
 macro_rules! attributes_ref {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
-        crate::containers::attr2::AttributeIteratorByRef::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+        $crate::containers::attr2::AttributeIteratorByRef::<$t1, $t2>::new(
+            $buffer,
+            [$attr1, $attr2],
+        )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByRef::<$t1, $t2, $t3>::new(
+        $crate::containers::attr3::AttributeIteratorByRef::<$t1, $t2, $t3>::new(
             $buffer,
             [$attr1, $attr2, $attr3],
         )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByRef::<$t1, $t2, $t3, $t4>::new(
+        $crate::containers::attr3::AttributeIteratorByRef::<$t1, $t2, $t3, $t4>::new(
             $buffer,
             [$attr1, $attr2, $attr3, $attr4],
         )
@@ -653,16 +656,19 @@ macro_rules! attributes_ref {
 #[macro_export]
 macro_rules! attributes_mut {
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $buffer:expr) => {
-        crate::containers::attr2::AttributeIteratorByMut::<$t1, $t2>::new($buffer, [$attr1, $attr2])
+        $crate::containers::attr2::AttributeIteratorByMut::<$t1, $t2>::new(
+            $buffer,
+            [$attr1, $attr2],
+        )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByMut::<$t1, $t2, $t3>::new(
+        $crate::containers::attr3::AttributeIteratorByMut::<$t1, $t2, $t3>::new(
             $buffer,
             [$attr1, $attr2, $attr3],
         )
     };
     ($attr1:expr => $t1:ty, $attr2:expr => $t2:ty, $attr3:expr => $t3:ty, $attr4:expr => $t4:ty, $buffer:expr) => {
-        crate::containers::attr3::AttributeIteratorByMut::<$t1, $t2, $t3, $t4>::new(
+        $crate::containers::attr3::AttributeIteratorByMut::<$t1, $t2, $t3, $t4>::new(
             $buffer,
             [$attr1, $attr2, $attr3, $attr4],
         )

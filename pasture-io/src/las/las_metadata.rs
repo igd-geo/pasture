@@ -228,6 +228,10 @@ impl Metadata for LASMetadata {
         Some(self.bounds)
     }
 
+    fn number_of_points(&self) -> Option<usize> {
+        Some(self.point_count)
+    }
+
     fn get_named_field(&self, field_name: &str) -> Option<Box<dyn Any>> {
         match field_name {
             named_fields::FILE_CREATION_DAY_OF_YEAR => self

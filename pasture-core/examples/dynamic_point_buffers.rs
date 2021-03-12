@@ -2,7 +2,7 @@ use pasture_core::{
     attributes_mut,
     containers::PointBuffer,
     containers::{
-        self, InterleavedPointBufferExt, InterleavedPointBufferMut, InterleavedPointBufferMutExt,
+        InterleavedPointBufferExt, InterleavedPointBufferMut, InterleavedPointBufferMutExt,
         InterleavedPointView, PerAttributePointBufferMut, PerAttributeVecPointStorage,
         PointBufferExt, PointBufferWriteable,
     },

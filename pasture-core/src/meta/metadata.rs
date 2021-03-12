@@ -10,6 +10,9 @@ pub trait Metadata: Display {
     /// Returns the bounding box of the associated `Metadata`. Not every point cloud `Metadata` will have
     /// bounding box information readily available, in which case `None` is returned.
     fn bounds(&self) -> Option<AABB<f64>>;
+    /// Returns the number of points of the associated `Metadata`. Not every point cloud `Metadata` will have
+    /// the number of points readily available, in which case `None` is returned.
+    fn number_of_points(&self) -> Option<usize>;
     /// Returns the value of the metadata field named `field_name`, if it exists.
     fn get_named_field(&self, field_name: &str) -> Option<Box<dyn Any>>;
     /// Clone the associated `Metadata` and put it into a `Box`

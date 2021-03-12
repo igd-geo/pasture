@@ -908,6 +908,7 @@ impl PointBuffer for PerAttributeVecPointStorage {
         }
 
         let point_size = self.layout.size_of_point_entry() as usize;
+        let first_index = point_indices.start;
 
         for attribute in self.layout.attributes() {
             let attribute_buffer = self.attributes.get(attribute.name()).unwrap();
@@ -918,8 +919,9 @@ impl PointBuffer for PerAttributeVecPointStorage {
                 let attribute_slice = &attribute_buffer
                     [offset_in_attribute_buffer..offset_in_attribute_buffer + attribute_size];
 
+                let point_index_in_buf = point_index - first_index;
                 let offset_in_point = attribute.offset() as usize;
-                let offset_in_points_buffer = point_index * point_size + offset_in_point;
+                let offset_in_points_buffer = point_index_in_buf * point_size + offset_in_point;
                 let buf_slice =
                     &mut buf[offset_in_points_buffer..offset_in_points_buffer + attribute_size];
 
@@ -939,8 +941,6 @@ impl PointBuffer for PerAttributeVecPointStorage {
     }
 
     fn len(&self) -> usize {
-        // TODO This assumes that the buffer is always complete, i.e. all attribute buffers store the same number of points
-        // This relates to the comment of the `push_attribute` method
         let attribute = self.layout.attributes().next().unwrap();
         let attribute_buf = self.attributes.get(attribute.name()).unwrap();
         attribute_buf.len() / attribute.size() as usize
@@ -2818,5 +2818,24 @@ mod tests {
         other_points.push_points(&[OtherPointType(Vector3::new(0.0, 1.0, 2.0), 23)]);
 
         source_points.push(&other_points);
+    }
+
+    #[test]
+    fn test_per_attribute_point_buffer_get_raw_points_from_slice() {
+        let reference_points = vec![
+            TestPointType(42, 0.123),
+            TestPointType(43, 0.456),
+            TestPointType(44, 0.789),
+        ];
+        let buf = PerAttributeVecPointStorage::from(reference_points.as_slice());
+
+        let buf_slice = buf.slice(1..3);
+
+        let mut buf = vec![0; 2 * TestPointType::layout().size_of_point_entry() as usize];
+        buf_slice.get_raw_points(0..2, &mut buf[..]);
+
+        let actual_points =
+            unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const TestPointType, 2) };
+        assert_eq!(&reference_points[1..3], actual_points);
     }
 }
