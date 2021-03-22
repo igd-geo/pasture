@@ -12,5 +12,5 @@ categories = ["data-structures", "algorithms"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = { path = "../pasture-core" }
+pasture-core = { version = "=0.1.0", path = "../pasture-core" }
 anyhow = "1.0.34"

@@ -14,8 +14,8 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pasture-core = { path = "../pasture-core" }
-pasture-derive = {path = "../pasture-derive"}
+pasture-core = {version = "=0.1.0", path = "../pasture-core" }
+pasture-derive = {version = "=0.1.0", path = "../pasture-derive"}
 anyhow = "1.0.34"
 las = { version = "0.7.3", features = ["laz"] }
 laz = "0.5.2"
