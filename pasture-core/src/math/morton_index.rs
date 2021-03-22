@@ -154,7 +154,7 @@ impl MortonIndex64 {
     /// most significant bits of the Morton index. `octants` may contain at most `MortonIndex64::LEVELS` entries. If it contains less
     /// than `MortonIndex64::LEVELS` entries, the remaining octants will be zero.
     ///
-    /// Example:
+    /// # Example:
     /// ```
     /// # use pasture_core::math::*;
     /// // Create a Morton index for the octants 1->2->4 (octant 4 of octant 2 of octant 1 of the root node)
@@ -459,6 +459,22 @@ impl MortonIndex64WithDepth {
         )
     }
 
+    /// Returns the child node at the given `octant` from the associated `MortonIndex64WithDepth`. If the associated
+    /// index is already of maximum depth (`MortonIndex64::LEVELS`), returns `None`
+    pub fn child(&self, octant: Octant) -> Option<Self> {
+        if self.depth() as usize == MortonIndex64::LEVELS {
+            return None;
+        }
+
+        // Set only the bits of the new octant within index
+        let shift = (MortonIndex64::LEVELS - self.depth() as usize - 1) * 3;
+        let bits = (octant.0 as u64) << shift;
+        Some(Self {
+            index: self.index | bits,
+            depth: self.depth() + 1,
+        })
+    }
+
     /// Unchecked version of `get_octant_at_level`
     fn get_octant_at_level_unchecked(&self, level: u8) -> u8 {
         let bit_shift = (MortonIndex64::LEVELS - level as usize) * 3;
@@ -469,8 +485,11 @@ impl MortonIndex64WithDepth {
     /// Returns a version of the associated `MortonIndex64WithDepth` with the given lower depth
     pub fn with_lower_depth(&self, lower_depth: u8) -> Self {
         assert!(lower_depth < self.depth);
+        // Trim of the lower bits of the index
+        let shift = (MortonIndex64::LEVELS - lower_depth as usize) * 3;
+        let mask = !((1_u64 << shift as u64) - 1);
         Self {
-            index: self.raw_index(),
+            index: self.raw_index() & mask,
             depth: lower_depth,
         }
     }
@@ -537,6 +556,12 @@ impl MortonIndex64WithDepth {
         }
 
         format!("{}-{}-{}-{}", self.depth, x_idx, y_idx, z_idx)
+    }
+}
+
+impl Default for MortonIndex64WithDepth {
+    fn default() -> Self {
+        Self { index: 0, depth: 0 }
     }
 }
 
@@ -673,6 +698,36 @@ impl From<MortonIndex64> for DynamicMortonIndex {
     fn from(morton_index: MortonIndex64) -> Self {
         Self {
             octants: (0..21)
+                .map(|level| {
+                    morton_index
+                        .get_octant_at_level_unchecked(level)
+                        .try_into()
+                        .unwrap()
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<MortonIndex64WithDepth> for DynamicMortonIndex {
+    fn from(morton_index: MortonIndex64WithDepth) -> Self {
+        Self {
+            octants: (1..=morton_index.depth())
+                .map(|level| {
+                    morton_index
+                        .get_octant_at_level_unchecked(level)
+                        .try_into()
+                        .unwrap()
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<&MortonIndex64WithDepth> for DynamicMortonIndex {
+    fn from(morton_index: &MortonIndex64WithDepth) -> Self {
+        Self {
+            octants: (1..=morton_index.depth())
                 .map(|level| {
                     morton_index
                         .get_octant_at_level_unchecked(level)
@@ -944,6 +999,53 @@ mod tests {
         assert_eq!(
             expected_str,
             morton_idx.to_string(MortonIndexNaming::AsGridCoordinates)
+        );
+    }
+
+    #[test]
+    fn test_morton_index_with_depth_roundtrip() {
+        let octants = get_21_example_octants();
+
+        let static_morton_index = MortonIndex64::from_octants(octants.as_slice());
+        let with_depth = static_morton_index.with_depth(5);
+
+        let dynamic: DynamicMortonIndex = with_depth.clone().into();
+        let again_with_depth: MortonIndex64WithDepth = dynamic.try_into().unwrap();
+        assert_eq!(with_depth, again_with_depth);
+    }
+
+    #[test]
+    fn test_morton_index_with_depth_child() {
+        let octants = get_21_example_octants();
+
+        let static_morton_index = MortonIndex64::from_octants(octants.as_slice());
+        let with_depth = static_morton_index.with_depth(5);
+
+        assert_eq!(
+            Some(static_morton_index.with_depth(6)),
+            with_depth.child(octants[5])
+        );
+        assert_eq!(None, static_morton_index.with_depth(21).child(Octant::ZERO));
+    }
+
+    #[test]
+    fn test_morton_index_with_depth_lower_depth() {
+        let octants = get_21_example_octants();
+
+        let static_morton_index = MortonIndex64::from_octants(octants.as_slice());
+        let with_depth = static_morton_index.with_depth(5);
+
+        assert_eq!(
+            with_depth.with_lower_depth(4),
+            static_morton_index.with_depth(4)
+        );
+        assert_eq!(
+            with_depth.with_lower_depth(2),
+            static_morton_index.with_depth(2)
+        );
+        assert_eq!(
+            with_depth.with_lower_depth(0),
+            static_morton_index.with_depth(0)
         );
     }
 }

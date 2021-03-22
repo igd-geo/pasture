@@ -223,6 +223,23 @@ impl AABB<f64> {
         )
     }
 
+    /// Like `contains`, but performs epsilon comparison on floating point values using the given `epsilon` value
+    pub fn contains_approx(&self, point: &Point3<f64>, epsilon: f64) -> bool {
+        let dx_min = point.x - self.min.x;
+        let dx_max = point.x - self.max.x;
+        let dy_min = point.y - self.min.y;
+        let dy_max = point.y - self.max.y;
+        let dz_min = point.z - self.min.z;
+        let dz_max = point.z - self.max.z;
+
+        !(dx_min < -epsilon
+            || dx_max > epsilon
+            || dy_min < -epsilon
+            || dy_max > epsilon
+            || dz_min < -epsilon
+            || dz_max > epsilon)
+    }
+
     /// Returns a cubic version of the associated `AABB`. For this, the shortest two axes of the bounds
     /// are elongated symmetrically from the center of the bounds so that all axis are of equal length
     /// ```
@@ -245,5 +262,23 @@ impl AABB<f64> {
             min: center - Vector3::new(max_axis_half, max_axis_half, max_axis_half),
             max: center + Vector3::new(max_axis_half, max_axis_half, max_axis_half),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aabb_contains_approx() {
+        let bounds =
+            AABB::from_min_max_unchecked(Point3::new(1.0, 1.0, 1.0), Point3::new(2.0, 2.0, 2.0));
+        let p1 = Point3::new(0.99, 0.99, 0.99);
+        let p2 = Point3::new(2.001, 1.999, 2.0);
+
+        assert!(bounds.contains_approx(&p1, 0.015));
+        assert!(!bounds.contains_approx(&p1, 0.001));
+        assert!(bounds.contains_approx(&p2, 0.0015));
+        assert!(!bounds.contains_approx(&p2, 0.0001));
     }
 }
