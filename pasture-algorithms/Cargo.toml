@@ -3,6 +3,13 @@ name = "pasture-algorithms"
 version = "0.1.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
+license-file = "LICENSE"
+description = "Point cloud algorithms for pasture"
+homepage = "https://github.com/Mortano/pasture"
+repository = "https://github.com/Mortano/pasture"
+keywords = ["pasture", "pointcloud", "points", "lidar"]
+categories = ["data-structures", "algorithms"]
+readme = "README.md"
 
 [dependencies]
 pasture-core = { path = "../pasture-core" }

@@ -20,7 +20,7 @@ pasture-io = "0.1.0"
 
 # Development
 
-`pasture` is in the early stages of development and as such, bugs might occur. 
+`pasture` is in the early stages of development and is not yet stable. 
 
 # License
 

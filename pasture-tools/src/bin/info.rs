@@ -131,17 +131,10 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
     // TODO Waveform data
 
     for idx in 0..num_chunks {
-        // let mut inner_t_start = Instant::now();
         buffer.clear();
 
         let num_points_in_chunk = std::cmp::min(chunk_size, total_points - (idx * chunk_size));
         reader.read_into(&mut buffer, num_points_in_chunk)?;
-
-        // eprintln!(
-        //     "Reading chunk: {:.2}s",
-        //     inner_t_start.elapsed().as_secs_f64()
-        // );
-        // inner_t_start = Instant::now();
 
         minmax_chunk!(minmax_position, buffer, POSITION_3D, Vector3<f64>);
         minmax_chunk!(minmax_intensity, buffer, INTENSITY, u16);

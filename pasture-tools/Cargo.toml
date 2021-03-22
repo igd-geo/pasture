@@ -3,6 +3,13 @@ name = "pasture-tools"
 version = "0.1.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
+license-file = "LICENSE"
+description = "Command line utilities for working with point cloud files"
+homepage = "https://github.com/Mortano/pasture"
+repository = "https://github.com/Mortano/pasture"
+keywords = ["pasture", "pointcloud", "points", "lidar"]
+categories = ["data-structures", "command-line-utilities"]
+readme = "README.md"
 
 [dependencies]
 pasture-core = { path = "../pasture-core" }

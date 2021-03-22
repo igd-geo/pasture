@@ -3,6 +3,13 @@ name = "pasture-io"
 version = "0.1.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
+license-file = "LICENSE"
+description = "Support for reading and writing point cloud files with pasture"
+homepage = "https://github.com/Mortano/pasture"
+repository = "https://github.com/Mortano/pasture"
+keywords = ["pasture", "pointcloud", "points", "lidar"]
+categories = ["data-structures"]
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
