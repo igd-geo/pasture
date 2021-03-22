@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
-use las_rs::{point::Format, Builder, Version, Vlr};
+use las_rs::{point::Format, Builder, Vlr};
 use laz::{
     las::laszip::LASZIP_DESCRIPTION, las::laszip::LASZIP_RECORD_ID, las::laszip::LASZIP_USER_ID,
     LasZipCompressor, LazItemRecordBuilder, LazVlr,
