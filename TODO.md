@@ -92,6 +92,9 @@
 - [ ] ASCII
     - [ ] Reader
     - [ ] Writer
+- [ ] Documentation
+    - [ ] Crate-documentation
+    - [ ] Module-level documentation
 
 # Algorithms
 
