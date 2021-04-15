@@ -5,10 +5,10 @@ use std::{
     collections::HashMap,
     convert::TryFrom,
     convert::TryInto,
-    ffi::CStr,
-    ffi::CString,
-    io::{BufRead, Read, Seek, SeekFrom, Write},
+    io::{BufRead, Seek, Write},
 };
+
+use super::{read_json_header, write_json_header};
 
 /// A reference to data inside a FeatureTable binary body
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -111,19 +111,8 @@ pub type FeatureTableHeader = HashMap<String, FeatureTableValue>;
 /// `reader` will be at the start of the binary body of the 3D Tiles FeatureTable. See the [3D Tiles documentation](https://github.com/CesiumGS/3d-tiles/blob/master/specification/TileFormats/FeatureTable/README.md)
 /// for more information. If this operation fails, the reader will be in an undefined state.
 pub fn deser_feature_table_header<R: BufRead + Seek>(mut reader: R) -> Result<FeatureTableHeader> {
-    let mut str_buf = vec![];
-    reader.read_until(0, &mut str_buf)?;
-
-    // Move reader to 8-byte boundary as this is required by the 3D Tiles spec
-    {
-        let where_are_we = reader.seek(SeekFrom::Current(0))?;
-        let next_8_byte_boundary = ((where_are_we + 7) / 8) * 8;
-        reader.seek(SeekFrom::Start(next_8_byte_boundary))?;
-    }
-
-    let feature_table_json_str = CStr::from_bytes_with_nul(str_buf.as_slice())?;
-    let feature_table_json: Value = serde_json::from_str(feature_table_json_str.to_str()?)?;
-    let feature_table_obj = feature_table_json
+    let feature_table_header_json = read_json_header(&mut reader)?;
+    let feature_table_obj = feature_table_header_json
         .as_object()
         .ok_or(anyhow!("FeatureTable JSON header was no JSON object"))?;
     // Convert the object to our `FeatureTableHeader` type
@@ -146,25 +135,14 @@ pub fn ser_feature_table_header<W: Write>(
         .iter()
         .map(|(k, v)| -> (String, Value) { (k.clone(), v.into()) })
         .collect::<Map<_, _>>();
-    let header_json = serde_json::to_string(&Value::Object(header_as_map))?;
-    let header_json_cstr = CString::new(header_json)?;
+    let header_json_obj = Value::Object(header_as_map);
 
-    writer.write(header_json_cstr.as_bytes_with_nul())?;
-
-    let header_json_len = header_json_cstr.as_bytes_with_nul().len();
-    let next_8_byte_boundary = ((header_json_len + 7) / 8) * 8;
-    let num_padding_bytes = next_8_byte_boundary - header_json_len;
-
-    if num_padding_bytes > 0 {
-        writer.write(&vec![0x20; num_padding_bytes])?;
-    }
-
-    Ok(())
+    write_json_header(&mut writer, &header_json_obj)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufReader, BufWriter, Cursor};
+    use std::io::{BufReader, BufWriter, Cursor, SeekFrom};
 
     use super::*;
     use serde_json::json;
