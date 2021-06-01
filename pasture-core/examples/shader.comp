@@ -1,0 +1,19 @@
+#version 450
+
+// Assume positions to be 3D, sizes to be 1D
+
+layout(local_size_x=8) in;
+
+layout(std430, set=0, binding=0) buffer PosBuffer {
+    double positions[];
+};
+
+layout(std430, set=0, binding=1) buffer SizeBuffer {
+    uint sizes[];
+};
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    positions[idx] += 1.0;
+    sizes[idx] += 1u;
+}
