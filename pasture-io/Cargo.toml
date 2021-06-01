@@ -25,6 +25,14 @@ byteorder = "1.4.2"
 float-ord = "0.2.0"
 chrono = "0.4"
 
+# Used by the examples
+crevice = { version = "0.7.1", optional = true }
+mint = { version = "0.5.6", optional = true }
+log = { version = "0.4.0", optional = true }
+env_logger = { version = "0.9.0", optional = true }
+futures = { version = "0.3", optional=true }
+bytemuck = { version = "1.5.1", features = ["derive"], optional = true }
+
 [dev-dependencies]
 criterion = "0.3"
 rand = {version = "0.8.3" }
@@ -32,3 +40,6 @@ rand = {version = "0.8.3" }
 [[bench]]
 name = "las_bench"
 harness = false
+
+[features]
+io_gpu_example = ["pasture-core/gpu", "crevice", "mint", "log", "env_logger", "futures", "bytemuck"]

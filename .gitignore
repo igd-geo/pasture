@@ -3,4 +3,7 @@
 Cargo.lock
 
 .vscode
+.idea
 *.log
+
+/pasture-io/examples/out/test_output.las
