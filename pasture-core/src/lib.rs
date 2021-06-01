@@ -17,3 +17,5 @@ pub mod math;
 pub mod meta;
 /// Utilities
 pub mod util;
+/// GPU support
+pub mod gpu;
