@@ -5,7 +5,8 @@
 layout(local_size_x=8) in;
 
 layout(std430, set=0, binding=0) buffer PosBuffer {
-    double positions[];
+//    double positions[];
+    dvec3 positions[];
 };
 
 layout(std430, set=0, binding=1) buffer SizeBuffer {
@@ -13,7 +14,13 @@ layout(std430, set=0, binding=1) buffer SizeBuffer {
 };
 
 void main() {
+    uint n = 3;
+
     uint idx = gl_GlobalInvocationID.x;
-    positions[idx] += 1.0;
-    sizes[idx] += 1u;
+    if(idx < n) {
+        positions[idx].x += 1.0;
+        positions[idx].y += 1.0;
+        positions[idx].z += 1.0;
+        sizes[idx] += 1u;
+    }
 }
