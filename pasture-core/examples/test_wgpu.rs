@@ -138,46 +138,23 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
 
     let nr_points = (*pasture_buffer).len();
 
-    let mut positions = (*pasture_buffer).get_attribute_range_mut::<Vector3<f64>>(0..nr_points, &attributes::POSITION_3D);
-    println!("\nHere: {:?}", positions);
-    // println!("Here: {:?}\n", positions.bytes());
-    let into = positions.to_vec();
-    println!("Here: {:?}", into);
-    println!("Here: {:?}", into[0].as_slice());
-    // println!("Here: {:?}\n", into.into_iter().flat_map(|v| vec![v.x, v.y, v.z].into_iter()).collect::<Vec<f64>>());
-    println!("Here: {:?}\n", into.iter().flat_map(|v| vec![v.x, v.y, v.z].into_iter()).collect::<Vec<f64>>());
-    println!("Here: {:?}\n", positions.iter().flat_map(|v| vec![v.x, v.y, v.z, 1.0].into_iter()).collect::<Vec<f64>>());
-
-    // let test = positions.map(|v| v.data).collect();
-
-    // let test = into.iter().flat_map(|v| v.data).collect::<Vec<f64>>();
-    // let test = into[0].as_slice();
-    // let test = into.into_iter().flat_map(|v| vec![v.x, v.y, v.z].into_iter()).collect::<Vec<f64>>();
-
-    // Separate attributes into their own lists so that we can send them to the GPU.
-    // TODO: how to avoid doing this? Will be problematic for different/unknown PointLayouts
-    let mut positions: Vec<f64> = vec![];
-    let mut sizes: Vec<u32> = vec![];
-    for point in (*pasture_buffer).iter_point::<MyPointType>() {
-        positions.push(point.position.x);
-        positions.push(point.position.y);
-        positions.push(point.position.z);
-        sizes.push(point.size);
-    }
-
     let mut positions = (*pasture_buffer).get_attribute_range_mut::<Vector3<f64>>(0..nr_points, &attributes::POSITION_3D)
         .iter()
         // .flat_map(|v| vec![v.x, v.y, v.z].into_iter())
         .flat_map(|v| vec![v.x, v.y, v.z, 1.0].into_iter())
         .collect::<Vec<f64>>();
 
+    // TODO: how to not redefine custom type
+    let custom_size_attrib =
+        PointAttributeDefinition::custom("Size", PointAttributeDataType::U32);
+
+    let mut sizes = (*pasture_buffer).get_attribute_range_mut::<u32>(0..nr_points, &custom_size_attrib);
 
     // First the positions (note the *pos_dim)
-    let pos_dim: u32 = 4;
+    let pos_dim = 4;
     let data_size_pos_attrib = (pos_dim * nr_points * std::mem::size_of::<f64>()) as wgpu::BufferAddress;
     let pos_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: None,
-        // contents: bytemuck::cast_slice(&positions),
         contents: bytemuck::cast_slice(&positions),
         usage: wgpu::BufferUsage::STORAGE
             | wgpu::BufferUsage::COPY_SRC
@@ -335,8 +312,6 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
         drop(result_as_bytes);
         result_pos_buffer.unmap();
 
-        println!("Pos res: {:?}", pos_result);
-
         let pos_attribs = (*pasture_buffer)
             .get_attribute_range_mut::<Vector3<f64>>(0..nr_points, &attributes::POSITION_3D);
 
@@ -360,10 +335,6 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
         // Drop all mapped views before unmapping buffer
         drop(result_as_bytes);
         result_size_buffer.unmap();
-
-        // TODO: how to not redefine custom type
-        let custom_size_attrib =
-            PointAttributeDefinition::custom("Size", PointAttributeDataType::U32);
 
         let size_attribs =
             (*pasture_buffer).get_attribute_range_mut::<u32>(0..nr_points, &custom_size_attrib);
