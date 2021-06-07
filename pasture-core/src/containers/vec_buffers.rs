@@ -439,6 +439,55 @@ impl PointBufferWriteable for InterleavedVecPointStorage {
     fn clear(&mut self) {
         self.points.clear();
     }
+
+    fn resize(&mut self, new_points: usize) {
+        if new_points == self.len() {
+            return;
+        }
+
+        self.points
+            .resize(new_points * self.layout.size_of_point_entry() as usize, 0);
+    }
+
+    fn set_raw_point(&mut self, point_index: usize, buf: &[u8]) {
+        if point_index >= self.len() {
+            panic!("Point index is out of bounds")
+        }
+        let point_size = self.layout.size_of_point_entry() as usize;
+        if buf.len() != point_size {
+            panic!("Size of buffer does not match the point size in this buffers PointLayout")
+        }
+        let point_data_start = point_index * point_size;
+        let point_data_end = point_data_start + point_size;
+        let target_point_slice = &mut self.points[point_data_start..point_data_end];
+        target_point_slice.copy_from_slice(buf);
+    }
+
+    fn set_raw_attribute(
+        &mut self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+        buf: &[u8],
+    ) {
+        if point_index >= self.len() {
+            panic!("Point index is out of bounds")
+        }
+        let attribute_member = self
+            .layout
+            .get_attribute(attribute)
+            .expect("Attribute not found in this PointBuffer's PointLayout");
+        let attribute_size = attribute_member.size() as usize;
+        if buf.len() != attribute_size {
+            panic!("Size of buffer does not match the size of the point attribute")
+        }
+        let point_size = self.layout.size_of_point_entry() as usize;
+        let attribute_offset_within_point = attribute_member.offset() as usize;
+
+        let attribute_data_start = (point_index * point_size) + attribute_offset_within_point;
+        let attribute_data_end = attribute_data_start + attribute_size;
+        let target_attribute_slice = &mut self.points[attribute_data_start..attribute_data_end];
+        target_attribute_slice.copy_from_slice(buf);
+    }
 }
 
 impl InterleavedPointBuffer for InterleavedVecPointStorage {
@@ -979,6 +1028,65 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
     fn clear(&mut self) {
         self.attributes.iter_mut().for_each(|(_, vec)| vec.clear());
     }
+
+    fn resize(&mut self, new_points: usize) {
+        if new_points == self.len() {
+            return;
+        }
+
+        for (key, buf) in &mut self.attributes {
+            let attribute = self.layout.get_attribute_by_name(key).unwrap();
+            let new_byte_size = new_points * attribute.size() as usize;
+            buf.resize(new_byte_size, 0);
+        }
+    }
+
+    fn set_raw_point(&mut self, point_index: usize, buf: &[u8]) {
+        if point_index >= self.len() {
+            panic!("Point index is out of bounds")
+        }
+        if buf.len() != self.layout.size_of_point_entry() as usize {
+            panic!("Size of buffer does not match the size of a point in the buffer's PointLayout");
+        }
+        for attribute in self.layout.attributes() {
+            let attribute_size = attribute.size() as usize;
+
+            let attribute_start_in_buf = attribute.offset() as usize;
+            let attribute_end_in_buf = attribute_start_in_buf + attribute_size;
+            let attribute_slice = &buf[attribute_start_in_buf..attribute_end_in_buf];
+
+            let target_slice_start = point_index * attribute_size;
+            let target_slice_end = target_slice_start + attribute_size;
+            let target_slice = &mut self.attributes.get_mut(attribute.name()).unwrap()
+                [target_slice_start..target_slice_end];
+            target_slice.copy_from_slice(attribute_slice);
+        }
+    }
+
+    fn set_raw_attribute(
+        &mut self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+        buf: &[u8],
+    ) {
+        if point_index >= self.len() {
+            panic!("Point index is out of bounds")
+        }
+        let attribute_member = self
+            .layout
+            .get_attribute(attribute)
+            .expect("Attribute not found in this PointBuffer's PointLayout");
+        let attribute_size = attribute_member.size() as usize;
+        if buf.len() != attribute_size {
+            panic!("Size of buffer does not match the size of the point attribute")
+        }
+
+        let attribute_start = point_index * attribute_size;
+        let attribute_end = attribute_start + attribute_size;
+        let target_slice =
+            &mut self.attributes.get_mut(attribute.name()).unwrap()[attribute_start..attribute_end];
+        target_slice.copy_from_slice(buf);
+    }
 }
 
 impl PerAttributePointBuffer for PerAttributeVecPointStorage {
@@ -1289,6 +1397,7 @@ mod tests {
     use crate::containers::{
         InterleavedPointView, PerAttributePointBufferExt, PerAttributePointView, PointBufferExt,
     };
+    use crate::layout::attributes::{GPS_TIME, POSITION_3D};
     use crate::util::view_raw_bytes;
     use crate::{
         layout::{attributes, PointLayout},
@@ -2837,5 +2946,213 @@ mod tests {
         let actual_points =
             unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const TestPointType, 2) };
         assert_eq!(&reference_points[1..3], actual_points);
+    }
+
+    #[test]
+    fn test_per_attribute_point_buffer_resize() {
+        let mut buf = PerAttributeVecPointStorage::new(TestPointType::layout());
+        buf.resize(2);
+        assert_eq!(2, buf.len());
+
+        assert_eq!(TestPointType(0, 0.0), buf.get_point::<TestPointType>(0));
+        assert_eq!(TestPointType(0, 0.0), buf.get_point::<TestPointType>(1));
+
+        buf.resize(1);
+        assert_eq!(1, buf.len());
+
+        assert_eq!(TestPointType(0, 0.0), buf.get_point::<TestPointType>(0));
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_set_point_interleaved() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_point = TestPointType(42, 43.0);
+        let new_point_mem = unsafe { view_raw_bytes(&new_point) };
+        buffer.set_raw_point(0, new_point_mem);
+        assert_eq!(buffer.get_point::<TestPointType>(0), new_point);
+
+        buffer.set_raw_point(1, new_point_mem);
+        assert_eq!(buffer.get_point::<TestPointType>(1), new_point);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn test_point_buffer_writeable_set_point_interleaved_oob() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_point = TestPointType(42, 43.0);
+        let new_point_mem = unsafe { view_raw_bytes(&new_point) };
+        buffer.set_raw_point(3, new_point_mem);
+    }
+
+    #[test]
+    #[should_panic(expected = "Size of buffer does not match")]
+    fn test_point_buffer_writeable_set_point_interleaved_wrong_buf_size() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let wrongly_sized_buffer = vec![0; 27];
+        buffer.set_raw_point(0, wrongly_sized_buffer.as_slice());
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_set_point_per_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_point = TestPointType(42, 43.0);
+        let new_point_mem = unsafe { view_raw_bytes(&new_point) };
+        buffer.set_raw_point(0, new_point_mem);
+        assert_eq!(buffer.get_point::<TestPointType>(0), new_point);
+        assert_eq!(buffer.get_point::<TestPointType>(1), TestPointType(0, 0.0));
+
+        buffer.set_raw_point(1, new_point_mem);
+        assert_eq!(buffer.get_point::<TestPointType>(1), new_point);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn test_point_buffer_writeable_set_point_per_attribute_oob() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_point = TestPointType(42, 43.0);
+        let new_point_mem = unsafe { view_raw_bytes(&new_point) };
+        buffer.set_raw_point(3, new_point_mem);
+    }
+
+    #[test]
+    #[should_panic(expected = "Size of buffer does not match")]
+    fn test_point_buffer_writeable_set_point_per_attribute_wrong_buf_size() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let wrongly_sized_buffer = vec![0; 27];
+        buffer.set_raw_point(0, wrongly_sized_buffer.as_slice());
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_set_attribute_interleaved() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_attribute: f64 = 42.0;
+        let new_attribute_mem = unsafe { view_raw_bytes(&new_attribute) };
+        buffer.set_raw_attribute(0, &GPS_TIME, new_attribute_mem);
+        assert_eq!(buffer.get_attribute::<f64>(&GPS_TIME, 0), new_attribute);
+        // Check also that set_raw_attribute did not accidentally change at the wrong index
+        assert_eq!(buffer.get_attribute::<f64>(&GPS_TIME, 1), 0.0);
+
+        buffer.set_raw_attribute(1, &GPS_TIME, new_attribute_mem);
+        assert_eq!(buffer.get_attribute::<f64>(&GPS_TIME, 1), new_attribute);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn test_point_buffer_writeable_set_attribute_interleaved_oob() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_attribute: f64 = 42.0;
+        let new_attribute_mem = unsafe { view_raw_bytes(&new_attribute) };
+        buffer.set_raw_attribute(3, &GPS_TIME, new_attribute_mem);
+    }
+
+    #[test]
+    #[should_panic(expected = "Size of buffer does not match")]
+    fn test_point_buffer_writeable_set_attribute_interleaved_wrong_buf_size() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let wrongly_sized_buffer = vec![0; 27];
+        buffer.set_raw_attribute(0, &GPS_TIME, wrongly_sized_buffer.as_slice());
+    }
+
+    #[test]
+    #[should_panic(expected = "Attribute not found")]
+    fn test_point_buffer_writeable_set_attribute_interleaved_invalid_attribute() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let buf = vec![0; 24];
+        buffer.set_raw_attribute(0, &POSITION_3D, buf.as_slice());
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_set_attribute_per_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_attribute: f64 = 42.0;
+        let new_attribute_mem = unsafe { view_raw_bytes(&new_attribute) };
+        buffer.set_raw_attribute(0, &GPS_TIME, new_attribute_mem);
+        assert_eq!(buffer.get_attribute::<f64>(&GPS_TIME, 0), new_attribute);
+        // Check also that set_raw_attribute did not accidentally change at the wrong index
+        assert_eq!(buffer.get_attribute::<f64>(&GPS_TIME, 1), 0.0);
+
+        buffer.set_raw_attribute(1, &GPS_TIME, new_attribute_mem);
+        assert_eq!(buffer.get_attribute::<f64>(&GPS_TIME, 1), new_attribute);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn test_point_buffer_writeable_set_attribute_per_attribute_oob() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let new_attribute: f64 = 42.0;
+        let new_attribute_mem = unsafe { view_raw_bytes(&new_attribute) };
+        buffer.set_raw_attribute(3, &GPS_TIME, new_attribute_mem);
+    }
+
+    #[test]
+    #[should_panic(expected = "Size of buffer does not match")]
+    fn test_point_buffer_writeable_set_attribute_per_attribute_wrong_buf_size() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let wrongly_sized_buffer = vec![0; 27];
+        buffer.set_raw_attribute(0, &GPS_TIME, wrongly_sized_buffer.as_slice());
+    }
+
+    #[test]
+    #[should_panic(expected = "Attribute not found")]
+    fn test_point_buffer_writeable_set_attribute_per_attribute_invalid_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        let buf = vec![0; 24];
+        buffer.set_raw_attribute(0, &POSITION_3D, buf.as_slice());
     }
 }

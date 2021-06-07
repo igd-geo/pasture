@@ -88,6 +88,14 @@
     - [ ] Examples
 - [ ] 3D Tiles
     - [ ] Reader
+        - [x] Positions
+        - [ ] Quantized positions
+        - [ ] RGBA colors
+        - [x] RGB colors
+        - [ ] RGB565 colors
+        - [x] Normals
+        - [ ] Normals oct encoded
+        - [ ] Batch IDs
     - [ ] Writer
 - [ ] ASCII
     - [ ] Reader

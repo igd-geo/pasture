@@ -1,6 +1,11 @@
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
+use pasture_core::{
+    layout::PointAttributeDataType,
+    nalgebra::{Vector3, Vector4},
+};
 use serde_json::Value;
 use std::{
+    convert::TryInto,
     ffi::{CStr, CString},
     io::{BufRead, Seek, SeekFrom, Write},
 };
@@ -42,4 +47,44 @@ pub fn write_json_header<W: Write>(mut writer: W, json_header: &Value) -> Result
     }
 
     Ok(())
+}
+
+/// Converts an array of JSON Values into a Vector3<f32>
+pub fn json_arr_to_vec3f32(json_arr: &[Value]) -> Result<Vector3<f32>> {
+    if json_arr.len() != 3 {
+        bail!(
+            "JSON array must have length 3 to convert to Vector3<f32> (but has length {})",
+            json_arr.len()
+        )
+    }
+    let vals = json_arr
+        .iter()
+        .map(|v| v.as_f64().ok_or(anyhow!("Can't convert JSON value to f64")))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let x = vals[0] as f32;
+    let y = vals[1] as f32;
+    let z = vals[2] as f32;
+
+    Ok(Vector3::new(x, y, z))
+}
+
+pub fn json_arr_to_vec4u8(json_arr: &[Value]) -> Result<Vector4<u8>> {
+    if json_arr.len() != 4 {
+        bail!(
+            "JSON array must have length 4 to convert to Vector4<u8> (but has length {})",
+            json_arr.len()
+        )
+    }
+    let vals = json_arr
+        .iter()
+        .map(|v| v.as_u64().ok_or(anyhow!("Can't convert JSON value to u64")))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let r: u8 = vals[0].try_into()?;
+    let g: u8 = vals[1].try_into()?;
+    let b: u8 = vals[2].try_into()?;
+    let a: u8 = vals[3].try_into()?;
+
+    Ok(Vector4::new(r, g, b, a))
 }

@@ -74,6 +74,26 @@ pub trait PointBuffer {
 /// read-only `PointBuffer` and mutable `PointBufferMut` traits enables read-only, non-owning views of a `PointBuffer` with the same interface
 /// as an owning `PointBuffer`!
 pub trait PointBufferWriteable: PointBuffer {
+    /// Sets the data for a single point within the associated `PointBufferWriteable` to the data in `buf`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `point_index` is out of bounds or the length of `buf` does not match the size of a single point in the
+    /// `PointLayout`
+    fn set_raw_point(&mut self, point_index: usize, buf: &[u8]);
+    /// Sets the data for a single attribute of a isngle point within the associated `PointBufferWriteable` to the data in `buf`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `point_index` is out of bounds, `attribute` is not part of the `PointLayout`, or the length of `buf` does not
+    /// match the size of a single point in the `PointLayout`
+    fn set_raw_attribute(
+        &mut self,
+        point_index: usize,
+        attribute: &PointAttributeDefinition,
+        buf: &[u8],
+    );
+
     /// Appends the given `points` to the end of the associated `PointBuffer`
     ///
     /// # Panics
@@ -94,6 +114,10 @@ pub trait PointBufferWriteable: PointBuffer {
 
     /// Clears the contents of the associated `PointBufferMut`
     fn clear(&mut self);
+
+    /// Resizes this buffer to the given number of `new_points`. This will trim the buffer if `new_points` is smaller
+    /// than the current number of points, or create default-initialized points if `new_points` is larger.
+    fn resize(&mut self, new_points: usize);
 }
 
 /// Trait for `PointBuffer` types that store point data in Interleaved memory layout. In an `InterleavedPointBuffer`, all attributes

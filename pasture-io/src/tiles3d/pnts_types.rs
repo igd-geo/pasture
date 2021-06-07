@@ -1,6 +1,8 @@
+use serde::{Serialize, Deserialize};
+
 /// Header of .pnts files
 #[repr(packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PntsHeader {
     pub magic: [u8; 4],
     pub version: u32,
