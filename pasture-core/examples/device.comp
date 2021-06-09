@@ -1,0 +1,39 @@
+#version 450
+
+layout(local_size_x=8) in;
+
+layout(std430, set=0, binding=0) buffer PosBuffer {
+    // TODO: for some reason cannot read/write this -> the reason was the Dx12 backend!
+    // SpirV: There was a compiler error: Reading types other than 32-bit from ByteAddressBuffer not yet supported,
+    //        unless SM 6.2 and native 16-bit types are enabled.
+    dvec4 positions[];
+};
+
+layout(std430, set=0, binding=1) buffer IColBuffer {
+    uvec4 icolors[];
+};
+
+layout(std430, set=0, binding=2) buffer FColBuffer {
+    vec4 fcolors[];
+};
+
+void main() {
+    uint n = 3; // TODO: set this as uniform or sth
+
+    uint idx = gl_GlobalInvocationID.x;
+    if(idx < n) {
+        positions[idx].x += 8.0;
+        positions[idx].y += 8.0;
+        positions[idx].z += 8.0;
+
+        icolors[idx].r /= 2;
+        icolors[idx].g /= 2;
+        icolors[idx].b /= 2;
+        icolors[idx].a /= 4;
+
+        fcolors[idx].r *= 0.5;
+        fcolors[idx].g *= 0.5;
+        fcolors[idx].b *= 0.5;
+        fcolors[idx].a *= 0.1;
+    }
+}
