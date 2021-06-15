@@ -15,3 +15,5 @@ pub mod convexhull;
 pub mod segmentation;
 // Contains an algorithm to reproject coordinate systems
 pub mod reprojection;
+// Contains voxel-grid-filter function to downsample a given point buffer.
+pub mod voxel_grid;
