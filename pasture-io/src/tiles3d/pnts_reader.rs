@@ -48,6 +48,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
 
     pub fn from_read(mut read: R) -> Result<PntsReader<R>> {
         let _header: PntsHeader = bincode::deserialize_from(&mut read)?;
+        // TODO use the byte sizes in the header to parse feature table and batch table! Both MUST be parsed so that we get the correct offset to the binary bodies
         // TODO BatchTable support
         let mut feature_table_header = deser_feature_table_header(&mut read)?;
 
@@ -61,7 +62,10 @@ impl<R: BufRead + Seek> PntsReader<R> {
         // TODO Log all parameters that could not be parsed. This requires logging support for pasture
 
         // Convert offsets in binary body to offsets within whole file
-        let feature_table_binary_offset = read.seek(SeekFrom::Current(0))?;
+        let feature_table_binary_offset: u64 = (PntsHeader::BYTE_LENGTH
+            + _header.feature_table_json_byte_length as usize)
+            .try_into()
+            .unwrap();
         for (_, offset) in &mut attribute_offsets {
             *offset += feature_table_binary_offset;
         }
@@ -101,7 +105,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
             match color_attribute {
                 FeatureTableValue::DataReference(reference) => {
                     attribute_offsets.insert(COLOR_RGB.name().to_owned(), reference.byte_offset as u64);
-                    layout.add_attribute(COLOR_RGB, FieldAlignment::Packed(1));
+                    layout.add_attribute(COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8), FieldAlignment::Packed(1));
                 },
                 _ => bail!("Found PNTS attribute RGB ({:?}) but it was not a reference to the feature table binary!", color_attribute),
             }

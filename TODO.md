@@ -96,7 +96,17 @@
         - [x] Normals
         - [ ] Normals oct encoded
         - [ ] Batch IDs
+        - [ ] Batch table and custom attributes
     - [ ] Writer
+        - [x] Positions
+        - [ ] Quantized positions
+        - [ ] RGBA colors
+        - [x] RGB colors
+        - [x] Normals
+        - [ ] Normals oct encoded
+        - [ ] Batch IDs
+        - [ ] Batch table and custom attributes
+        - [ ] Write from custom PointLayout
 - [ ] ASCII
     - [ ] Reader
     - [ ] Writer

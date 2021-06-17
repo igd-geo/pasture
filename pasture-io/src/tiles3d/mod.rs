@@ -1,6 +1,9 @@
 mod pnts_reader;
 pub use self::pnts_reader::*;
 
+mod pnts_writer;
+pub use self::pnts_writer::*;
+
 mod pnts_types;
 pub use self::pnts_types::*;
 
