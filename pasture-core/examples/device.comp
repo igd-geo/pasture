@@ -17,6 +17,14 @@ layout(std430, set=0, binding=2) buffer FColBuffer {
     vec4 fcolors[];
 };
 
+layout(std430, set=0, binding=3) buffer ByteVecBuffer {
+    uvec4 byte_vals[];
+};
+
+layout(std430, set=0, binding=4) buffer ClassificationBuffer {
+    uint classifications[];
+};
+
 void main() {
     uint n = 3; // TODO: set this as uniform or sth
 
@@ -35,5 +43,12 @@ void main() {
         fcolors[idx].g *= 0.4;
         fcolors[idx].b *= 0.3;
         fcolors[idx].a *= 0.1;
+
+        byte_vals[idx].x += 1;
+        byte_vals[idx].y += 1;
+        byte_vals[idx].z += 1;
+        byte_vals[idx].w = 10;
+
+        classifications[idx] += 10;
     }
 }

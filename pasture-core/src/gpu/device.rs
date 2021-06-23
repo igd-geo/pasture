@@ -69,11 +69,15 @@ impl Device {
 
         // == Create a device and a queue from the given adapter ==================================
 
+        // TODO: use these or defaults? -> decide via DeviceOptions
+        let supported_features = adapter.features();
+        let best_limits = adapter.limits();
+
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
-                features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default()
+                features: supported_features,
+                limits: best_limits,
             },
             None,
         ).await.unwrap();
@@ -183,7 +187,13 @@ impl Device {
 
         match datatype {
             PointAttributeDataType::U8 => {
-
+                // Convert to u32
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..len {
+                    let current = slice[i] as u32;
+                    v.extend_from_slice(&current.to_ne_bytes());
+                }
+                return v;
             }
             PointAttributeDataType::I8 => {
 
@@ -216,7 +226,31 @@ impl Device {
 
             }
             PointAttributeDataType::Vec3u8 => {
+                // Convert to Vec4u32
+                let one_as_bytes = 1_u32.to_ne_bytes();
 
+                // Each entry is 8 bits, ie. 1 byte -> each Vec3 has 3 bytes
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = len / stride;
+
+                println!("{:02X?}, {}, {}", slice, stride, num_elements);
+
+                let mut v = Vec::new();
+                for i in 0..num_elements {
+                    // Iteration over each Vec3
+                    for j in 0..3 {
+                        // Extend each entry to 32 bits
+                        let begin = (i * stride) + j;
+                        let end = (i * stride) + j + 1;
+
+                        let current = u8::from_ne_bytes(slice[begin..end].try_into().unwrap());
+                        v.extend_from_slice(&(current as u32).to_ne_bytes());
+                    }
+
+                    // Append fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                }
+                return v;
             }
             PointAttributeDataType::Vec3u16 => {
                 // Convert to Vec4u32

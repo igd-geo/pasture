@@ -1,6 +1,6 @@
 use pasture_core::gpu;
 use pasture_core::nalgebra::Vector3;
-use pasture_core::containers::{PerAttributeVecPointStorage};
+use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage};
 use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
@@ -16,6 +16,10 @@ struct MyPointType {
     pub icolor: Vector3<u16>,
     #[pasture(attribute = "MyColorF32")]
     pub fcolor: Vector3<f32>,
+    #[pasture(attribute = "MyVec3U8")]
+    pub byte_vec: Vector3<u8>,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
 }
 
 fn main() {
@@ -30,16 +34,22 @@ async fn run() {
             position: Vector3::new(1.0, 0.0, 0.0),
             icolor: Vector3::new(255, 0, 0),
             fcolor: Vector3::new(1.0, 1.0, 1.0),
+            byte_vec: Vector3::new(1, 0, 0),
+            classification: 1,
         },
         MyPointType {
             position: Vector3::new(0.0, 1.0, 0.0),
             icolor: Vector3::new(0, 255, 0),
             fcolor: Vector3::new(0.0, 1.0, 0.0),
+            byte_vec: Vector3::new(0, 1, 0),
+            classification: 2,
         },
         MyPointType {
             position: Vector3::new(0.0, 0.0, 1.0),
             icolor: Vector3::new(0, 0, 255),
             fcolor: Vector3::new(0.0, 0.0, 1.0),
+            byte_vec: Vector3::new(0, 0, 1),
+            classification: 3,
         },
     ];
 
@@ -47,8 +57,14 @@ async fn run() {
     let mut point_buffer = PerAttributeVecPointStorage::new(layout);
     point_buffer.push_points(points.as_slice());
 
+    let mut point_buffer = InterleavedVecPointStorage::new(MyPointType::layout());
+    point_buffer.push_points(points.as_slice());
+
     let custom_color_attrib =
         PointAttributeDefinition::custom("MyColorF32", PointAttributeDataType::Vec3f32);
+
+    let custom_byte_vec_attrib =
+        PointAttributeDefinition::custom("MyVec3U8", PointAttributeDataType::Vec3u8);
 
     // == GPU ====================================================================================
 
@@ -81,6 +97,14 @@ async fn run() {
             attribute: &custom_color_attrib,
             binding: 2
         },
+        gpu::BufferInfo {
+            attribute: &custom_byte_vec_attrib,
+            binding: 3
+        },
+        gpu::BufferInfo {
+            attribute: &attributes::CLASSIFICATION,
+            binding: 4
+        },
     ];
 
     // device.upload(device_buffers);
@@ -109,4 +133,16 @@ async fn run() {
         .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
         .collect();
     println!("Colors (f32): {:?}", fcol_result_vec);
+
+    let byte_vec_result_vec: Vec<u32> = results_as_bytes[3]
+        .chunks_exact(4)
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("Bytes Vec: {:?}", byte_vec_result_vec);
+
+    let classification_result_vec: Vec<u32> = results_as_bytes[4]
+        .chunks_exact(4)
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("Classification: {:?}", classification_result_vec);
 }
