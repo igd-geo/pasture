@@ -7,7 +7,6 @@ use pasture_derive::PointType;
 
 use std::convert::TryInto;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use std::io::Read;
 
 // Custom PointLayout
 #[derive(PointType, Debug)]
@@ -49,6 +48,9 @@ async fn run() {
     let mut buffer = PerAttributeVecPointStorage::new(layout);
     buffer.push_points(points.as_slice());
 
+    println!("Layout: {:?}", buffer.point_layout().size_of_point_entry());
+    println!("Layout: {:?}", buffer.point_layout().at(1).datatype());
+
     println!("Points: ");
     for point in buffer.iter_point::<MyPointType>() {
         println!("\t{:?}", point);
@@ -77,6 +79,10 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
     // == Get device ==============================================================================
 
     let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+
+    // We could get a list of all adapters for a specific backend
+    let adaps = instance.enumerate_adapters(wgpu::BackendBit::PRIMARY);
+    println!("{:?}", adaps.into_iter().flat_map(|t| vec![t.get_info().name]).collect::<Vec<String>>());
 
     // The adapter gives us a handle to the actual device.
     // We can query some GPU information, such as the device name, its type (discrete vs integrated)
@@ -138,7 +144,7 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
 
     let nr_points = (*pasture_buffer).len();
 
-    let mut positions = (*pasture_buffer).get_attribute_range_mut::<Vector3<f64>>(0..nr_points, &attributes::POSITION_3D)
+    let positions = (*pasture_buffer).get_attribute_range_mut::<Vector3<f64>>(0..nr_points, &attributes::POSITION_3D)
         .iter()
         // .flat_map(|v| vec![v.x, v.y, v.z].into_iter())
         .flat_map(|v| vec![v.x, v.y, v.z, 1.0].into_iter())
@@ -148,7 +154,7 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
     let custom_size_attrib =
         PointAttributeDefinition::custom("Size", PointAttributeDataType::U32);
 
-    let mut sizes = (*pasture_buffer).get_attribute_range_mut::<u32>(0..nr_points, &custom_size_attrib);
+    let sizes = (*pasture_buffer).get_attribute_range_mut::<u32>(0..nr_points, &custom_size_attrib);
 
     // First the positions (note the *pos_dim)
     let pos_dim = 4;
@@ -157,8 +163,7 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
         label: None,
         contents: bytemuck::cast_slice(&positions),
         usage: wgpu::BufferUsage::STORAGE
-            | wgpu::BufferUsage::COPY_SRC
-            | wgpu::BufferUsage::COPY_DST,
+            | wgpu::BufferUsage::COPY_SRC,
     });
 
     // Then the sizes
@@ -167,8 +172,7 @@ async fn on_gpu(pasture_buffer: &mut PerAttributeVecPointStorage) {
         label: None,
         contents: bytemuck::cast_slice(&sizes),
         usage: wgpu::BufferUsage::STORAGE
-            | wgpu::BufferUsage::COPY_SRC
-            | wgpu::BufferUsage::COPY_DST,
+            | wgpu::BufferUsage::COPY_SRC,
     });
 
     // The buffer to write the position updates to

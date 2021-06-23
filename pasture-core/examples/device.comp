@@ -29,11 +29,11 @@ void main() {
         icolors[idx].r /= 2;
         icolors[idx].g /= 2;
         icolors[idx].b /= 2;
-        icolors[idx].a /= 4;
+        icolors[idx].a *= 1;
 
         fcolors[idx].r *= 0.5;
-        fcolors[idx].g *= 0.5;
-        fcolors[idx].b *= 0.5;
+        fcolors[idx].g *= 0.4;
+        fcolors[idx].b *= 0.3;
         fcolors[idx].a *= 0.1;
     }
 }

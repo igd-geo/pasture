@@ -1,5 +1,9 @@
 use wgpu::util::{DeviceExt, BufferInitDescriptor};
 use wgpu::BufferDescriptor;
+use crate::layout::{PointAttributeDataType};
+use crate::layout;
+use crate::containers::{PointBuffer};
+use bytemuck::__core::convert::TryInto;
 
 pub struct Device {
     // Private fields
@@ -111,24 +115,32 @@ impl Device {
         println!("Vendor PCI id: {}\n", info.vendor);
     }
 
-    pub fn upload(&mut self, device_buffers: Vec<DeviceBuffer>) {
-        // - Take a list of DeviceBuffer as input
+    pub fn upload(&mut self, buffer: &mut dyn PointBuffer, buffer_infos: Vec<BufferInfo>) {
         // - Internally create appropriate wgpu::Buffer objects
-        // - Put those in a list and store in self.upload_buffers and self.download_buffers
+        // - Store those in self.upload_buffers and self.download_buffers
 
-        for buffer in device_buffers {
-            // TODO: for now assume corresponding buffers have same index
+        let len = buffer.len();
 
-            // println!("{:?}", buffer.content.len());
-            let size_in_bytes = buffer.content.len() as wgpu::BufferAddress;
+        for info in buffer_infos {
+            let num_bytes = self.bytes_per_element(info.attribute.datatype()) as usize;
+            let mut bytes_to_write: Vec<u8> = vec![0; len * num_bytes];
+
+            buffer.get_raw_attribute_range(0..len, info.attribute, &mut *bytes_to_write);
+
+            // Change Vec<u8> to &[u8]
+            let bytes_to_write: &[u8] = &*bytes_to_write;
+            let bytes_to_write = &self.align_slice(bytes_to_write, info.attribute.datatype())[..];
+            println!("{}: {:02X?}", info.attribute.name(), bytes_to_write);
+
+            let size_in_bytes = bytes_to_write.len() as wgpu::BufferAddress;
             self.buffer_sizes.push(size_in_bytes);
 
             self.upload_buffers.push(self.device.create_buffer_init(
-               &BufferInitDescriptor {
-                   label: None,
-                   contents: buffer.content,
-                   usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC
-               }
+                &BufferInitDescriptor {
+                    label: None,
+                    contents: bytes_to_write,
+                    usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC
+                }
             ));
 
             self.download_buffers.push(self.device.create_buffer(
@@ -140,8 +152,126 @@ impl Device {
                 }
             ));
 
-            self.buffer_bindings.push(buffer.binding);
+            self.buffer_bindings.push(info.binding);
         }
+    }
+
+    fn bytes_per_element(&self, datatype: PointAttributeDataType) -> u32 {
+        let num_bytes = match datatype {
+            PointAttributeDataType::U8 => { 1 }
+            PointAttributeDataType::I8 => { 1 }
+            PointAttributeDataType::U16 => { 2 }
+            PointAttributeDataType::I16 => { 2 }
+            PointAttributeDataType::U32 => { 4 }
+            PointAttributeDataType::I32 => { 4 }
+            PointAttributeDataType::U64 => { 8 }
+            PointAttributeDataType::I64 => { 8 }
+            PointAttributeDataType::F32 => { 4 }
+            PointAttributeDataType::F64 => { 8 }
+            PointAttributeDataType::Bool => { 1 }
+            PointAttributeDataType::Vec3u8 => { 3 }
+            PointAttributeDataType::Vec3u16 => { 6 }
+            PointAttributeDataType::Vec3f32 => { 12 }
+            PointAttributeDataType::Vec3f64 => { 24 }
+        };
+
+        num_bytes
+    }
+
+    fn align_slice(&self, slice: &[u8], datatype: PointAttributeDataType) -> Vec<u8> {
+        let len = slice.len();
+
+        match datatype {
+            PointAttributeDataType::U8 => {
+
+            }
+            PointAttributeDataType::I8 => {
+
+            }
+            PointAttributeDataType::U16 => {
+
+            }
+            PointAttributeDataType::I16 => {
+
+            }
+            PointAttributeDataType::U32 => {
+
+            }
+            PointAttributeDataType::I32 => {
+
+            }
+            PointAttributeDataType::U64 => {
+
+            }
+            PointAttributeDataType::I64 => {
+
+            }
+            PointAttributeDataType::F32 => {
+
+            }
+            PointAttributeDataType::F64 => {
+
+            }
+            PointAttributeDataType::Bool => {
+
+            }
+            PointAttributeDataType::Vec3u8 => {
+
+            }
+            PointAttributeDataType::Vec3u16 => {
+                // Convert to Vec4u32
+                let one_as_bytes = 1_u32.to_ne_bytes();
+
+                // Each entry is 16 bits, ie. 2 bytes -> each Vec3 has 3*2 = 6 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 6
+                let num_elements = len / stride;
+
+                let mut v = Vec::new();
+                for i in 0..num_elements {
+                    // Iteration over each Vec3
+                    for j in 0..3 {
+                        // Extend each entry to 32 bits
+                        let begin = (i * stride) + j * 2;
+                        let end = (i * stride) + (j * 2) + 2;
+
+                        let current = u16::from_ne_bytes(slice[begin..end].try_into().unwrap());
+                        v.extend_from_slice(&(current as u32).to_ne_bytes());
+                    }
+
+                    // Append fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                }
+                return v;
+            }
+            PointAttributeDataType::Vec3f32 => {
+                // Should be similar to Vec3f64 case except use 1.0_f32.to_ne_bytes()
+                // But think whether it's even needed... Color_f32 seems to work?
+            }
+            PointAttributeDataType::Vec3f64 => {
+                // Make Vec4f64 by appending 1.0
+                let one_as_bytes = 1.0_f64.to_ne_bytes();
+
+                // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let num_elements = len / stride;
+
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..num_elements {
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+
+                    // Push current Vec3
+                    v.extend_from_slice(&slice[begin..end]);
+
+                    // Push 1 as fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                }
+
+                return v;
+            }
+        }
+
+        Vec::from(slice)
     }
 
     pub async fn download(&self) -> Vec<Vec<u8>> {
@@ -349,11 +479,9 @@ impl Default for DeviceBackend {
     fn default() -> Self { Self::Primary }
 }
 
-// TODO: pass in actual content, usage, binding number (, size, mapped_at_creation, ...)
-// For now assume writeable storage buffer that will have an associated buffer to download from
-// Also assume mapped_at_creation to be false
-// Future: should indicate whether this buffer is for rendering or compute
-pub struct DeviceBuffer<'a> {
-    pub content: &'a [u8],
+// TODO: usage, size, mapped_at_creation, type (SSBO vs UBO), etc.
+// Future: compute vs. rendering
+pub struct BufferInfo<'a> {
+    pub attribute: &'a layout::PointAttributeDefinition,
     pub binding: u32,
 }
