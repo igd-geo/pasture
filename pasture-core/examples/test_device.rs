@@ -28,6 +28,12 @@ struct MyPointType {
     pub scan_dir_flag: bool,
     #[pasture(attribute = "MyInt32")]
     pub my_int: i32,
+    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)]
+    pub packet_size: u32,
+    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)]
+    pub ret_point_loc: f32,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
 }
 
 fn main() {
@@ -48,6 +54,9 @@ async fn run() {
             scan_angle: -1,
             scan_dir_flag: true,
             my_int: -100000,
+            packet_size: 1,
+            ret_point_loc: 1.0,
+            gps_time: 1.0
         },
         MyPointType {
             position: Vector3::new(0.0, 1.0, 0.0),
@@ -59,6 +68,9 @@ async fn run() {
             scan_angle: -2,
             scan_dir_flag: false,
             my_int: -200000,
+            packet_size: 2,
+            ret_point_loc: 2.0,
+            gps_time: 2.0
         },
         MyPointType {
             position: Vector3::new(0.0, 0.0, 1.0),
@@ -70,6 +82,9 @@ async fn run() {
             scan_angle: -3,
             scan_dir_flag: true,
             my_int: -300000,
+            packet_size: 3,
+            ret_point_loc: 3.0,
+            gps_time: 3.0
         },
     ];
 
@@ -149,7 +164,19 @@ async fn run() {
         gpu::BufferInfo {
             attribute: &custom_int_attrib,
             binding: 8,
-        }
+        },
+        gpu::BufferInfo {
+            attribute: &attributes::WAVEFORM_PACKET_SIZE,
+            binding: 9,
+        },
+        gpu::BufferInfo {
+            attribute: &attributes::RETURN_POINT_WAVEFORM_LOCATION,
+            binding: 10,
+        },
+        gpu::BufferInfo {
+            attribute: &attributes::GPS_TIME,
+            binding: 11,
+        },
     ];
 
     // device.upload(device_buffers);
@@ -158,6 +185,7 @@ async fn run() {
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 
+    // TODO: all the following should be handled by pasture... altered point_buffer should be returned
     let results_as_bytes = device.download().await;
 
     let pos_result_vec: Vec<f64> = results_as_bytes[0]
@@ -214,4 +242,22 @@ async fn run() {
         .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
         .collect();
     println!("Integers (i32): {:?}", my_int_result_vec);
+
+    let packet_size_result_vec: Vec<u32> = results_as_bytes[9]
+        .chunks_exact(4)
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("Packet sizes: {:?}", packet_size_result_vec);
+
+    let ret_point_loc_result_vec: Vec<f32> = results_as_bytes[10]
+        .chunks_exact(4)
+        .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("Return locations: {:?}", ret_point_loc_result_vec);
+
+    let gps_time_result_vec: Vec<f64> = results_as_bytes[11]
+        .chunks_exact(8)
+        .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("GPS times: {:?}", gps_time_result_vec);
 }

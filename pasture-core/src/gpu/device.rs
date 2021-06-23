@@ -80,6 +80,10 @@ impl Device {
             adapter.limits()
         }
         else {
+            // Some important ones that may be worth altering:
+            //  - max_storage_buffers_per_shader_stage (defaults to just 4)
+            //  - max_uniform_buffers_per_shader_stage (defaults to 12, which seems fine)
+            //  - ...
             wgpu::Limits::default()
         };
 

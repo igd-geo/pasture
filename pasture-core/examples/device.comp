@@ -41,6 +41,18 @@ layout(std430, set=0, binding=8) buffer MyIntBuffer {
     int integers[];
 };
 
+layout(std430, set=0, binding=9) buffer PacketSizeBuffer {
+    uint packet_sizes[];
+};
+
+layout(std430, set=0, binding=10) buffer RetLocBuffer {
+    float return_locations[];
+};
+
+layout(std430, set=0, binding=11) buffer GpsTimeBuffer {
+    double gps_times[];
+};
+
 void main() {
     uint n = 3; // TODO: set this as uniform or sth
 
@@ -74,5 +86,11 @@ void main() {
         scan_dir_flags[idx] = !scan_dir_flags[idx];
 
         integers[idx] -= 100000;
+
+        packet_sizes[idx] += 100;
+
+        return_locations[idx] *= 7.5;
+
+        gps_times[idx] *= 10.25;
     }
 }
