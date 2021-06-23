@@ -77,7 +77,8 @@ async fn run() {
     let mut point_buffer = PerAttributeVecPointStorage::new(layout);
     point_buffer.push_points(points.as_slice());
 
-    let mut point_buffer = InterleavedVecPointStorage::new(MyPointType::layout());
+    let layout = MyPointType::layout();
+    let mut point_buffer = InterleavedVecPointStorage::new(layout);
     point_buffer.push_points(points.as_slice());
 
     let custom_color_attrib =
@@ -100,9 +101,14 @@ async fn run() {
         gpu::DeviceOptions {
             device_power: gpu::DevicePower::High,
             device_backend: gpu::DeviceBackend::Vulkan,
+            use_adapter_features: true,
+            use_adapter_limits: true,
         }
     ).await;
     device.print_device_info();
+    device.print_active_features();
+    device.print_active_limits();
+    println!("\n");
 
     // TODO: this may be useful when trying to create buffer from just the layout
     // println!("{:?}", point_buffer.point_layout());

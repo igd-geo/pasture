@@ -69,15 +69,25 @@ impl Device {
 
         // == Create a device and a queue from the given adapter ==================================
 
-        // TODO: use these or defaults? -> decide via DeviceOptions
-        let supported_features = adapter.features();
-        let best_limits = adapter.limits();
+        let features = if device_options.use_adapter_features {
+            adapter.features()
+        }
+        else {
+            wgpu::Features::default()
+        };
+
+        let limits = if device_options.use_adapter_limits {
+            adapter.limits()
+        }
+        else {
+            wgpu::Limits::default()
+        };
 
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
-                features: supported_features,
-                limits: best_limits,
+                features,
+                limits,
             },
             None,
         ).await.unwrap();
@@ -117,6 +127,31 @@ impl Device {
         println!("Backend: {:?}", info.backend);
         println!("PCI id: {}", info.device);
         println!("Vendor PCI id: {}\n", info.vendor);
+    }
+
+    // TODO: are these feature/limit prints useful?
+    pub fn print_default_features(&self) {
+        println!("{:?}", wgpu::Features::default());
+    }
+
+    pub fn print_adapter_features(&self) {
+        println!("{:?}", self.adapter.features());
+    }
+
+    pub fn print_active_features(&self) {
+        println!("{:?}", self.device.features());
+    }
+
+    pub fn print_default_limits(&self) {
+        println!("{:?}", wgpu::Limits::default());
+    }
+
+    pub fn print_adapter_limits(&self) {
+        println!("{:?}", self.adapter.limits());
+    }
+
+    pub fn print_active_limits(&self) {
+        println!("{:?}", self.device.limits());
     }
 
     pub fn upload(&mut self, buffer: &mut dyn PointBuffer, buffer_infos: Vec<BufferInfo>) {
@@ -509,6 +544,8 @@ impl Device {
 pub struct DeviceOptions {
     pub device_power: DevicePower,
     pub device_backend: DeviceBackend,
+    pub use_adapter_features: bool,
+    pub use_adapter_limits: bool,
 }
 
 impl Default for DeviceOptions {
@@ -516,6 +553,8 @@ impl Default for DeviceOptions {
         Self {
             device_power: DevicePower::Low,
             device_backend: DeviceBackend::Primary,
+            use_adapter_features: false,
+            use_adapter_limits: false,
         }
     }
 }
