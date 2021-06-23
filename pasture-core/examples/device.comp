@@ -25,6 +25,22 @@ layout(std430, set=0, binding=4) buffer ClassificationBuffer {
     uint classifications[];
 };
 
+layout(std430, set=0, binding=5) buffer IntensityBuffer {
+    uint intensities[];
+};
+
+layout(std430, set=0, binding=6) buffer ScanAngleBuffer {
+    int scan_angles[];
+};
+
+layout(std430, set=0, binding=7) buffer ScanDirFlagBuffer {
+    bool scan_dir_flags[];
+};
+
+layout(std430, set=0, binding=8) buffer MyIntBuffer {
+    int integers[];
+};
+
 void main() {
     uint n = 3; // TODO: set this as uniform or sth
 
@@ -50,5 +66,13 @@ void main() {
         byte_vals[idx].w = 10;
 
         classifications[idx] += 10;
+
+        intensities[idx] += 10;
+
+        scan_angles[idx] -= 10;
+
+        scan_dir_flags[idx] = !scan_dir_flags[idx];
+
+        integers[idx] -= 100000;
     }
 }

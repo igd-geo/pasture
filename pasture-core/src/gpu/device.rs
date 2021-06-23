@@ -196,34 +196,70 @@ impl Device {
                 return v;
             }
             PointAttributeDataType::I8 => {
-
+                // Convert to i32
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..len {
+                    let current = i8::from_ne_bytes(slice[i..i+1].try_into().unwrap());
+                    v.extend_from_slice(&(current as i32).to_ne_bytes());
+                }
+                return v;
             }
             PointAttributeDataType::U16 => {
+                // Convert to u32
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = len / stride;
 
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..num_elements {
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+
+                    let current = u16::from_ne_bytes(slice[begin..end].try_into().unwrap());
+                    v.extend_from_slice(&(current as u32).to_ne_bytes());
+                }
+                return v;
             }
             PointAttributeDataType::I16 => {
+                // Convert to i32
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = len / stride;
 
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..num_elements {
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+
+                    let current = i16::from_ne_bytes(slice[begin..end].try_into().unwrap());
+                    v.extend_from_slice(&(current as i32).to_ne_bytes());
+                }
+                return v;
             }
             PointAttributeDataType::U32 => {
-
+                // Does not need any altering -> can directly be used as uint in shader
             }
             PointAttributeDataType::I32 => {
-
+                // Does not need any altering -> can directly be used as int in shader
             }
             PointAttributeDataType::U64 => {
-
+                // Trouble: no 64-bit integer types on GPU
             }
             PointAttributeDataType::I64 => {
-
+                // Trouble: no 64-bit integer types on GPU
             }
             PointAttributeDataType::F32 => {
-
+                // Does not need any altering -> can directly be used as float in shader
             }
             PointAttributeDataType::F64 => {
-
+                // Does not need any altering -> can directly be used as double in shader
             }
             PointAttributeDataType::Bool => {
-
+                // Convert to u32
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..len {
+                    let current = slice[i] as u32;
+                    v.extend_from_slice(&current.to_ne_bytes());
+                }
+                return v;
             }
             PointAttributeDataType::Vec3u8 => {
                 // Convert to Vec4u32
@@ -278,6 +314,7 @@ impl Device {
                 return v;
             }
             PointAttributeDataType::Vec3f32 => {
+                // TODO
                 // Should be similar to Vec3f64 case except use 1.0_f32.to_ne_bytes()
                 // But think whether it's even needed... Color_f32 seems to work?
             }

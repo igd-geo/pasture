@@ -20,6 +20,14 @@ struct MyPointType {
     pub byte_vec: Vector3<u8>,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_SCAN_ANGLE)]
+    pub scan_angle: i16,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_dir_flag: bool,
+    #[pasture(attribute = "MyInt32")]
+    pub my_int: i32,
 }
 
 fn main() {
@@ -36,6 +44,10 @@ async fn run() {
             fcolor: Vector3::new(1.0, 1.0, 1.0),
             byte_vec: Vector3::new(1, 0, 0),
             classification: 1,
+            intensity: 1,
+            scan_angle: -1,
+            scan_dir_flag: true,
+            my_int: -100000,
         },
         MyPointType {
             position: Vector3::new(0.0, 1.0, 0.0),
@@ -43,6 +55,10 @@ async fn run() {
             fcolor: Vector3::new(0.0, 1.0, 0.0),
             byte_vec: Vector3::new(0, 1, 0),
             classification: 2,
+            intensity: 2,
+            scan_angle: -2,
+            scan_dir_flag: false,
+            my_int: -200000,
         },
         MyPointType {
             position: Vector3::new(0.0, 0.0, 1.0),
@@ -50,6 +66,10 @@ async fn run() {
             fcolor: Vector3::new(0.0, 0.0, 1.0),
             byte_vec: Vector3::new(0, 0, 1),
             classification: 3,
+            intensity: 3,
+            scan_angle: -3,
+            scan_dir_flag: true,
+            my_int: -300000,
         },
     ];
 
@@ -65,6 +85,9 @@ async fn run() {
 
     let custom_byte_vec_attrib =
         PointAttributeDefinition::custom("MyVec3U8", PointAttributeDataType::Vec3u8);
+
+    let custom_int_attrib =
+        PointAttributeDefinition::custom("MyInt32", PointAttributeDataType::I32);
 
     // == GPU ====================================================================================
 
@@ -87,24 +110,40 @@ async fn run() {
     let buffer_infos = vec![
         gpu::BufferInfo {
             attribute: &attributes::POSITION_3D,
-            binding: 0
+            binding: 0,
         },
         gpu::BufferInfo {
             attribute: &attributes::COLOR_RGB,
-            binding: 1
+            binding: 1,
         },
         gpu::BufferInfo {
             attribute: &custom_color_attrib,
-            binding: 2
+            binding: 2,
         },
         gpu::BufferInfo {
             attribute: &custom_byte_vec_attrib,
-            binding: 3
+            binding: 3,
         },
         gpu::BufferInfo {
             attribute: &attributes::CLASSIFICATION,
-            binding: 4
+            binding: 4,
         },
+        gpu::BufferInfo {
+            attribute: &attributes::INTENSITY,
+            binding: 5,
+        },
+        gpu::BufferInfo {
+            attribute: &attributes::SCAN_ANGLE,
+            binding: 6,
+        },
+        gpu::BufferInfo {
+            attribute: &attributes::SCAN_DIRECTION_FLAG,
+            binding: 7,
+        },
+        gpu::BufferInfo {
+            attribute: &custom_int_attrib,
+            binding: 8,
+        }
     ];
 
     // device.upload(device_buffers);
@@ -138,11 +177,35 @@ async fn run() {
         .chunks_exact(4)
         .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
         .collect();
-    println!("Bytes Vec: {:?}", byte_vec_result_vec);
+    println!("Bytes vecs: {:?}", byte_vec_result_vec);
 
     let classification_result_vec: Vec<u32> = results_as_bytes[4]
         .chunks_exact(4)
         .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
         .collect();
-    println!("Classification: {:?}", classification_result_vec);
+    println!("Classifications: {:?}", classification_result_vec);
+
+    let intensity_result_vec: Vec<u32> = results_as_bytes[5]
+        .chunks_exact(4)
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("Intensities: {:?}", intensity_result_vec);
+
+    let scan_angle_result_vec: Vec<i32> = results_as_bytes[6]
+        .chunks_exact(4)
+        .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("Scan angles: {:?}", scan_angle_result_vec);
+
+    let scan_dir_flag_result_vec: Vec<bool> = results_as_bytes[7]
+        .chunks_exact(4)
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) != 0)
+        .collect();
+    println!("Scan direction flags: {:?}", scan_dir_flag_result_vec);
+
+    let my_int_result_vec: Vec<i32> = results_as_bytes[8]
+        .chunks_exact(4)
+        .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
+        .collect();
+    println!("Integers (i32): {:?}", my_int_result_vec);
 }
