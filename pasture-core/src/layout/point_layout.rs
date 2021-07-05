@@ -225,7 +225,7 @@ const_assert!(std::mem::size_of::<Vector3<f64>>() == 24);
 /// GPS time, intensity etc. In Pasture, attributes are identified by a unique name together with the data type
 /// that a single record of the attribute is stored in. Attributes can be grouped into two categories: Built-in
 /// attributes (e.g. POSITION_3D, INTENSITY, GPS_TIME etc.) and custom attributes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointAttributeDefinition {
     name: &'static str,
     datatype: PointAttributeDataType,
