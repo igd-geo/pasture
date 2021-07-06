@@ -6,9 +6,8 @@ use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeD
 use pasture_core::layout::PointType;
 use bytemuck::__core::convert::TryInto;
 
-// Custom PointLayout
-#[derive(PointType, Debug)]
 #[repr(C)]
+#[derive(PointType, Debug)]
 struct MyPointType {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -88,10 +87,12 @@ async fn run() {
         },
     ];
 
+    // Can use per-attribute layout...
     let layout = MyPointType::layout();
     let mut point_buffer = PerAttributeVecPointStorage::new(layout);
     point_buffer.push_points(points.as_slice());
 
+    // ... or interleaved layout (comment out to try per-attribute)
     let layout = MyPointType::layout();
     let mut point_buffer = InterleavedVecPointStorage::new(layout);
     point_buffer.push_points(points.as_slice());
@@ -107,11 +108,11 @@ async fn run() {
 
     // == GPU ====================================================================================
 
-    // Create a device
-
+    // Create a device with defaults...
     let device = gpu::Device::default().await;
     device.print_device_info();
 
+    // ... or custom options
     let mut device = gpu::Device::new(
         gpu::DeviceOptions {
             device_power: gpu::DevicePower::High,
@@ -125,9 +126,7 @@ async fn run() {
     device.print_active_limits();
     println!("\n");
 
-    // TODO: this may be useful when trying to create buffer from just the layout
-    // println!("{:?}", point_buffer.point_layout());
-
+    // Connects point buffer attributes to shader bindings
     let buffer_infos = vec![
         gpu::BufferInfo {
             attribute: &attributes::POSITION_3D,
@@ -179,13 +178,12 @@ async fn run() {
         },
     ];
 
-    // device.upload(device_buffers);
     device.upload(&mut point_buffer, buffer_infos);
-    device.set_compute_shader(include_str!("device.comp"));
+    device.set_compute_shader(include_str!("shaders/device.comp"));
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 
-    // TODO: all the following should be handled by pasture... altered point_buffer should be returned
+    //TODO: download() should just return an altered point buffer
     let results_as_bytes = device.download().await;
 
     let pos_result_vec: Vec<f64> = results_as_bytes[0]
@@ -194,10 +192,9 @@ async fn run() {
         .collect();
     println!("Positions: {:?}", pos_result_vec);
 
-    // TODO: need to convert back to u16
-    let icol_result_vec: Vec<u32> = results_as_bytes[1]
+    let icol_result_vec: Vec<u16> = results_as_bytes[1]
         .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
         .collect();
     println!("Colors (u16): {:?}", icol_result_vec);
 
@@ -207,30 +204,31 @@ async fn run() {
         .collect();
     println!("Colors (f32): {:?}", fcol_result_vec);
 
-    let byte_vec_result_vec: Vec<u32> = results_as_bytes[3]
+    let byte_vec_result_vec: Vec<u8> = results_as_bytes[3]
         .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
         .collect();
     println!("Bytes vecs: {:?}", byte_vec_result_vec);
 
-    let classification_result_vec: Vec<u32> = results_as_bytes[4]
+    let classification_result_vec: Vec<u8> = results_as_bytes[4]
         .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
         .collect();
     println!("Classifications: {:?}", classification_result_vec);
 
-    let intensity_result_vec: Vec<u32> = results_as_bytes[5]
+    let intensity_result_vec: Vec<u16> = results_as_bytes[5]
         .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
         .collect();
     println!("Intensities: {:?}", intensity_result_vec);
 
-    let scan_angle_result_vec: Vec<i32> = results_as_bytes[6]
+    let scan_angle_result_vec: Vec<i16> = results_as_bytes[6]
         .chunks_exact(4)
-        .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
+        .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i16)
         .collect();
     println!("Scan angles: {:?}", scan_angle_result_vec);
 
+    // Note: cannot cast u32 to bool. Instead check whether bytes != 0.
     let scan_dir_flag_result_vec: Vec<bool> = results_as_bytes[7]
         .chunks_exact(4)
         .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) != 0)
