@@ -22,8 +22,6 @@ pub struct Device {
 }
 
 impl Device {
-    // Constructors
-
     /// Create a device with default options:
     /// - Low power GPU
     /// - Primary backend for wgpu to use [Vulkan, Metal, Dx12, Browser]
@@ -121,7 +119,7 @@ impl Device {
         }
     }
 
-    // Methods
+    /// Prints name, type, backend, PCI and vendor PCI id of the device.
     pub fn print_device_info(&self) {
         let info = self.adapter.get_info();
 
@@ -158,10 +156,8 @@ impl Device {
         println!("{:?}", self.device.limits());
     }
 
+    /// Associates the given `PointBuffer` with GPU buffers w.r.t. the layouts defined in `Vec<BufferInfo>`.
     pub fn upload(&mut self, buffer: &mut dyn PointBuffer, buffer_infos: Vec<BufferInfo>) {
-        // - Internally create appropriate wgpu::Buffer objects
-        // - Store those in self.upload_buffers and self.download_buffers
-
         let len = buffer.len();
 
         for info in buffer_infos {
@@ -173,7 +169,6 @@ impl Device {
             // Change Vec<u8> to &[u8]
             let bytes_to_write: &[u8] = &*bytes_to_write;
             let bytes_to_write = &self.align_slice(bytes_to_write, info.attribute.datatype())[..];
-            println!("{}: {:02X?}", info.attribute.name(), bytes_to_write);
 
             let size_in_bytes = bytes_to_write.len() as wgpu::BufferAddress;
             self.buffer_sizes.push(size_in_bytes);
@@ -199,6 +194,7 @@ impl Device {
         }
     }
 
+    // Given a PointAttributeDataType, returns the number of bytes an element with such type would need
     fn bytes_per_element(&self, datatype: PointAttributeDataType) -> u32 {
         let num_bytes = match datatype {
             PointAttributeDataType::U8 => { 1 }
@@ -221,6 +217,21 @@ impl Device {
         num_bytes
     }
 
+    // Given a slice of bytes and the corresponding data type of those bytes,
+    // will ensure the bytes match the std430 layout of GLSL.
+    //
+    // In particular:
+    //  - Unsigned integer types with less than 32 bits will be zero extended to 32 bits
+    //  - Signed integer types with less than 32 bits will be sign extended to 32 bits
+    //  - Booleans will be zero extended to 32 bits
+    //  - 32 bit signed or unsigned integer types will be taken as is
+    //  - 32 bit and 64 bit floating point types will be taken as is
+    //  - Vec3 will be treated as Vec4 with w-coordinate set to 1
+    //  - Above extension rules apply to the elements of vectors
+    //
+    // Will panic if data type is a 64-bit integer.
+    //
+    // TODO: Consider whether to support such sign/zero extension or just forbid types that need them.
     fn align_slice(&self, slice: &[u8], datatype: PointAttributeDataType) -> Vec<u8> {
         let len = slice.len();
 
@@ -281,9 +292,11 @@ impl Device {
             }
             PointAttributeDataType::U64 => {
                 // Trouble: no 64-bit integer types on GPU
+                panic!("Uploading 64-bit integer types to the GPU is not supported.")
             }
             PointAttributeDataType::I64 => {
                 // Trouble: no 64-bit integer types on GPU
+                panic!("Uploading 64-bit integer types to the GPU is not supported.")
             }
             PointAttributeDataType::F32 => {
                 // Does not need any altering -> can directly be used as float in shader
@@ -307,8 +320,6 @@ impl Device {
                 // Each entry is 8 bits, ie. 1 byte -> each Vec3 has 3 bytes
                 let stride = self.bytes_per_element(datatype) as usize;
                 let num_elements = len / stride;
-
-                println!("{:02X?}, {}, {}", slice, stride, num_elements);
 
                 let mut v = Vec::new();
                 for i in 0..num_elements {
@@ -353,9 +364,26 @@ impl Device {
                 return v;
             }
             PointAttributeDataType::Vec3f32 => {
-                // TODO
-                // Should be similar to Vec3f64 case except use 1.0_f32.to_ne_bytes()
-                // But think whether it's even needed... Color_f32 seems to work?
+                // Make Vec4f32 by appending 1.0
+                let one_as_bytes = 1.0_f32.to_ne_bytes();
+
+                // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let num_elements = len / stride;
+
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..num_elements {
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+
+                    // Push current Vec3
+                    v.extend_from_slice(&slice[begin..end]);
+
+                    // Push 1 as fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                }
+
+                return v;
             }
             PointAttributeDataType::Vec3f64 => {
                 // Make Vec4f64 by appending 1.0
@@ -384,10 +412,9 @@ impl Device {
         Vec::from(slice)
     }
 
+    /// Downloads contents of GPU buffers
+    // TODO: Currently returns vector of bytes per buffer... instead return altered point buffer.
     pub async fn download(&self) -> Vec<Vec<u8>> {
-        //TODO:
-        // - Get content from self.download_buffers
-        // - Write and return updated layout
         let mut output_bytes: Vec<Vec<u8>> = Vec::new();
 
         for i in 0..self.download_buffers.len() {
@@ -395,7 +422,7 @@ impl Device {
 
             let result_buffer_slice = download.slice(..);
             let result_buffer_future = result_buffer_slice.map_async(wgpu::MapMode::Read);
-            self.device.poll(wgpu::Maintain::Wait); // Should be called in event loop or other thread ...
+            self.device.poll(wgpu::Maintain::Wait); // TODO: "Should be called in event loop or other thread ..."
 
             // TODO: how to know the data type of the current buffer?
             if let Ok(()) = result_buffer_future.await {
@@ -411,8 +438,9 @@ impl Device {
         output_bytes
     }
 
-    pub fn set_compute_shader(&mut self, compute_shader_file_path: &str) {
-        self.cs_module = self.compile_and_create_compute_module(compute_shader_file_path);
+    /// Compiles the given compute shader source code and constructs a compute pipeline for it.
+    pub fn set_compute_shader(&mut self, compute_shader_src: &str) {
+        self.cs_module = self.compile_and_create_compute_module(compute_shader_src);
 
         let (bind_group, pipeline)
             = self.create_compute_pipeline(self.cs_module.as_ref().unwrap());
@@ -421,17 +449,14 @@ impl Device {
         self.compute_pipeline = Some(pipeline);
     }
 
-    fn compile_and_create_compute_module(&self, cs_src: &str) -> Option<wgpu::ShaderModule> {
+    fn compile_and_create_compute_module(&self, compute_shader_src: &str) -> Option<wgpu::ShaderModule> {
         // WebGPU wants its shaders pre-compiled in binary SPIR-V format.
         // So we'll take the source code of our compute shader and compile it
         // with the help of the shaderc crate.
-
-        // let cs_src = include_str!(compute_shader_file_path.to_string());
-        // let cs_src = fs::read_to_string(&compute_shader_file_path).unwrap();
         let mut compiler = shaderc::Compiler::new().unwrap();
         let cs_spirv = compiler
             .compile_into_spirv(
-                cs_src,
+                compute_shader_src,
                 shaderc::ShaderKind::Compute,
                 "Compute shader",
                 "main",
@@ -460,33 +485,41 @@ impl Device {
         for i in 0..self.buffer_bindings.len() {
             let b = self.buffer_bindings[i];
 
-            group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-                binding: b,
-                visibility: wgpu::ShaderStage::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: false },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            });
+            group_layout_entries.push(
+                wgpu::BindGroupLayoutEntry {
+                    binding: b,
+                    visibility: wgpu::ShaderStage::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            );
 
-            group_entries.push(wgpu::BindGroupEntry {
-                binding: b,
-                resource: self.upload_buffers.get(i).unwrap().as_entire_binding(),
-            });
+            group_entries.push(
+                wgpu::BindGroupEntry {
+                    binding: b,
+                    resource: self.upload_buffers.get(i).unwrap().as_entire_binding(),
+                }
+            );
         }
 
-        let bind_group_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &group_layout_entries,
-        });
+        let bind_group_layout = self.device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &group_layout_entries,
+            }
+        );
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &bind_group_layout,
-            entries: &group_entries,
-        });
+        let bind_group = self.device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &bind_group_layout,
+                entries: &group_entries,
+            }
+        );
 
         // Setup pipeline
         let compute_pipeline_layout = self.device.create_pipeline_layout(
@@ -509,6 +542,10 @@ impl Device {
         (bind_group, compute_pipeline)
     }
 
+    /// Launches compute work groups; `x`, `y`, `z` many in their respective dimensions.
+    /// To launch a 1D or 2D work group, set the unwanted dimension to 1.
+    /// (Work groups in GLSL are the same thing as blocks in CUDA. The equivalent of CUDA threads
+    ///  in GLSL are called invocations. These are defined in the shaders themselves.)
     pub fn compute(&mut self, x: u32, y: u32, z: u32) {
         // Use a CommandEncoder to batch all commands that you wish to send to the GPU to execute.
         // The resulting CommandBuffer can then be submitted to the GPU via a Queue.
@@ -544,7 +581,8 @@ impl Device {
 
 // == Helper types ===============================================================================
 
-// TODO: other options to consider could be Features, Limits, ...
+/// Defines the desired capabilities of a device that is to be retrieved.
+// TODO: be more flexible about features and limits
 pub struct DeviceOptions {
     pub device_power: DevicePower,
     pub device_backend: DeviceBackend,
@@ -593,8 +631,8 @@ impl Default for DeviceBackend {
     fn default() -> Self { Self::Primary }
 }
 
-// TODO: usage, size, mapped_at_creation, type (SSBO vs UBO), etc.
-// Future: compute vs. rendering
+/// Associates a point buffer attribute with a binding defined in a (compute) shader.
+// TODO: consider usage, size, mapped_at_creation, type (SSBO vs UBO), etc.
 pub struct BufferInfo<'a> {
     pub attribute: &'a layout::PointAttributeDefinition,
     pub binding: u32,
