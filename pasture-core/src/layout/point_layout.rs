@@ -985,3 +985,40 @@ impl Default for PointLayout {
         }
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use crate::layout::attributes::{COLOR_RGB, INTENSITY, POSITION_3D};
+
+//     use super::*;
+//     use pasture_derive::PointType;
+
+// TODO I am using absolute crate names in the generated code of the #[derive(PointType)] macro. This does work in all cases BUT
+// when I am using it from WITHIN the pasture_core crate, because there pasture_core is not a valid crate name as it seems...
+// see also here: https://github.com/rust-lang/rust/issues/54647
+
+//     #[derive(Debug, PointType, Copy, Clone, PartialEq)]
+//     #[repr(C, packed)]
+//     struct TestPoint1 {
+//         #[pasture(BUILTIN_POSITION_3D)]
+//         position: Vector3<f64>,
+//         #[pasture(BUILTIN_COLOR_RGB)]
+//         color: Vector3<u16>,
+//         #[pasture(BUILTIN_INTENSITY)]
+//         intensity: u16,
+//     }
+
+//     #[test]
+//     fn test_derive_point_type() {
+//         let expected_layout_1 = PointLayout::from_attributes_packed(
+//             &[
+//                 POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f64),
+//                 COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u16),
+//                 INTENSITY.with_custom_datatype(PointAttributeDataType::U16),
+//             ],
+//             1,
+//         );
+
+//         assert_eq!(expected_layout_1, TestPoint1::layout());
+//     }
+// }

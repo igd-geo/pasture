@@ -76,7 +76,7 @@ impl<W: Write> PntsWriter<W> {
         // The PntsWriter can accept any kind of point buffer, but it will silently discard attributes that are not
         // supported by 3D Tiles. All supported attributes that are also in `point_layout` are described by `cache_layout`
         let (cache_layout, attribute_converters) = Self::make_compatible_layout(&point_layout);
-        let cache = PerAttributeVecPointStorage::new(point_layout.clone());
+        let cache = PerAttributeVecPointStorage::new(cache_layout.clone());
         Self {
             writer,
             expected_layout: point_layout,
@@ -296,12 +296,14 @@ impl<W: Write> PointWriter for PntsWriter<W> {
                 if let Some(attr) = points.point_layout().get_attribute_by_name(attribute_name) {
                     let attribute_def: PointAttributeDefinition = attr.into();
                     let mut buf = vec![0; attribute_def.size() as usize];
-                    let dst_attribute_size = self
+                    let dst_attribute = self
                         .cached_points
                         .point_layout()
                         .get_attribute_by_name(attribute_name)
                         .unwrap()
-                        .size() as usize;
+                        .clone();
+                    let dst_attribute_size = dst_attribute.size() as usize;
+                    let dst_attribute_def: PointAttributeDefinition = dst_attribute.into();
                     let mut converted_buf = vec![0; dst_attribute_size];
                     for point_index in 0..points.len() {
                         points.get_raw_attribute(point_index, &attribute_def, buf.as_mut_slice());
@@ -311,13 +313,13 @@ impl<W: Write> PointWriter for PntsWriter<W> {
                             }
                             self.cached_points.set_raw_attribute(
                                 base_point_index + point_index,
-                                &attribute_def,
+                                &dst_attribute_def,
                                 converted_buf.as_slice(),
                             );
                         } else {
                             self.cached_points.set_raw_attribute(
                                 base_point_index + point_index,
-                                &attribute_def,
+                                &dst_attribute_def,
                                 buf.as_slice(),
                             )
                         }
@@ -367,6 +369,17 @@ mod tests {
         normal: Vector3<f32>,
     }
 
+    #[derive(Debug, PointType, Copy, Clone, PartialEq)]
+    #[repr(C, packed)]
+    struct PntsCustomLayout {
+        #[pasture(BUILTIN_POSITION_3D)]
+        position: Vector3<f64>,
+        #[pasture(BUILTIN_COLOR_RGB)]
+        color: Vector3<u16>,
+        #[pasture(BUILTIN_INTENSITY)]
+        intensity: u16,
+    }
+
     #[test]
     fn test_write_pnts_default_layout() -> Result<()> {
         let mut cursor = Cursor::new(Vec::<u8>::new());
@@ -413,6 +426,95 @@ mod tests {
                 let actual_point = read_points.get_point::<PntsDefaultPoint>(point_idx);
                 assert_eq!(expected_point, actual_point);
             }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_pnts_custom_layout() -> Result<()> {
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+
+        let test_data = vec![
+            PntsCustomLayout {
+                position: Vector3::new(1.0, 2.0, 3.0),
+                color: Vector3::new(1 << 8, 2 << 8, 3 << 8),
+                intensity: 10_000,
+            },
+            PntsCustomLayout {
+                position: Vector3::new(2.0, 4.0, 6.0),
+                color: Vector3::new(2 << 8, 4 << 8, 6 << 8),
+                intensity: 20_000,
+            },
+        ];
+        let mut test_point_buffer = PerAttributeVecPointStorage::new(PntsCustomLayout::layout());
+        test_point_buffer.push_points(test_data.as_slice());
+
+        {
+            let mut writer =
+                PntsWriter::from_write_and_layout(&mut cursor, PntsCustomLayout::layout());
+
+            writer
+                .write(&test_point_buffer)
+                .context("Error while writing points to PntsWriter")?;
+        }
+
+        cursor.seek(SeekFrom::Start(0))?;
+
+        // Read back in, data read should equal data written, but missing the intensity
+        {
+            let mut reader =
+                PntsReader::from_read(&mut cursor).context("Error while creating PntsReader")?;
+            let read_points = reader
+                .read(test_point_buffer.len())
+                .context("Error while reading points from PntsReader")?;
+
+            let read_points_layout = PointLayout::from_attributes_packed(
+                &[
+                    POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                    COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                ],
+                1,
+            );
+            assert_eq!(read_points_layout, *read_points.point_layout());
+
+            assert_eq!(read_points.len(), test_point_buffer.len());
+
+            let expected_pos_1: Vector3<f32> = Vector3::new(1.0, 2.0, 3.0);
+            let expected_pos_2: Vector3<f32> = Vector3::new(2.0, 4.0, 6.0);
+
+            let expected_color_1: Vector3<u8> = Vector3::new(1, 2, 3);
+            let expected_color_2: Vector3<u8> = Vector3::new(2, 4, 6);
+
+            assert_eq!(
+                expected_pos_1,
+                read_points.get_attribute::<Vector3<f32>>(
+                    &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                    0
+                )
+            );
+            assert_eq!(
+                expected_pos_2,
+                read_points.get_attribute::<Vector3<f32>>(
+                    &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                    1
+                )
+            );
+
+            assert_eq!(
+                expected_color_1,
+                read_points.get_attribute::<Vector3<u8>>(
+                    &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                    0
+                )
+            );
+            assert_eq!(
+                expected_color_2,
+                read_points.get_attribute::<Vector3<u8>>(
+                    &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                    1
+                )
+            );
         }
 
         Ok(())
