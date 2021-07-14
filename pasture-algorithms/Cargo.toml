@@ -31,3 +31,6 @@ debug = true
 
 [profile.bench]
 debug = true
+pasture-derive = { version = "=0.1.0", path = "../pasture-derive" }
+rand = "0.8.3"
+rayon = "1.5"
