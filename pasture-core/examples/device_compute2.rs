@@ -141,15 +141,13 @@ async fn run() {
         attributes::RETURN_POINT_WAVEFORM_LOCATION,
     ];
 
-    let buffer_infos_interleaved = vec![
-        gpu::BufferInfoInterleaved {
-            attributes: attribs,
-            binding: 0
-        }
-    ];
+    let buffer_info_interleaved =  gpu::BufferInfoInterleaved {
+        attributes: attribs,
+        binding: 0
+    };
 
     // device.upload(&mut point_buffer, buffer_infos);
-    device.upload_interleaved(&mut point_buffer, buffer_infos_interleaved);
+    device.upload_interleaved(&mut point_buffer, buffer_info_interleaved);
     device.set_compute_shader(include_str!("shaders/device2.comp"));
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");

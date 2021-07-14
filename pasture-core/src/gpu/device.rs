@@ -194,15 +194,15 @@ impl Device {
         }
     }
 
-    // Upload in interleaved format
-    pub fn upload_interleaved(&mut self, buffer: &mut dyn PointBuffer, buffer_infos: Vec<BufferInfoInterleaved>) {
+    // Upload in interleaved format TODO: buffer_info, Vec<> or single?
+    pub fn upload_interleaved(&mut self, buffer: &mut dyn PointBuffer, buffer_info: BufferInfoInterleaved) {
         let len = buffer.len();
 
         let layout = buffer.point_layout();
         layout.size_of_point_entry();
 
         let mut struct_alignment = 0;
-        for attrib in buffer_infos[0].attributes {
+        for attrib in buffer_info.attributes {
             let alignment = self.alignment_per_element(attrib.datatype()) as usize;
             if alignment > struct_alignment {
                 struct_alignment = alignment;
@@ -215,7 +215,7 @@ impl Device {
         let mut bytes_to_write: Vec<u8> = vec![];
         for i in 0..len {
             // buffer.get_raw_point(i, &mut bytes_to_write[i..(i + bytes_per_point)]);
-            for attrib in buffer_infos[0].attributes {
+            for attrib in buffer_info.attributes {
                 let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
                 let mut bytes_for_attrib: Vec<u8> = vec![0; num_bytes];
                 buffer.get_raw_attribute(i, attrib, &mut *bytes_for_attrib);
@@ -261,7 +261,7 @@ impl Device {
             }
         ));
 
-        self.buffer_bindings.push(buffer_infos[0].binding);
+        self.buffer_bindings.push(buffer_info.binding);
     }
 
     // Given a PointAttributeDataType, returns the number of bytes an element with such type would need
