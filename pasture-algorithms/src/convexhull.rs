@@ -503,8 +503,6 @@ mod tests {
         Ok(())
     }
 
-    // TODO: check triangle orientation!
-
     // Interface Tests
     #[test]
     fn test_convex_0_point_output_mesh_error() -> Result<()> {
