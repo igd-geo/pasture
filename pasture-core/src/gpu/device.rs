@@ -194,6 +194,76 @@ impl Device {
         }
     }
 
+    // Upload in interleaved format
+    pub fn upload_interleaved(&mut self, buffer: &mut dyn PointBuffer, buffer_infos: Vec<BufferInfoInterleaved>) {
+        let len = buffer.len();
+
+        let layout = buffer.point_layout();
+        layout.size_of_point_entry();
+
+        let mut struct_alignment = 0;
+        for attrib in buffer_infos[0].attributes {
+            let alignment = self.alignment_per_element(attrib.datatype()) as usize;
+            if alignment > struct_alignment {
+                struct_alignment = alignment;
+            }
+        }
+
+        println!("Struct alignment: {}", struct_alignment);
+
+        // Get bytes in interleaved format
+        let mut bytes_to_write: Vec<u8> = vec![];
+        for i in 0..len {
+            // buffer.get_raw_point(i, &mut bytes_to_write[i..(i + bytes_per_point)]);
+            for attrib in buffer_infos[0].attributes {
+                let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
+                let mut bytes_for_attrib: Vec<u8> = vec![0; num_bytes];
+                buffer.get_raw_attribute(i, attrib, &mut *bytes_for_attrib);
+
+                // Align each attribute TODO: may require custom align method for struct
+                let bytes_for_attrib: &[u8] = &*bytes_for_attrib;
+                let mut bytes_for_attrib = self.align_slice(bytes_for_attrib, attrib.datatype());
+
+                bytes_to_write.append(&mut bytes_for_attrib);
+            }
+
+            let required_padding = if bytes_to_write.len() % struct_alignment == 0 {
+                0
+            } else {
+                struct_alignment - (bytes_to_write.len() % struct_alignment)
+            };
+            println!("Current size: {}", bytes_to_write.len());
+            println!("Required padding: {}", required_padding);
+            bytes_to_write.append(vec![0; required_padding].as_mut());
+        }
+
+        // Change Vec<u8> to &[u8]
+        let bytes_to_write: &[u8] = &*bytes_to_write;
+
+        let size_in_bytes = bytes_to_write.len() as wgpu::BufferAddress;
+        println!("Size = {}", size_in_bytes);
+        self.buffer_sizes.push(size_in_bytes);
+
+        self.upload_buffers.push(self.device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: None,
+                contents: bytes_to_write,
+                usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_SRC
+            }
+        ));
+
+        self.download_buffers.push(self.device.create_buffer(
+            &BufferDescriptor {
+                label: None,
+                size: size_in_bytes,
+                usage: wgpu::BufferUsage::MAP_READ | wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false
+            }
+        ));
+
+        self.buffer_bindings.push(buffer_infos[0].binding);
+    }
+
     // Given a PointAttributeDataType, returns the number of bytes an element with such type would need
     fn bytes_per_element(&self, datatype: PointAttributeDataType) -> u32 {
         let num_bytes = match datatype {
@@ -215,6 +285,28 @@ impl Device {
         };
 
         num_bytes
+    }
+
+    fn alignment_per_element(&self, datatype: PointAttributeDataType) -> u32 {
+        let alignment = match datatype {
+            PointAttributeDataType::U8 => { 4 }
+            PointAttributeDataType::I8 => { 4 }
+            PointAttributeDataType::U16 => { 4 }
+            PointAttributeDataType::I16 => { 4 }
+            PointAttributeDataType::U32 => { 4 }
+            PointAttributeDataType::I32 => { 4 }
+            PointAttributeDataType::U64 => { 8 }    // TODO does not exist
+            PointAttributeDataType::I64 => { 8 }    // TODO does not exist
+            PointAttributeDataType::F32 => { 4 }
+            PointAttributeDataType::F64 => { 8 }
+            PointAttributeDataType::Bool => { 4 }
+            PointAttributeDataType::Vec3u8 => { 16 }
+            PointAttributeDataType::Vec3u16 => { 16 }
+            PointAttributeDataType::Vec3f32 => { 16 }
+            PointAttributeDataType::Vec3f64 => { 32 }
+        };
+
+        alignment
     }
 
     // Given a slice of bytes and the corresponding data type of those bytes,
@@ -361,6 +453,8 @@ impl Device {
                     // Append fourth coordinate
                     v.extend_from_slice(&one_as_bytes);
                 }
+
+                println!("u16: {}", v.len());
                 return v;
             }
             PointAttributeDataType::Vec3f32 => {
@@ -405,6 +499,7 @@ impl Device {
                     v.extend_from_slice(&one_as_bytes);
                 }
 
+                println!("f64: {}", v.len());
                 return v;
             }
         }
@@ -635,5 +730,10 @@ impl Default for DeviceBackend {
 // TODO: consider usage, size, mapped_at_creation, type (SSBO vs UBO), etc.
 pub struct BufferInfo<'a> {
     pub attribute: &'a layout::PointAttributeDefinition,
+    pub binding: u32,
+}
+
+pub struct BufferInfoInterleaved<'a> {
+    pub attributes: &'a [layout::PointAttributeDefinition],
     pub binding: u32,
 }
