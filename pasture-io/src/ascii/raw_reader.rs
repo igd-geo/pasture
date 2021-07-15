@@ -15,7 +15,7 @@ use std::str::FromStr;
 
 use super::AsciiMetadata;
 use crate::base::PointReader;
-use pasture_core::containers::UntypedPoint;
+use pasture_core::containers::{UntypedPoint, UntypedPointBuffer};
 
 pub(crate) struct RawAsciiReader<T: Read + BufRead> {
     reader: T,
@@ -69,7 +69,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     }
 
     fn parse_point(
-        point: &mut UntypedPoint,
+        point: &mut UntypedPointBuffer,
         line: &str,
         delimiter: &str,
         parse_layout: &[PointDataTypes],
@@ -192,16 +192,16 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     }
 
     fn parse_to_point_i8(
-        point: &mut UntypedPoint,
+        point: &mut UntypedPointBuffer,
         attribute: &PointAttributeDefinition,
         offset: u64,
         value_str: &str,
     ) -> Result<()> {
         let data = Self::parse_string::<i8>(value_str)?;
-        let attribute_offset = point.get_offset_from_attribute(attribute);
+        let attribute_offset = point.get_layout().offset_of(attribute);
         match attribute_offset {
             Some(attribute_offset) => {
-                let mut cursor = point.get_buffer_cursor();
+                let mut cursor = point.get_cursor();
                 cursor.set_position(attribute_offset + offset);
                 cursor.write_i8(data)?;
             }
@@ -211,7 +211,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     }
 
     fn parse_to_point_bool(
-        point: &mut UntypedPoint,
+        point: &mut UntypedPointBuffer,
         attribute: &PointAttributeDefinition,
         offset: u64,
         value_str: &str,
@@ -220,10 +220,10 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         if !(data == 0 || data == 1) {
             bail!("ParseError expected bool found '{}'.", data);
         }
-        let attribute_offset = point.get_offset_from_attribute(attribute);
+        let attribute_offset = point.get_layout().offset_of(attribute);
         match attribute_offset {
             Some(attribute_offset) => {
-                let mut cursor = point.get_buffer_cursor();
+                let mut cursor = point.get_cursor();
                 cursor.set_position(attribute_offset + offset);
                 cursor.write_u8(data)?;
             }
@@ -233,16 +233,16 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     }
 
     fn parse_to_point_u8(
-        point: &mut UntypedPoint,
+        point: &mut UntypedPointBuffer,
         attribute: &PointAttributeDefinition,
         offset: u64,
         value_str: &str,
     ) -> Result<()> {
         let data = Self::parse_string::<u8>(value_str)?;
-        let attribute_offset = point.get_offset_from_attribute(attribute);
+        let attribute_offset = point.get_layout().offset_of(attribute);
         match attribute_offset {
             Some(attribute_offset) => {
-                let mut cursor = point.get_buffer_cursor();
+                let mut cursor = point.get_cursor();
                 cursor.set_position(attribute_offset + offset);
                 cursor.write_u8(data)?;
             }
@@ -252,16 +252,16 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     }
 
     fn parse_to_point_u16(
-        point: &mut UntypedPoint,
+        point: &mut UntypedPointBuffer,
         attribute: &PointAttributeDefinition,
         offset: u64,
         value_str: &str,
     ) -> Result<()> {
         let data = Self::parse_string::<u16>(value_str)?;
-        let attribute_offset = point.get_offset_from_attribute(attribute);
+        let attribute_offset = point.get_layout().offset_of(attribute);
         match attribute_offset {
             Some(attribute_offset) => {
-                let mut cursor = point.get_buffer_cursor();
+                let mut cursor = point.get_cursor();
                 cursor.set_position(attribute_offset + offset);
                 cursor.write_u16::<LittleEndian>(data)?;
             }
@@ -271,16 +271,16 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     }
 
     fn parse_to_point_f64(
-        point: &mut UntypedPoint,
+        point: &mut UntypedPointBuffer,
         attribute: &PointAttributeDefinition,
         offset: u64,
         value_str: &str,
     ) -> Result<()> {
         let data = Self::parse_string::<f64>(value_str)?;
-        let attribute_offset = point.get_offset_from_attribute(attribute);
+        let attribute_offset = point.get_layout().offset_of(attribute);
         match attribute_offset {
             Some(attribute_offset) => {
-                let mut cursor = point.get_buffer_cursor();
+                let mut cursor = point.get_cursor();
                 cursor.set_position(attribute_offset + offset);
                 cursor.write_f64::<LittleEndian>(data)?;
             }
@@ -402,7 +402,7 @@ impl<T: Read + BufRead> PointReader for RawAsciiReader<T> {
         count: usize,
     ) -> Result<usize> {
         let layout = point_buffer.point_layout().clone();
-        let mut temp_point = UntypedPoint::new(&layout);
+        let mut temp_point = UntypedPointBuffer::new(&layout);
         //read line by line
         for (index, line) in (&mut self.reader).lines().take(count).enumerate() {
             let line = line?;
@@ -410,7 +410,7 @@ impl<T: Read + BufRead> PointReader for RawAsciiReader<T> {
             Self::parse_point(&mut temp_point, &line, &self.delimiter, &self.parse_layout)
                 .with_context(|| format!("ReadError in line {}.", index))?;
             //put it in the buffer
-            point_buffer.push(&temp_point.get_interlieved_point_view());
+            point_buffer.push(&temp_point.get_interleaved_point_view());
         }
         Ok(count)
     }

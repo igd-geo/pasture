@@ -945,6 +945,15 @@ impl PointLayout {
         })
     }
 
+    /// Returns the offset from an attribute.
+    /// If the attribute don't exist in the layout this function returns None.
+    pub fn offset_of(&self, attribute: &PointAttributeDefinition) -> Option<u64> {
+        self.attributes.iter().find(|this_attribute| {
+            this_attribute.name() == attribute.name()
+                && this_attribute.datatype() == attribute.datatype()
+        }).map(|member| member.offset())
+    }
+
     /// Returns the offset of the next field that could be added to this `PointLayout`, without any alignment
     /// requirements
     fn packed_offset_of_next_field(&self) -> u64 {
