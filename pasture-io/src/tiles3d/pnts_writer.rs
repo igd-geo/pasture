@@ -1,15 +1,13 @@
 use std::{
     collections::HashMap,
     convert::TryInto,
-    io::{Cursor, Seek, Write},
+    io::{Cursor, Seek, SeekFrom, Write},
 };
 
 use anyhow::{Context, Result};
-use las_rs::point;
 use pasture_core::{
     containers::{
-        PerAttributePointBuffer, PerAttributePointBufferExt, PerAttributeVecPointStorage,
-        PointBuffer, PointBufferExt, PointBufferWriteable,
+        PerAttributePointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable,
     },
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
@@ -18,11 +16,13 @@ use pasture_core::{
     },
     math::Alignable,
 };
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::{
     base::PointWriter,
-    tiles3d::{ser_batch_table_header, ser_feature_table_header, PntsHeader},
+    tiles3d::{
+        attributes::COLOR_RGBA, ser_batch_table_header, ser_feature_table_header, PntsHeader,
+    },
 };
 
 use super::{BatchTableHeader, FeatureTableDataReference, FeatureTableHeader, FeatureTableValue};
@@ -40,6 +40,8 @@ fn pnts_semantics_name_from_point_attribute(
         Some("POSITION".into())
     } else if attribute.name() == COLOR_RGB.name() {
         Some("RGB".into())
+    } else if attribute.name() == COLOR_RGBA.name() {
+        Some("RGBA".into())
     } else if attribute.name() == NORMAL.name() {
         Some("NORMAL".into())
     } else {
@@ -59,7 +61,7 @@ fn pnts_semantics_name_from_point_attribute(
 ///    the `flush` call
 ///
 /// This `PntsWriter` implementation uses the second approach
-pub struct PntsWriter<W: Write> {
+pub struct PntsWriter<W: Write + Seek> {
     writer: W,
     expected_layout: PointLayout,
     default_layout: PointLayout,
@@ -68,7 +70,7 @@ pub struct PntsWriter<W: Write> {
     requires_flush: bool,
 }
 
-impl<W: Write> PntsWriter<W> {
+impl<W: Write + Seek> PntsWriter<W> {
     /// Creates a new `PntsWriter` writing to the given `writer` and using the given `point_layout`. Please note that
     /// while 3D Tiles does in principle support arbitrary point attributes, currently only the default point semantics
     /// are supported (see [3D Tiles specification](https://github.com/CesiumGS/3d-tiles/blob/master/specification/TileFormats/PointCloud/README.md#semantics)). All further attributes are simply ignored silently!
@@ -102,35 +104,34 @@ impl<W: Write> PntsWriter<W> {
             HashMap::new();
         // TODO Support for other attributes:
         // * Quantized positions
-        // * RGBA colors
         // * RGB565 colors
         // * Normal oct encoded
         // * Batch ID (and batch table with custom attributes)
 
-        let supported_attributes = vec![
+        let supported_attributes: HashMap<&'static str, PointAttributeDataType> = vec![
             (POSITION_3D.name(), PointAttributeDataType::Vec3f32),
             (COLOR_RGB.name(), PointAttributeDataType::Vec3u8),
+            (COLOR_RGBA.name(), PointAttributeDataType::Vec4u8),
             (NORMAL.name(), PointAttributeDataType::Vec3f32),
-        ];
+        ]
+        .drain(..)
+        .collect();
 
-        for (attribute_name, attribute_datatype) in supported_attributes.iter() {
-            if let Some(src_attribute) = point_layout.get_attribute_by_name(attribute_name) {
+        for src_attribute in point_layout.attributes() {
+            if let Some(dst_attribute_datatype) = supported_attributes.get(&src_attribute.name()) {
                 compatible_layout.add_attribute(
-                    PointAttributeDefinition::custom(attribute_name, *attribute_datatype),
+                    PointAttributeDefinition::custom(src_attribute.name(), *dst_attribute_datatype),
                     FieldAlignment::Default,
                 );
-                let target_attribute = compatible_layout
-                    .get_attribute_by_name(attribute_name)
+                let dst_attribute = compatible_layout
+                    .get_attribute_by_name(src_attribute.name())
                     .unwrap();
-                if src_attribute.datatype() == PointAttributeDataType::Vec3f32 {
-                    conversion_fns.insert(attribute_name, None);
+                if src_attribute.datatype() == dst_attribute.datatype() {
+                    conversion_fns.insert(src_attribute.name(), None);
                 } else {
                     conversion_fns.insert(
-                        attribute_name,
-                        get_converter_for_attributes(
-                            &src_attribute.into(),
-                            &target_attribute.into(),
-                        ),
+                        src_attribute.name(),
+                        get_converter_for_attributes(&src_attribute.into(), &dst_attribute.into()),
                     );
                 }
             }
@@ -148,19 +149,29 @@ impl<W: Write> PntsWriter<W> {
 
         ser_feature_table_header(Cursor::new(&mut feature_table_blob), &feature_table_header)
             .context("Error serializing FeatureTable header")?;
-        ser_batch_table_header(Cursor::new(&mut batch_table_blob), &batch_table_header)
-            .context("Error serializing BatchTable header")?;
 
         let feature_table_byte_size = feature_table_blob.len();
-        let batch_table_byte_size = batch_table_blob.len();
         let feature_table_body_byte_size = self.calc_feature_table_body_length();
+        let feature_table_body_byte_size_aligned =
+            (PntsHeader::BYTE_LENGTH + feature_table_byte_size + feature_table_body_byte_size)
+                .align_to(8)
+                - (PntsHeader::BYTE_LENGTH + feature_table_byte_size);
+        let start_of_batch_table_header = PntsHeader::BYTE_LENGTH
+            + feature_table_byte_size
+            + feature_table_body_byte_size_aligned;
+
+        ser_batch_table_header(
+            Cursor::new(&mut batch_table_blob),
+            &batch_table_header,
+            start_of_batch_table_header,
+        )
+        .context("Error serializing BatchTable header")?;
+        let batch_table_byte_size = batch_table_blob.len();
         //TODO Support batch table body
         let batch_table_body_byte_size: usize = 0;
-        let total_byte_length = PntsHeader::BYTE_LENGTH
-            + feature_table_byte_size
-            + feature_table_body_byte_size
-            + batch_table_byte_size
-            + batch_table_body_byte_size;
+
+        let total_byte_length =
+            start_of_batch_table_header + batch_table_byte_size + batch_table_body_byte_size;
 
         let pnts_header = PntsHeader::new(
             PNTS_VERSION,
@@ -170,7 +181,7 @@ impl<W: Write> PntsWriter<W> {
             feature_table_byte_size
                 .try_into()
                 .expect("Size of FeatureTable header exceeds maximum size of 4GiB!"),
-            feature_table_body_byte_size
+            feature_table_body_byte_size_aligned
                 .try_into()
                 .expect("Size of FeatureTable binary body exceeds maximum size of 4GiB!"),
             batch_table_byte_size
@@ -242,7 +253,9 @@ impl<W: Write> PntsWriter<W> {
 
     /// Calculate the length in bytes of the FeatureTable binary body. This is based on the default PointLayout
     /// and the number of cached points. For simplicities sake, we store all attributes with the same memory
-    /// alignment (PNTS_SEMANTICS_MAX_ALIGNMENT), which makes the calculation of total size easier
+    /// alignment (PNTS_SEMANTICS_MAX_ALIGNMENT), which makes the calculation of total size easier. The whole FeatureTable
+    /// body has to end at an 8-byte boundary, however THIS IS NOT TAKEN INTO ACCOUNT BY THIS METHOD! The padding bytes are
+    /// written in `write_feature_table_body` instead!
     fn calc_feature_table_body_length(&self) -> usize {
         let num_points = self.cached_points.len();
         self.default_layout
@@ -273,11 +286,20 @@ impl<W: Write> PntsWriter<W> {
                     .context("Error while writing padding bytes")?;
             }
         }
+
+        // Write padding bytes to ensure we are at an 8-byte boundary!
+        let current_write_position = self.writer.seek(SeekFrom::Current(0))?;
+        let next_8_byte_boundary = current_write_position.align_to(8);
+        let num_padding_bytes = next_8_byte_boundary - current_write_position;
+        if num_padding_bytes > 0 {
+            self.writer.write(&vec![0; num_padding_bytes as usize])?;
+        }
+
         Ok(())
     }
 }
 
-impl<W: Write> PointWriter for PntsWriter<W> {
+impl<W: Write + Seek> PointWriter for PntsWriter<W> {
     fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
         if points.point_layout() != &self.expected_layout {
             panic!("PointLayout of buffer does not match the PointLayout that this PntsReader was constructed with! Make sure that you only pass PointBuffers with the same layout as the one you used to create this PntsWriter!");
@@ -342,7 +364,7 @@ impl<W: Write> PointWriter for PntsWriter<W> {
     }
 }
 
-impl<W: Write> Drop for PntsWriter<W> {
+impl<W: Write + Seek> Drop for PntsWriter<W> {
     fn drop(&mut self) {
         self.flush().expect("Error while flushing PntsWriter")
     }
@@ -355,7 +377,11 @@ mod tests {
     use crate::{base::PointReader, tiles3d::PntsReader};
 
     use super::*;
-    use pasture_core::{layout::PointType, nalgebra::Vector3};
+    use pasture_core::{
+        containers::PointBufferExt,
+        layout::PointType,
+        nalgebra::{Vector3, Vector4},
+    };
     use pasture_derive::PointType;
 
     #[derive(Debug, PointType, Copy, Clone, PartialEq)]
@@ -363,6 +389,8 @@ mod tests {
     struct PntsDefaultPoint {
         #[pasture(BUILTIN_POSITION_3D)]
         position: Vector3<f32>,
+        #[pasture(attribute = "ColorRGBA")]
+        color_rgba: Vector4<u8>,
         #[pasture(BUILTIN_COLOR_RGB)]
         color: Vector3<u8>,
         #[pasture(attribute = "Normal")]
@@ -388,11 +416,13 @@ mod tests {
             PntsDefaultPoint {
                 position: Vector3::new(1.0, 2.0, 3.0),
                 color: Vector3::new(10, 20, 30),
+                color_rgba: Vector4::new(11, 21, 31, 41),
                 normal: Vector3::new(0.1, 0.2, 0.3),
             },
             PntsDefaultPoint {
                 position: Vector3::new(2.0, 4.0, 6.0),
                 color: Vector3::new(20, 40, 60),
+                color_rgba: Vector4::new(22, 44, 66, 88),
                 normal: Vector3::new(0.2, 0.4, 0.6),
             },
         ];
@@ -418,6 +448,9 @@ mod tests {
                 .read(test_point_buffer.len())
                 .context("Error while reading points from PntsReader")?;
 
+            // Note: The default PointLayout of a PntsReader might have attributes in another order than the
+            // one we defined for our PntsDefaultPoint type! This test here works because we made care that the
+            // two layouts are the same, but this does not hold in general! read_into would be the safer choice then!
             assert_eq!(read_points.point_layout(), test_point_buffer.point_layout());
             assert_eq!(read_points.len(), test_point_buffer.len());
 

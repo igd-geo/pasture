@@ -107,9 +107,10 @@ pub fn deser_batch_table_header<R: BufRead + Seek>(mut reader: R) -> Result<Batc
 
 /// Serializes the given `BatchTableHeader` to the given `writer`. If successful, the `writer` will be at the appropriate
 /// position for writing the BatchTable body (i.e. required padding spaces have been written as per the [3D Tiles documentation](https://github.com/CesiumGS/3d-tiles/blob/master/specification/TileFormats/BatchTable/README.md)).
-pub fn ser_batch_table_header<W: Write>(
+pub fn ser_batch_table_header<W: Write + Seek>(
     mut writer: W,
     batch_table_header: &BatchTableHeader,
+    position_in_file: usize,
 ) -> Result<()> {
     let header_as_map = batch_table_header
         .iter()
@@ -117,7 +118,7 @@ pub fn ser_batch_table_header<W: Write>(
         .collect::<Map<_, _>>();
     let header_json_obj = Value::Object(header_as_map);
 
-    write_json_header(&mut writer, &header_json_obj)
+    write_json_header(&mut writer, &header_json_obj, position_in_file)
 }
 
 #[cfg(test)]
@@ -149,7 +150,7 @@ mod tests {
         let expected_header = dummy_batch_table_header();
 
         let mut writer = BufWriter::new(Cursor::new(vec![]));
-        ser_batch_table_header(&mut writer, &expected_header)?;
+        ser_batch_table_header(&mut writer, &expected_header, 0)?;
 
         // Make sure that the header is written with padding bytes so that we are at an 8-byte boundary
         let stream_pos = writer.seek(SeekFrom::Current(0))?;

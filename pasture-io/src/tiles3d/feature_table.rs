@@ -8,7 +8,7 @@ use std::{
     io::{BufRead, Seek, Write},
 };
 
-use super::{read_json_header, write_json_header};
+use super::{read_json_header, write_json_header, PntsHeader};
 
 /// A reference to data inside a FeatureTable binary body
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -137,7 +137,8 @@ pub fn ser_feature_table_header<W: Write>(
         .collect::<Map<_, _>>();
     let header_json_obj = Value::Object(header_as_map);
 
-    write_json_header(&mut writer, &header_json_obj)
+    // FeatureTable header is the first thing written after the .pnts header
+    write_json_header(&mut writer, &header_json_obj, PntsHeader::BYTE_LENGTH)
 }
 
 #[cfg(test)]

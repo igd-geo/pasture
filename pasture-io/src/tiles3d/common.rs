@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use pasture_core::{
     layout::PointAttributeDataType,
+    math::Alignable,
     nalgebra::{Vector3, Vector4},
 };
 use serde_json::Value;
@@ -30,20 +31,26 @@ pub fn read_json_header<R: BufRead + Seek>(mut reader: R) -> Result<Value> {
 }
 
 /// Writes a JSON header (e.g. FeatureTable or BatchTable header) to the given `writer`. This pads the header with trailing
-/// spaces to an 8-byte boundary
-pub fn write_json_header<W: Write>(mut writer: W, json_header: &Value) -> Result<()> {
+/// spaces to an 8-byte boundary based on the given `position_in_file`. We specifically DON'T use the position in the `writer``
+/// because the `writer` might be a temporary writer and not the final file writer!
+pub fn write_json_header<W: Write>(
+    mut writer: W,
+    json_header: &Value,
+    position_in_file: usize,
+) -> Result<()> {
     // Convert to CString, then fill with padding bytes if required
     let header_json = serde_json::to_string(json_header)?;
     let header_json_cstr = CString::new(header_json)?;
 
     writer.write(header_json_cstr.as_bytes_with_nul())?;
 
-    let header_json_len = header_json_cstr.as_bytes_with_nul().len();
-    let next_8_byte_boundary = ((header_json_len + 7) / 8) * 8;
-    let num_padding_bytes = next_8_byte_boundary - header_json_len;
+    let current_position_in_file = position_in_file + header_json_cstr.as_bytes_with_nul().len();
+
+    let next_8_byte_boundary = current_position_in_file.align_to(8);
+    let num_padding_bytes = next_8_byte_boundary - current_position_in_file;
 
     if num_padding_bytes > 0 {
-        writer.write(&vec![0x20; num_padding_bytes])?;
+        writer.write(&vec![0x20; num_padding_bytes as usize])?;
     }
 
     Ok(())

@@ -1,7 +1,7 @@
 use std::{alloc::Layout, fmt::Display};
 
 use itertools::Itertools;
-use nalgebra::Vector3;
+use nalgebra::{Vector3, Vector4};
 use static_assertions::const_assert;
 
 use crate::math::Alignable;
@@ -26,6 +26,7 @@ mod private {
     impl Sealed for Vector3<u16> {}
     impl Sealed for Vector3<f32> {}
     impl Sealed for Vector3<f64> {}
+    impl Sealed for Vector4<u8> {}
 }
 
 /// Possible data types for individual point attributes
@@ -61,7 +62,11 @@ pub enum PointAttributeDataType {
     Vec3f32,
     /// A 3-component vector storing double-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3f64,
+    /// A 4-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector4<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    Vec4u8,
     //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
+    //TODO Instead of representing each VecN<T> type as a separate literal, might it be possible to do: Vec3(PointAttributeDataType)?
+    //Not in that way of course, because of recursive datastructures, but something like that?
 }
 
 impl PointAttributeDataType {
@@ -83,6 +88,7 @@ impl PointAttributeDataType {
             PointAttributeDataType::Vec3u16 => 6,
             PointAttributeDataType::Vec3f32 => 12,
             PointAttributeDataType::Vec3f64 => 24,
+            PointAttributeDataType::Vec4u8 => 4,
         }
     }
 
@@ -104,6 +110,7 @@ impl PointAttributeDataType {
             PointAttributeDataType::Vec3u16 => std::mem::align_of::<Vector3<u16>>(),
             PointAttributeDataType::Vec3f32 => std::mem::align_of::<Vector3<f32>>(),
             PointAttributeDataType::Vec3f64 => std::mem::align_of::<Vector3<f64>>(),
+            PointAttributeDataType::Vec4u8 => std::mem::align_of::<Vector4<u8>>(),
         };
         align as u64
     }
@@ -127,6 +134,7 @@ impl Display for PointAttributeDataType {
             PointAttributeDataType::Vec3u16 => write!(f, "Vec3<u16>"),
             PointAttributeDataType::Vec3f32 => write!(f, "Vec3<f32>"),
             PointAttributeDataType::Vec3f64 => write!(f, "Vec3<f64>"),
+            &PointAttributeDataType::Vec4u8 => write!(f, "Vec4<u8>"),
         }
     }
 }
@@ -214,12 +222,19 @@ impl PrimitiveType for Vector3<f64> {
     }
 }
 
+impl PrimitiveType for Vector4<u8> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec4u8
+    }
+}
+
 // Assert sizes of vector types are as we expect. Primitive types always are the same size, but we don't know
 // what nalgebra does with the Vector3 types on the target machine...
 const_assert!(std::mem::size_of::<Vector3<u8>>() == 3);
 const_assert!(std::mem::size_of::<Vector3<u16>>() == 6);
 const_assert!(std::mem::size_of::<Vector3<f32>>() == 12);
 const_assert!(std::mem::size_of::<Vector3<f64>>() == 24);
+const_assert!(std::mem::size_of::<Vector4<u8>>() == 4);
 
 /// A definition for a single point attribute of a point cloud. Point attributes are things like the position,
 /// GPS time, intensity etc. In Pasture, attributes are identified by a unique name together with the data type
@@ -239,7 +254,7 @@ impl PointAttributeDefinition {
     /// # assert_eq!(custom_attribute.name(), "Custom");
     /// # assert_eq!(custom_attribute.datatype(), PointAttributeDataType::F32);
     /// ```
-    pub fn custom(name: &'static str, datatype: PointAttributeDataType) -> Self {
+    pub const fn custom(name: &'static str, datatype: PointAttributeDataType) -> Self {
         Self { name, datatype }
     }
 
@@ -404,6 +419,7 @@ impl PointAttributeMember {
             PointAttributeDataType::Vec3f64 => 3 * 8,
             PointAttributeDataType::Vec3u16 => 3 * 2,
             PointAttributeDataType::Vec3u8 => 3,
+            PointAttributeDataType::Vec4u8 => 4,
         }
     }
 }
@@ -948,10 +964,13 @@ impl PointLayout {
     /// Returns the offset from an attribute.
     /// If the attribute don't exist in the layout this function returns None.
     pub fn offset_of(&self, attribute: &PointAttributeDefinition) -> Option<u64> {
-        self.attributes.iter().find(|this_attribute| {
-            this_attribute.name() == attribute.name()
-                && this_attribute.datatype() == attribute.datatype()
-        }).map(|member| member.offset())
+        self.attributes
+            .iter()
+            .find(|this_attribute| {
+                this_attribute.name() == attribute.name()
+                    && this_attribute.datatype() == attribute.datatype()
+            })
+            .map(|member| member.offset())
     }
 
     /// Returns the offset of the next field that could be added to this `PointLayout`, without any alignment

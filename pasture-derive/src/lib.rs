@@ -1,4 +1,6 @@
 extern crate proc_macro;
+use std::collections::HashSet;
+
 //use anyhow::{anyhow, bail, Result};
 use layout::{get_struct_member_layout, StructMemberLayout};
 use proc_macro::TokenStream;
@@ -27,6 +29,7 @@ enum PasturePrimitiveType {
     Vec3u16,
     Vec3f32,
     Vec3f64,
+    Vec4u8,
 }
 
 impl PasturePrimitiveType {
@@ -47,6 +50,7 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::Vec3u16 => 2,
             PasturePrimitiveType::Vec3f32 => 4,
             PasturePrimitiveType::Vec3f64 => 8,
+            &PasturePrimitiveType::Vec4u8 => 1,
         }
     }
 
@@ -67,6 +71,7 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::Vec3u16 => 6,
             PasturePrimitiveType::Vec3f32 => 12,
             PasturePrimitiveType::Vec3f64 => 24,
+            &PasturePrimitiveType::Vec4u8 => 4,
         }
     }
 
@@ -97,6 +102,9 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::Vec3f64 => {
                 quote! {pasture_core::layout::PointAttributeDataType::Vec3f64}
             }
+            PasturePrimitiveType::Vec4u8 => {
+                quote! {pasture_core::layout::PointAttributeDataType::Vec4u8}
+            }
         }
     }
 }
@@ -123,13 +131,15 @@ fn get_primitive_type_for_ident_type(ident: &Ident) -> Result<PasturePrimitiveTy
 }
 
 fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<PasturePrimitiveType> {
-    // Path should have an ident (Vector3), as well as one generic argument
+    // Path should have an ident (Vector3, Vector4, ...), as well as one generic argument
+    let valid_idents: HashSet<_> = ["Vector3", "Vector4"].iter().collect();
+
     let path_segment = type_path
         .path
         .segments
         .first()
         .ok_or_else(|| Error::new_spanned(&type_path.path, "Invalid type"))?;
-    if path_segment.ident != "Vector3" {
+    if !valid_idents.contains(&path_segment.ident.to_string().as_str()) {
         return Err(Error::new_spanned(&path_segment.ident, "Invalid type"));
     }
 
@@ -157,15 +167,25 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
         Some(ident) => {
             // Not ALL primitive types are supported as generic arguments for Vector3
             let type_name = ident.to_string();
-            match type_name.as_str() {
-                "u8" => Ok(PasturePrimitiveType::Vec3u8),
-                "u16" => Ok(PasturePrimitiveType::Vec3u16),
-                "f32" => Ok(PasturePrimitiveType::Vec3f32),
-                "f64" => Ok(PasturePrimitiveType::Vec3f64),
-                _ => Err(Error::new_spanned(
-                    ident,
-                    format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic arguments u8, u16, f32 or f64", type_name),
-                ))
+            match path_segment.ident.to_string().as_str() {
+                "Vector3" => match type_name.as_str() {
+                    "u8" => Ok(PasturePrimitiveType::Vec3u8),
+                    "u16" => Ok(PasturePrimitiveType::Vec3u16),
+                    "f32" => Ok(PasturePrimitiveType::Vec3f32),
+                    "f64" => Ok(PasturePrimitiveType::Vec3f64),
+                    _ => Err(Error::new_spanned(
+                        ident,
+                        format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic argument(s) u8, u16, f32 or f64", type_name),
+                    ))
+                },
+                "Vector4" => match type_name.as_str() {
+                    "u8" => Ok(PasturePrimitiveType::Vec4u8),
+                    _ => Err(Error::new_spanned(
+                        ident,
+                        format!("Vector4<{}> is no valid Pasture primitive type. Vector4 is supported, but only for generic argument(s) u8", type_name),
+                    ))
+                },
+                _ => Err(Error::new_spanned(ident, format!("Invalid type"))),
             }
         }
         None => Err(Error::new_spanned(&type_path.path, "Invalid type")),
