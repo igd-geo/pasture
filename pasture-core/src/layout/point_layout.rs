@@ -225,7 +225,7 @@ const_assert!(std::mem::size_of::<Vector3<f64>>() == 24);
 /// GPS time, intensity etc. In Pasture, attributes are identified by a unique name together with the data type
 /// that a single record of the attribute is stored in. Attributes can be grouped into two categories: Built-in
 /// attributes (e.g. POSITION_3D, INTENSITY, GPS_TIME etc.) and custom attributes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointAttributeDefinition {
     name: &'static str,
     datatype: PointAttributeDataType,
@@ -943,6 +943,15 @@ impl PointLayout {
                 .map(|other_attribute| other_attribute.datatype() == self_attribute.datatype())
                 .unwrap_or(false)
         })
+    }
+
+    /// Returns the offset from an attribute.
+    /// If the attribute don't exist in the layout this function returns None.
+    pub fn offset_of(&self, attribute: &PointAttributeDefinition) -> Option<u64> {
+        self.attributes.iter().find(|this_attribute| {
+            this_attribute.name() == attribute.name()
+                && this_attribute.datatype() == attribute.datatype()
+        }).map(|member| member.offset())
     }
 
     /// Returns the offset of the next field that could be added to this `PointLayout`, without any alignment
