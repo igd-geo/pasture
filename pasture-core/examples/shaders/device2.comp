@@ -13,7 +13,6 @@ struct PointBuffer {
     bool scan_dir_flag;
     int integer;
     uint packet_size;
-    // TODO: replace order of below two to see alignment issue within struct
     float return_location;
     double gps_time;
 };
