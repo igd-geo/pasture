@@ -157,7 +157,7 @@ impl Device {
     }
 
     /// Associates the given `PointBuffer` with GPU buffers w.r.t. the layouts defined in `Vec<BufferInfo>`.
-    pub fn upload(&mut self, buffer: &mut dyn PointBuffer, buffer_infos: Vec<BufferInfo>) {
+    pub fn upload_per_attribute(&mut self, buffer: &mut dyn PointBuffer, buffer_infos: Vec<BufferInfoPerAttribute>) {
         let len = buffer.len();
 
         for info in buffer_infos {
@@ -753,7 +753,7 @@ impl Default for DeviceBackend {
 
 /// Associates a point buffer attribute with a binding defined in a (compute) shader.
 // TODO: consider usage, size, mapped_at_creation, type (SSBO vs UBO), etc.
-pub struct BufferInfo<'a> {
+pub struct BufferInfoPerAttribute<'a> {
     pub attribute: &'a layout::PointAttributeDefinition,
     pub binding: u32,
 }

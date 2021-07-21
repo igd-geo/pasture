@@ -128,57 +128,57 @@ async fn run() {
 
     // Connects point buffer attributes to shader bindings
     let buffer_infos = vec![
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::POSITION_3D,
             binding: 0,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::COLOR_RGB,
             binding: 1,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &custom_color_attrib,
             binding: 2,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &custom_byte_vec_attrib,
             binding: 3,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::CLASSIFICATION,
             binding: 4,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::INTENSITY,
             binding: 5,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::SCAN_ANGLE,
             binding: 6,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::SCAN_DIRECTION_FLAG,
             binding: 7,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &custom_int_attrib,
             binding: 8,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::WAVEFORM_PACKET_SIZE,
             binding: 9,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::RETURN_POINT_WAVEFORM_LOCATION,
             binding: 10,
         },
-        gpu::BufferInfo {
+        gpu::BufferInfoPerAttribute {
             attribute: &attributes::GPS_TIME,
             binding: 11,
         },
     ];
 
-    device.upload(&mut point_buffer, buffer_infos);
+    device.upload_per_attribute(&mut point_buffer, buffer_infos);
     device.set_compute_shader(include_str!("shaders/device.comp"));
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
