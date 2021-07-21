@@ -161,6 +161,8 @@ impl Device {
         let len = buffer.len();
 
         for info in buffer_infos {
+            let mut offset: usize = 0;
+
             let num_bytes = self.bytes_per_element(info.attribute.datatype()) as usize;
             let mut bytes_to_write: Vec<u8> = vec![0; len * num_bytes];
 
@@ -168,7 +170,8 @@ impl Device {
 
             // Change Vec<u8> to &[u8]
             let bytes_to_write: &[u8] = &*bytes_to_write;
-            let bytes_to_write = &self.align_slice(bytes_to_write, info.attribute.datatype())[..];
+            // let bytes_to_write = &self.align_slice(bytes_to_write, info.attribute.datatype())[..];
+            let bytes_to_write = &self.align_slice2(bytes_to_write, info.attribute.datatype(), &mut offset)[..];
 
             let size_in_bytes = bytes_to_write.len() as wgpu::BufferAddress;
             self.buffer_sizes.push(size_in_bytes);
@@ -201,6 +204,7 @@ impl Device {
         let layout = buffer.point_layout();
         layout.size_of_point_entry();
 
+        // TODO: needed?
         let mut struct_alignment = 0;
         for attrib in buffer_info.attributes {
             let alignment = self.alignment_per_element(attrib.datatype()) as usize;
@@ -212,29 +216,25 @@ impl Device {
         println!("Struct alignment: {}", struct_alignment);
 
         // Get bytes in interleaved format
+        let mut offset: usize = 0;
         let mut bytes_to_write: Vec<u8> = vec![];
         for i in 0..len {
             // buffer.get_raw_point(i, &mut bytes_to_write[i..(i + bytes_per_point)]);
             for attrib in buffer_info.attributes {
+                // Store the bytes for the current attribute in 'bytes_for_attrib'
                 let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
                 let mut bytes_for_attrib: Vec<u8> = vec![0; num_bytes];
                 buffer.get_raw_attribute(i, attrib, &mut *bytes_for_attrib);
 
                 // Align each attribute TODO: may require custom align method for struct
                 let bytes_for_attrib: &[u8] = &*bytes_for_attrib;
-                let mut bytes_for_attrib = self.align_slice(bytes_for_attrib, attrib.datatype());
+                // let mut bytes_for_attrib = self.align_slice(bytes_for_attrib, attrib.datatype());
+                let mut bytes_for_attrib = self.align_slice2(bytes_for_attrib, attrib.datatype(), &mut offset);
 
                 bytes_to_write.append(&mut bytes_for_attrib);
             }
 
-            let required_padding = if bytes_to_write.len() % struct_alignment == 0 {
-                0
-            } else {
-                struct_alignment - (bytes_to_write.len() % struct_alignment)
-            };
             println!("Current size: {}", bytes_to_write.len());
-            println!("Required padding: {}", required_padding);
-            bytes_to_write.append(vec![0; required_padding].as_mut());
         }
 
         // Change Vec<u8> to &[u8]
@@ -326,6 +326,7 @@ impl Device {
     // TODO: Consider whether to support such sign/zero extension or just forbid types that need them.
     fn align_slice(&self, slice: &[u8], datatype: PointAttributeDataType) -> Vec<u8> {
         let len = slice.len();
+        println!("(Datatype, current offset): ({}, {})", datatype, len);
 
         match datatype {
             PointAttributeDataType::U8 => {
@@ -505,6 +506,322 @@ impl Device {
         }
 
         Vec::from(slice)
+    }
+
+    fn align_slice2(&self, slice: &[u8], datatype: PointAttributeDataType, offset: &mut usize) -> Vec<u8> {
+        let len = slice.len();  // number of bytes
+
+        println!("{}: {}", datatype, offset);
+
+        match datatype {
+            PointAttributeDataType::U8 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Treating as u32
+                for i in 0..len {
+                    // Alignment is 4 bytes
+                    while *offset % 4 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    let current = (slice[i] as u32).to_ne_bytes();
+                    v.extend_from_slice(&current);
+                    *offset += current.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::I8 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Treating as i32
+                for i in 0..len {
+                    // Alignment is 4 bytes
+                    while *offset % 4 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    // let current = i8::from_ne_bytes(slice[i..i+1].try_into().unwrap());
+                    // v.extend_from_slice(&(current as i32).to_ne_bytes());
+
+                    // Remember: signed and unsigned have the same bit-level behavior
+                    // and we only care about bits/bytes, not how they are interpreted (u vs i)
+                    let current = (slice[i] as u32).to_ne_bytes();
+                    v.extend_from_slice(&current);
+                    *offset += current.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::U16 => {
+                // Treating as u32
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = len / stride;
+
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..num_elements {
+                    // Alignment is 4 bytes
+                    while *offset % 4 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+                    let current = u16::from_ne_bytes(slice[begin..end].try_into().unwrap());
+
+                    let current = (current as u32).to_ne_bytes();
+                    v.extend_from_slice(&current);
+                    *offset += current.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::I16 => {
+                // Treating as i32
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = len / stride;
+
+                let mut v: Vec<u8> = Vec::new();
+                for i in 0..num_elements {
+                    // Alignment is 4 bytes
+                    while *offset % 4 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+                    let current = i16::from_ne_bytes(slice[begin..end].try_into().unwrap());
+
+                    let current = (current as u32).to_ne_bytes();
+                    v.extend_from_slice(&current);
+                    *offset += current.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::U32 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Alignment is 4 bytes
+                while *offset % 4 != 0 {
+                    v.push(0);
+                    *offset += 1;
+                }
+
+                v.extend_from_slice(&slice);
+                *offset += len;
+
+                return v;
+            }
+            PointAttributeDataType::I32 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Alignment is 4 bytes
+                while *offset % 4 != 0 {
+                    v.push(0);
+                    *offset += 1;
+                }
+
+                v.extend_from_slice(&slice);
+                *offset += len;
+
+                return v;
+            }
+            PointAttributeDataType::U64 => {
+                // Trouble: no 64-bit integer types on GPU
+                panic!("Uploading 64-bit integer types to the GPU is not supported.")
+            }
+            PointAttributeDataType::I64 => {
+                // Trouble: no 64-bit integer types on GPU
+                panic!("Uploading 64-bit integer types to the GPU is not supported.")
+            }
+            PointAttributeDataType::F32 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Alignment is 4 bytes
+                while *offset % 4 != 0 {
+                    v.push(0);
+                    *offset += 1;
+                }
+
+                v.extend_from_slice(&slice);
+                *offset += len;
+
+                return v;
+            }
+            PointAttributeDataType::F64 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Alignment is 8 bytes
+                while *offset % 8 != 0 {
+                    v.push(0);
+                    *offset += 1;
+                }
+
+                v.extend_from_slice(&slice);
+                *offset += len;
+
+                return v;
+            }
+            PointAttributeDataType::Bool => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Treating as u32
+                for i in 0..len {
+                    // Alignment is 4 bytes
+                    while *offset % 4 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    let current = (slice[i] as u32).to_ne_bytes();
+                    v.extend_from_slice(&current);
+                    *offset += current.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::Vec3u8 => {
+                let mut v = Vec::new();
+
+                // Treating as Vec4u32
+                let one_as_bytes = 1_u32.to_ne_bytes();
+
+                // Each entry is 8 bits, ie. 1 byte -> each Vec3 has 3 bytes
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = len / stride;
+
+                // Iteration over each Vec3
+                for i in 0..num_elements {
+                    // Alignment is 16 bytes
+                    while *offset % 16 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    // Extend each entry to 32 bits
+                    for j in 0..3 {
+                        let begin = (i * stride) + j;
+                        let end = (i * stride) + j + 1;
+
+                        let current = u8::from_ne_bytes(slice[begin..end].try_into().unwrap());
+                        let current = (current as u32).to_ne_bytes();
+                        v.extend_from_slice(&current);
+                        *offset += current.len();
+                    }
+
+                    // Append fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                    *offset += one_as_bytes.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::Vec3u16 => {
+                let mut v = Vec::new();
+
+                // Treating as Vec4u32
+                let one_as_bytes = 1_u32.to_ne_bytes();
+
+                // Each entry is 16 bits, ie. 2 bytes -> each Vec3 has 3*2 = 6 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 6
+                let num_elements = len / stride;
+
+                // Iteration over each Vec3
+                for i in 0..num_elements {
+                    // Alignment is 16 bytes
+                    while *offset % 16 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    // Extend each entry to 32 bits
+                    for j in 0..3 {
+                        let begin = (i * stride) + j * 2;
+                        let end = (i * stride) + (j * 2) + 2;
+
+                        let current = u16::from_ne_bytes(slice[begin..end].try_into().unwrap());
+                        let current = (current as u32).to_ne_bytes();
+                        v.extend_from_slice(&current);
+                        *offset += current.len();
+                    }
+
+                    // Append fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                    *offset += one_as_bytes.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::Vec3f32 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Make Vec4f32 by appending 1.0
+                let one_as_bytes = 1.0_f32.to_ne_bytes();
+
+                // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let num_elements = len / stride;
+
+                for i in 0..num_elements {
+                    // Alignment is 16 bytes
+                    while *offset % 16 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+
+                    // Push current Vec3
+                    let current = &slice[begin..end];
+                    v.extend_from_slice(current);
+                    *offset += current.len();
+
+                    // Push 1 as fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                    *offset += one_as_bytes.len();
+                }
+
+                return v;
+            }
+            PointAttributeDataType::Vec3f64 => {
+                let mut v: Vec<u8> = Vec::new();
+
+                // Make Vec4f64 by appending 1.0
+                let one_as_bytes = 1.0_f64.to_ne_bytes();
+
+                // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let num_elements = len / stride;
+
+                for i in 0..num_elements {
+                    // Alignment is 32 bytes
+                    while *offset % 32 != 0 {
+                        v.push(0);
+                        *offset += 1;
+                    }
+
+                    let begin = i * stride;
+                    let end = (i * stride) + stride;
+
+                    // Push current Vec3
+                    let current = &slice[begin..end];
+                    v.extend_from_slice(current);
+                    *offset += current.len();
+
+                    // Push 1 as fourth coordinate
+                    v.extend_from_slice(&one_as_bytes);
+                    *offset += one_as_bytes.len();
+                }
+
+                return v;
+            }
+        }
     }
 
     /// Downloads contents of GPU buffers

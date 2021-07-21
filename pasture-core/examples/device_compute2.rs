@@ -137,8 +137,8 @@ async fn run() {
         attributes::SCAN_DIRECTION_FLAG,
         custom_int_attrib,
         attributes::WAVEFORM_PACKET_SIZE,
-        attributes::GPS_TIME,
         attributes::RETURN_POINT_WAVEFORM_LOCATION,
+        attributes::GPS_TIME,
     ];
 
     let buffer_info_interleaved =  gpu::BufferInfoInterleaved {
@@ -223,16 +223,16 @@ async fn run() {
             .collect();
         println!("Packet sizes: {:?}", packet_size_result_vec);
 
-        let gps_time_result_vec: Vec<f64> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 8)]
-            .chunks_exact(8)
-            .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        println!("GPS times: {:?}", gps_time_result_vec);
-
-        let ret_point_loc_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 8)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 8 + 4)]
+        let ret_point_loc_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4)]
             .chunks_exact(4)
             .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
             .collect();
         println!("Return locations: {:?}", ret_point_loc_result_vec);
+
+        let gps_time_result_vec: Vec<f64> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 8)]
+            .chunks_exact(8)
+            .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
+            .collect();
+        println!("GPS times: {:?}", gps_time_result_vec);
     }
 }
