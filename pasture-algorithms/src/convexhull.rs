@@ -5,6 +5,7 @@ use pasture_core::{
     layout::attributes::{POSITION_3D},
     nalgebra::{Vector3},
 };
+use anyhow::{Result, anyhow};
 
 #[derive(Clone, Copy)]
 struct Triangle {
@@ -36,20 +37,28 @@ impl Hash for Edge {
 /// Convex Hull generation as triangle mesh
 /// Returns the convex hull as a vector of tuples of size 3 that contains the indices of the triangle vertices within the input buffer that form a convex hull around all input points
 /// or an error if less than 3 linearily independent points were given in the input buffer.
-pub fn convex_hull_as_triangle_mesh<T: PointBuffer>(buffer: &T) -> Result<Vec<(usize, usize, usize)>, &'static str> {
+///
+/// #Panics
+///
+/// If the PointBuffer doesn't cointain a POSITION_3D attribute.
+pub fn convex_hull_as_triangle_mesh<T: PointBuffer>(buffer: &T) -> Result<Vec<Vector3<usize>>> {
     let triangles = create_convex_hull(buffer);
     if triangles.len() < 2 {
-        return Err("input buffer cointains too few linearly independent points");
+        return Err(anyhow!("input buffer cointains too few linearly independent points"));
     }
     let mut triangle_indices = Vec::new();
     for tri in triangles {
-        triangle_indices.push((tri.a, tri.b, tri.c));
+        triangle_indices.push(Vector3::new(tri.a, tri.b, tri.c));
     }
     return Ok(triangle_indices);
 }
 
 /// Convex Hull generation as points
 /// Returns the convex hull as a vector that contains the indices the points forming a convex hull around all input points.
+///
+/// #Panics
+///
+/// If the PointBuffer doesn't cointain a POSITION_3D attribute.
 pub fn convex_hull_as_points<T: PointBuffer>(buffer: &T) -> Vec<usize> {
     let triangles = create_convex_hull(buffer);
     let mut points = HashSet::new();
@@ -69,7 +78,7 @@ fn create_convex_hull<T: PointBuffer>(buffer: &T) -> Vec<Triangle> {
         .get_attribute_by_name(POSITION_3D.name())
     {
         Some(a) => a,
-        None => return triangles,
+        None => { panic!("point buffer contains no position attribute") },
     };
 
     let mut pointid: usize = 0;
@@ -96,8 +105,6 @@ fn create_convex_hull<T: PointBuffer>(buffer: &T) -> Vec<Triangle> {
 /// If the point lies outside of the current convex hull the hull has to be extended to include the current point.
 /// If 'triangles' contain only one entry: no full triangle has been found yet. In case of linearily dependant points no second triangle is added.
 /// If all 'triangles' are in a plane with 'point' a special triangulation procedure is needed to prevent a degenerated triangle mesh.
-///
-/// TODO: compare to epsilons instead of 0.0
 fn iteration<T: PointBuffer>(buffer: &T, pointid: usize, point: Vector3<f64>, triangles: &mut Vec<Triangle>) {
     if pointid == 0 {
         triangles.push(Triangle{ a: 0, b: 0, c: 0, normal: point })
@@ -149,9 +156,9 @@ fn iteration<T: PointBuffer>(buffer: &T, pointid: usize, point: Vector3<f64>, tr
             let pa: Vector3<f64> = tri_a - point;
             let dot = pa.dot(&tri.normal);
             if dot < 0.0 {
-                process_edge(tri.a, tri.b, &mut outer_edges, &mut inner_edges);
-                process_edge(tri.b, tri.c, &mut outer_edges, &mut inner_edges);
-                process_edge(tri.c, tri.a, &mut outer_edges, &mut inner_edges);
+                add_edge_to_outer_or_inner_edges(tri.a, tri.b, &mut outer_edges, &mut inner_edges);
+                add_edge_to_outer_or_inner_edges(tri.b, tri.c, &mut outer_edges, &mut inner_edges);
+                add_edge_to_outer_or_inner_edges(tri.c, tri.a, &mut outer_edges, &mut inner_edges);
                 return false;
             }
             else if dot == 0.0 {
@@ -281,7 +288,7 @@ fn dist_point_to_edge(point: Vector3<f64>, edge_a: Vector3<f64>, edge_b: Vector3
 /// `b`: second vertex of the edge
 /// `outer_edges`: the set of outer edges
 /// `inner_edges`: the set of inner edges
-fn process_edge(a: usize, b: usize, outer_edges: &mut HashSet<Edge>, inner_edges: &mut HashSet<Edge>) {
+fn add_edge_to_outer_or_inner_edges(a: usize, b: usize, outer_edges: &mut HashSet<Edge>, inner_edges: &mut HashSet<Edge>) {
     let e = Edge{a, b};
     if !outer_edges.insert(e) {
         outer_edges.remove(&e);
@@ -345,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_convex_simple_tet_4_points() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 1.0) });
@@ -362,7 +369,7 @@ mod tests {
 
     #[test]
     fn test_convex_simple_tet_5_points() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 1.0) });
@@ -392,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_convex_line_2_points() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(2, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         let result = convexhull::create_convex_hull(&buffer);
@@ -421,7 +428,7 @@ mod tests {
 
     #[test]
     fn test_convex_line_4_points() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(2.0, 0.0, 0.0) });
@@ -437,7 +444,7 @@ mod tests {
 
     #[test]
     fn test_convex_plane_4_points() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 1.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
@@ -509,7 +516,7 @@ mod tests {
         let buffer = PerAttributeVecPointStorage::with_capacity(0, TestPointTypeSmall::layout());
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
 
-        assert_eq!(result, Err("input buffer cointains too few linearly independent points"));
+        assert_eq!(result.unwrap_err().to_string(), "input buffer cointains too few linearly independent points");
 
         Ok(())
     }
@@ -520,52 +527,52 @@ mod tests {
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
 
-        assert_eq!(result, Err("input buffer cointains too few linearly independent points"));
+        assert_eq!(result.unwrap_err().to_string(), "input buffer cointains too few linearly independent points");
 
         Ok(())
     }
 
     #[test]
     fn test_convex_2_point_output_mesh_error() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(1, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(2, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
 
-        assert_eq!(result, Err("input buffer cointains too few linearly independent points"));
+        assert_eq!(result.unwrap_err().to_string(), "input buffer cointains too few linearly independent points");
 
         Ok(())
     }
 
     #[test]
     fn test_convex_3_point_output_mesh_error_same_point() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(1, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
 
-        assert_eq!(result, Err("input buffer cointains too few linearly independent points"));
+        assert_eq!(result.unwrap_err().to_string(), "input buffer cointains too few linearly independent points");
 
         Ok(())
     }
 
     #[test]
     fn test_convex_3_point_output_mesh_error_line() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(1, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(2.0, 0.0, 0.0) });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
 
-        assert_eq!(result, Err("input buffer cointains too few linearly independent points"));
+        assert_eq!(result.unwrap_err().to_string(), "input buffer cointains too few linearly independent points");
 
         Ok(())
     }
 
     #[test]
     fn test_convex_3_point_output_mesh_no_error() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(1, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 1.0, 0.0) });
@@ -573,15 +580,15 @@ mod tests {
         let result_unwrapped = result.unwrap();
 
         assert_eq!(result_unwrapped.len(), 2);
-        assert!(result_unwrapped.contains(&(0, 1, 2)));
-        assert!(result_unwrapped.contains(&(0, 2, 1)));
+        assert!(result_unwrapped.contains(&Vector3::new(0, 1, 2)));
+        assert!(result_unwrapped.contains(&Vector3::new(0, 2, 1)));
 
         Ok(())
     }
 
     #[test]
     fn test_convex_3_point_output_points_line() -> Result<()> {
-        let mut buffer = PerAttributeVecPointStorage::with_capacity(1, TestPointTypeSmall::layout());
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
         buffer.push_point(TestPointTypeSmall { position: Vector3::new(2.0, 0.0, 0.0) });
@@ -592,5 +599,20 @@ mod tests {
         assert!(result.contains(&2));
 
         Ok(())
+    }
+
+    #[derive(PointType, Default)]
+    #[repr(C)]
+    struct TestPointTypeNoPositions {
+        #[pasture(BUILTIN_INTENSITY)]
+        pub intensity: u16,
+    }
+
+    #[test]
+    #[should_panic(expected = "point buffer contains no position attribute")]
+    fn test_convex_no_positions_panic() {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(1, TestPointTypeNoPositions::layout());
+        buffer.push_point(TestPointTypeNoPositions { intensity: 1 });
+        let _result = convexhull::convex_hull_as_triangle_mesh(&buffer);
     }
 }
