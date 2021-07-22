@@ -1,13 +1,12 @@
-use core::num;
 use std::{
     collections::HashMap,
     convert::TryInto,
     fs::File,
-    io::{BufRead, BufReader, Read, Seek, SeekFrom},
+    io::{BufRead, BufReader, Seek, SeekFrom},
     path::Path,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
     containers::{
         PerAttributePointBufferMut, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable,
@@ -21,13 +20,10 @@ use pasture_core::{
     nalgebra::clamp,
 };
 
+use crate::tiles3d::{deser_feature_table_header, FeatureTableValue, PntsHeader};
 use crate::{
     base::{PointReader, SeekToPoint},
     tiles3d::{attributes::COLOR_RGBA, json_arr_to_vec3f32, json_arr_to_vec4u8},
-};
-use crate::{
-    las::LASMetadata,
-    tiles3d::{deser_feature_table_header, FeatureTableValue, PntsHeader},
 };
 
 use super::PntsMetadata;
@@ -47,9 +43,26 @@ impl<R: BufRead + Seek> PntsReader<R> {
     }
 
     pub fn from_read(mut read: R) -> Result<PntsReader<R>> {
-        let _header: PntsHeader = bincode::deserialize_from(&mut read)?;
+        // PNTS is little-endian, this is the default of bincode
+        let header: PntsHeader = bincode::deserialize_from(&mut read)
+            .context("Could not deserialize PNTS header from reader")?;
+        header.verify_magic()?;
+        let position_after_header = read.seek(SeekFrom::Current(0))? as usize;
+        assert_eq!(position_after_header, PntsHeader::BYTE_LENGTH);
+
+        // The 3D Tiles spec is ambiguous when it comes to the exact values in the header. It says that 'featureTableJSONByteLength'
+        // contains 'The length of the Feature Table JSON section in bytes.', and this section should END on an 8-byte boundary
+        // within the file. However the example PNTS file that you can download from [here](https://github.com/CesiumGS/3d-tiles-samples)
+        // does not match this definition!! There, the header size + featureTableJSONByteLength does NOT sum up to a multiple of 8...
+        // The code is thus written in a way to automatically read padding bytes so that after deser_feature_table_header, we are at
+        // the start of the FeatureTable body
+
+        let mut feature_table_header = deser_feature_table_header(
+            &mut read,
+            header.feature_table_json_byte_length as usize,
+            position_after_header,
+        )?;
         // TODO BatchTable support
-        let mut feature_table_header = deser_feature_table_header(&mut read)?;
 
         // The following functions mutate the feature table header HashMap and remove the entries that
         // are relevant. This is done because both point semantics and global semantics are stored in the
@@ -60,16 +73,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
 
         // TODO Log all parameters that could not be parsed. This requires logging support for pasture
 
-        let feature_table_binary_offset: u64 = (PntsHeader::BYTE_LENGTH
-            + _header.feature_table_json_byte_length as usize)
-            .try_into()
-            .unwrap();
-        // Ensure that reader is at correct position according to parameters in header
-        let current_read_position = read.seek(SeekFrom::Current(0))?;
-        if current_read_position != feature_table_binary_offset {
-            bail!("FeatureTable header does not match size defined in PNTS header. Expected FeatureTable body to start at offset {} but it starts at offset {}!", feature_table_binary_offset, current_read_position);
-        }
-
+        let feature_table_binary_offset = read.seek(SeekFrom::Current(0))?;
         // Convert offsets in binary body to offsets within whole file
         for (_, offset) in &mut attribute_offsets {
             *offset += feature_table_binary_offset;
@@ -343,24 +347,4 @@ impl<R: BufRead + Seek> SeekToPoint for PntsReader<R> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use pasture_core::{containers::PointBufferExt, nalgebra::Vector3};
-
-    use super::*;
-
-    #[test]
-    fn test_pnts_reader() -> Result<()> {
-        let mut reader =
-            PntsReader::<BufReader<File>>::from_path("/Users/pbormann/Downloads/points.pnts")?;
-        let metadata = reader.get_metadata();
-        let num_points = metadata.number_of_points().unwrap();
-        let points = reader.read(8000)?;
-        let positions = points
-            .iter_attribute::<Vector3<f32>>(
-                &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
-            )
-            .collect::<Vec<_>>();
-        Ok(())
-    }
-}
+// No testes for reader for now, there are tests inside pnts_writer.rs which test both the reader and writer!

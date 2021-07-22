@@ -1,31 +1,24 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
-    layout::PointAttributeDataType,
     math::Alignable,
     nalgebra::{Vector3, Vector4},
 };
 use serde_json::Value;
 use std::{
     convert::TryInto,
-    ffi::{CStr, CString},
-    io::{BufRead, Seek, SeekFrom, Write},
+    io::{BufRead, Seek, Write},
 };
 
-/// Reads a JSON header (e.g. FeatureTable or BatchTable header) from the given `reader`. This assumes that the JSON header
-/// is 8-byte aligned and moves the `reader` accordingly
-pub fn read_json_header<R: BufRead + Seek>(mut reader: R) -> Result<Value> {
-    let mut str_buf = vec![];
-    reader.read_until(0, &mut str_buf)?;
-
-    // Move reader to 8-byte boundary as this is required by the 3D Tiles spec
-    {
-        let where_are_we = reader.seek(SeekFrom::Current(0))?;
-        let next_8_byte_boundary = ((where_are_we + 7) / 8) * 8;
-        reader.seek(SeekFrom::Start(next_8_byte_boundary))?;
-    }
-
-    let json_str = CStr::from_bytes_with_nul(str_buf.as_slice())?;
-    let json: Value = serde_json::from_str(json_str.to_str()?)?;
+/// Reads a JSON header (e.g. FeatureTable or BatchTable header) from the given `reader` according to the given
+/// `header_size`
+pub fn read_json_header<R: BufRead + Seek>(mut reader: R, header_size: usize) -> Result<Value> {
+    let mut str_buf = vec![0; header_size];
+    reader
+        .read_exact(str_buf.as_mut_slice())
+        .context("JSON header size is larger than the remaining number of bytes in the reader")?;
+    let header_text = String::from_utf8(str_buf).context("JSON header is no valid UTF-8 text")?;
+    let json: Value =
+        serde_json::from_str(header_text.as_str()).context("Could not parse JSON header")?;
 
     Ok(json)
 }
@@ -39,18 +32,22 @@ pub fn write_json_header<W: Write>(
     position_in_file: usize,
 ) -> Result<()> {
     // Convert to CString, then fill with padding bytes if required
-    let header_json = serde_json::to_string(json_header)?;
-    let header_json_cstr = CString::new(header_json)?;
+    let header_json =
+        serde_json::to_string(json_header).context("Could not convert JSON header to string")?;
 
-    writer.write(header_json_cstr.as_bytes_with_nul())?;
+    writer
+        .write_all(header_json.as_bytes())
+        .context("Could not write JSON header to writer")?;
 
-    let current_position_in_file = position_in_file + header_json_cstr.as_bytes_with_nul().len();
+    let current_position_in_file = position_in_file + header_json.as_bytes().len();
 
     let next_8_byte_boundary = current_position_in_file.align_to(8);
     let num_padding_bytes = next_8_byte_boundary - current_position_in_file;
 
     if num_padding_bytes > 0 {
-        writer.write(&vec![0x20; num_padding_bytes as usize])?;
+        writer
+            .write(&vec![0x20; num_padding_bytes as usize])
+            .context("Could not write padding bytes of JSON header to writer")?;
     }
 
     Ok(())

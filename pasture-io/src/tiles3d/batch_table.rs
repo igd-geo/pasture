@@ -1,11 +1,12 @@
 use anyhow::{anyhow, bail, Result};
+use pasture_core::math::Alignable;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
     collections::HashMap,
     convert::TryFrom,
     convert::TryInto,
-    io::{BufRead, Seek, Write},
+    io::{BufRead, Seek, SeekFrom, Write},
 };
 
 use super::{read_json_header, write_json_header};
@@ -90,8 +91,21 @@ pub type BatchTableHeader = HashMap<String, BatchTableEntry>;
 /// Deserialize a `BatchTableHeader` from the given `reader`. If successful, returns the serialized header and the
 /// `reader` will be at the start of the binary body of the 3D Tiles BatchTable. See the [3D Tiles documentation](https://github.com/CesiumGS/3d-tiles/blob/master/specification/TileFormats/BatchTable/README.md)
 /// for more information. If this operation fails, the reader will be in an undefined state.
-pub fn deser_batch_table_header<R: BufRead + Seek>(mut reader: R) -> Result<BatchTableHeader> {
-    let batch_table_header_json = read_json_header(&mut reader)?;
+pub fn deser_batch_table_header<R: BufRead + Seek>(
+    mut reader: R,
+    batch_table_header_size: usize,
+    header_start_position_in_file: usize,
+) -> Result<BatchTableHeader> {
+    let batch_table_header_json = read_json_header(&mut reader, batch_table_header_size)?;
+    // Read the potential padding bytes so we end at an 8-byte boundary in the file. since the 'reader' can be a
+    // sub-reader that does not refer to the whole file, we need the start position of the header in the file as
+    // an extra parameter
+    let current_position_in_file = header_start_position_in_file + batch_table_header_size;
+    let padding_bytes = current_position_in_file.align_to(8) - current_position_in_file;
+    if padding_bytes > 0 {
+        reader.seek(SeekFrom::Current(padding_bytes as i64))?;
+    }
+
     let batch_table_json_obj = batch_table_header_json
         .as_object()
         .ok_or(anyhow!("BatchTable JSON header was no JSON object"))?;
@@ -153,14 +167,14 @@ mod tests {
         ser_batch_table_header(&mut writer, &expected_header, 0)?;
 
         // Make sure that the header is written with padding bytes so that we are at an 8-byte boundary
-        let stream_pos = writer.seek(SeekFrom::Current(0))?;
-        assert_eq!(stream_pos % 8, 0);
+        let header_size = writer.seek(SeekFrom::Current(0))? as usize;
+        assert_eq!(header_size % 8, 0);
 
         let mut cursor = writer.into_inner()?;
         cursor.seek(SeekFrom::Start(0))?;
 
         let mut reader = BufReader::new(cursor);
-        let actual_header = deser_batch_table_header(&mut reader)?;
+        let actual_header = deser_batch_table_header(&mut reader, header_size, 0)?;
 
         assert_eq!(expected_header, actual_header);
 

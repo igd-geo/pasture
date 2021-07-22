@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 
@@ -43,6 +44,14 @@ impl PntsHeader {
             batch_table_json_byte_length,
             batch_table_binary_byte_length,
         }
+    }
+
+    /// Returns an Err if the magic bytes in this header are not correct
+    pub fn verify_magic(&self) -> Result<()> {
+        if self.magic != [b'p', b'n', b't', b's'] {
+            bail!("No valid PNTS file, expected first four bytes to be equal to 'pnts', but was '{:?}' instead", self.magic);
+        }
+        Ok(())
     }
 }
 

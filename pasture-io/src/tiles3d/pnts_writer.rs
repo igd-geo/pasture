@@ -147,8 +147,12 @@ impl<W: Write + Seek> PntsWriter<W> {
         let mut feature_table_blob = vec![];
         let mut batch_table_blob = vec![];
 
-        ser_feature_table_header(Cursor::new(&mut feature_table_blob), &feature_table_header)
-            .context("Error serializing FeatureTable header")?;
+        ser_feature_table_header(
+            Cursor::new(&mut feature_table_blob),
+            &feature_table_header,
+            PntsHeader::BYTE_LENGTH,
+        )
+        .context("Error serializing FeatureTable header")?;
 
         let feature_table_byte_size = feature_table_blob.len();
         let feature_table_body_byte_size = self.calc_feature_table_body_length();

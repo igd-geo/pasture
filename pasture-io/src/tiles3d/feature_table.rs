@@ -1,14 +1,15 @@
 use anyhow::{anyhow, Result};
+use pasture_core::math::Alignable;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
     collections::HashMap,
     convert::TryFrom,
     convert::TryInto,
-    io::{BufRead, Seek, Write},
+    io::{BufRead, Seek, SeekFrom, Write},
 };
 
-use super::{read_json_header, write_json_header, PntsHeader};
+use super::{read_json_header, write_json_header};
 
 /// A reference to data inside a FeatureTable binary body
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -110,8 +111,21 @@ pub type FeatureTableHeader = HashMap<String, FeatureTableValue>;
 /// Deserialize a `FeatureTableHeader` from the given `reader`. If successful, returns the serialized header and the
 /// `reader` will be at the start of the binary body of the 3D Tiles FeatureTable. See the [3D Tiles documentation](https://github.com/CesiumGS/3d-tiles/blob/master/specification/TileFormats/FeatureTable/README.md)
 /// for more information. If this operation fails, the reader will be in an undefined state.
-pub fn deser_feature_table_header<R: BufRead + Seek>(mut reader: R) -> Result<FeatureTableHeader> {
-    let feature_table_header_json = read_json_header(&mut reader)?;
+pub fn deser_feature_table_header<R: BufRead + Seek>(
+    mut reader: R,
+    feature_table_header_size: usize,
+    header_start_position_in_file: usize,
+) -> Result<FeatureTableHeader> {
+    let feature_table_header_json = read_json_header(&mut reader, feature_table_header_size)?;
+    // Read the potential padding bytes so we end at an 8-byte boundary in the file. since the 'reader' can be a
+    // sub-reader that does not refer to the whole file, we need the start position of the header in the file as
+    // an extra parameter
+    let current_position_in_file = header_start_position_in_file + feature_table_header_size;
+    let padding_bytes = current_position_in_file.align_to(8) - current_position_in_file;
+    if padding_bytes > 0 {
+        reader.seek(SeekFrom::Current(padding_bytes as i64))?;
+    }
+
     let feature_table_obj = feature_table_header_json
         .as_object()
         .ok_or(anyhow!("FeatureTable JSON header was no JSON object"))?;
@@ -130,6 +144,7 @@ pub fn deser_feature_table_header<R: BufRead + Seek>(mut reader: R) -> Result<Fe
 pub fn ser_feature_table_header<W: Write>(
     mut writer: W,
     feature_table_header: &FeatureTableHeader,
+    header_start_position_in_file: usize,
 ) -> Result<()> {
     let header_as_map = feature_table_header
         .iter()
@@ -138,7 +153,7 @@ pub fn ser_feature_table_header<W: Write>(
     let header_json_obj = Value::Object(header_as_map);
 
     // FeatureTable header is the first thing written after the .pnts header
-    write_json_header(&mut writer, &header_json_obj, PntsHeader::BYTE_LENGTH)
+    write_json_header(&mut writer, &header_json_obj, header_start_position_in_file)
 }
 
 #[cfg(test)]
@@ -173,17 +188,17 @@ mod tests {
         let expected_header = dummy_feature_table_header();
 
         let mut writer = BufWriter::new(Cursor::new(vec![]));
-        ser_feature_table_header(&mut writer, &expected_header)?;
+        ser_feature_table_header(&mut writer, &expected_header, 0)?;
 
         // Make sure that the header is written with padding bytes so that we are at an 8-byte boundary
-        let stream_pos = writer.seek(SeekFrom::Current(0))?;
-        assert_eq!(stream_pos % 8, 0);
+        let header_size_in_file = writer.seek(SeekFrom::Current(0))? as usize;
+        assert_eq!(header_size_in_file % 8, 0);
 
         let mut cursor = writer.into_inner()?;
         cursor.seek(SeekFrom::Start(0))?;
 
         let mut reader = BufReader::new(cursor);
-        let actual_header = deser_feature_table_header(&mut reader)?;
+        let actual_header = deser_feature_table_header(&mut reader, header_size_in_file, 0)?;
 
         assert_eq!(expected_header, actual_header);
 
