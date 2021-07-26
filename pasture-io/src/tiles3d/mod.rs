@@ -18,3 +18,6 @@ pub use self::batch_table::*;
 
 mod common;
 pub use self::common::*;
+
+mod tileset;
+pub use self::tileset::*;
