@@ -237,4 +237,14 @@ mod tests {
         let example_tileset = get_example_tileset();
         assert_eq!(example_tileset, tileset);
     }
+
+    #[test]
+    fn test_ser_deser_tileset() {
+        let example_tileset = get_example_tileset();
+        let as_json =
+            serde_json::to_string(&example_tileset).expect("Error while serializing tileset JSON");
+        let tileset_again =
+            serde_json::from_str(as_json.as_str()).expect("Error while deserializing tileset JSON");
+        assert_eq!(example_tileset, tileset_again);
+    }
 }
