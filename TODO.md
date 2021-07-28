@@ -90,7 +90,7 @@
     - [ ] Reader
         - [x] Positions
         - [ ] Quantized positions
-        - [ ] RGBA colors
+        - [x] RGBA colors
         - [x] RGB colors
         - [ ] RGB565 colors
         - [x] Normals
@@ -100,7 +100,7 @@
     - [ ] Writer
         - [x] Positions
         - [ ] Quantized positions
-        - [ ] RGBA colors
+        - [x] RGBA colors
         - [x] RGB colors
         - [x] Normals
         - [ ] Normals oct encoded
@@ -108,7 +108,7 @@
         - [ ] Batch table and custom attributes
         - [ ] Write from custom PointLayout
 - [ ] ASCII
-    - [ ] Reader
+    - [x] Reader
     - [ ] Writer
 - [ ] Documentation
     - [ ] Crate-documentation
