@@ -24,7 +24,7 @@ impl<'a> AsciiReader<'a> {
     /// ```no_run
     /// use std::path::Path;
     /// use anyhow::Result;
-    /// use pasture_io::ascii:AsciiReader;
+    /// use pasture_io::ascii::AsciiReader;
     /// fn main() -> Result<()> {
     ///     let path = Path::new("foo.txt");
     ///     let reader = AsciiReader::from_path(path, "xyzie", ", ")?;
