@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use pasture_core::nalgebra::{Matrix4, Vector3};
+use pasture_core::{
+    math::AABB,
+    nalgebra::{Matrix4, Vector3},
+};
 
 /// 3D Tiles refinement strategy
 #[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -83,6 +86,24 @@ impl BoundingBox {
     }
 }
 
+impl From<AABB<f64>> for BoundingBox {
+    fn from(aabb: AABB<f64>) -> Self {
+        (&aabb).into()
+    }
+}
+
+impl From<&AABB<f64>> for BoundingBox {
+    fn from(aabb: &AABB<f64>) -> Self {
+        let half_extent = aabb.extent() * 0.5;
+        Self::new(
+            aabb.center().coords,
+            Vector3::new(half_extent.x, 0.0, 0.0),
+            Vector3::new(0.0, half_extent.y, 0.0),
+            Vector3::new(0.0, 0.0, half_extent.z),
+        )
+    }
+}
+
 /// 3D Tiles bounding sphere
 #[derive(Copy, Clone, Serialize, Deserialize, Default, PartialEq, Debug)]
 pub struct BoundingSphere([f64; 4]);
@@ -120,8 +141,8 @@ impl Default for BoundingVolume {
 
 #[derive(Clone, Serialize, Deserialize, Default, PartialEq, Debug)]
 pub struct TilesetContent {
-    #[serde(rename = "boundingVolume")]
-    pub bounding_volume: BoundingVolume,
+    #[serde(rename = "boundingVolume", skip_serializing_if = "Option::is_none")]
+    pub bounding_volume: Option<BoundingVolume>,
     pub uri: String,
 }
 
@@ -130,23 +151,36 @@ pub struct TilesetContent {
 pub struct Tileset {
     #[serde(rename = "geometricError")]
     pub geometric_error: f64,
-    #[serde(rename = "refine")]
+    #[serde(rename = "refine", skip_serializing_if = "Option::is_none")]
     pub refinement: Option<Refinement>,
     #[serde(rename = "boundingVolume")]
     pub bounding_volume: BoundingVolume,
-    #[serde(rename = "viewerRequestVolume")]
+    #[serde(
+        rename = "viewerRequestVolume",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub viewer_request_volume: Option<BoundingVolume>,
     pub content: TilesetContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transform: Option<Matrix4<f64>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Tileset>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct TilesetAssetInfo {
     pub version: String,
-    #[serde(rename = "tilesetVersion")]
-    pub tileset_version: String,
+    #[serde(rename = "tilesetVersion", skip_serializing_if = "Option::is_none")]
+    pub tileset_version: Option<String>,
+}
+
+impl Default for TilesetAssetInfo {
+    fn default() -> Self {
+        Self {
+            version: "1.0".into(),
+            tileset_version: None,
+        }
+    }
 }
 
 /// Property inside the root tileset.json
@@ -160,6 +194,7 @@ pub struct TilesetProperty {
 #[derive(Clone, Serialize, Deserialize, Default, PartialEq, Debug)]
 pub struct RootTileset {
     pub asset: TilesetAssetInfo,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub properties: HashMap<String, TilesetProperty>,
     #[serde(rename = "geometricError")]
     pub geometric_error: f64,
@@ -183,7 +218,7 @@ mod tests {
         let mut tileset: RootTileset = Default::default();
         tileset.asset = TilesetAssetInfo {
             version: "1.0".into(),
-            tileset_version: "e575c6f1-a45b-420a-b172-6449fa6e0a59".into(),
+            tileset_version: Some("e575c6f1-a45b-420a-b172-6449fa6e0a59".into()),
         };
         tileset.properties.insert(
             "Height".into(),
@@ -206,14 +241,14 @@ mod tests {
             geometric_error: 268.378,
             refinement: Some(Refinement::Add),
             content: TilesetContent {
-                bounding_volume: BoundingVolume::Region(BoundingRegion::new(
+                bounding_volume: Some(BoundingVolume::Region(BoundingRegion::new(
                     -0.000400169090897,
                     0.8988700116775743,
                     0.0001009672972278,
                     0.8989625664878067,
                     0.0,
                     241.6,
-                )),
+                ))),
                 uri: "0/0/0.b3dm".into(),
             },
             ..Default::default()

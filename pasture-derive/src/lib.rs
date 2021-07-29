@@ -270,6 +270,8 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
                             Ok("ReturnPointWaveformLocation".into())
                         }
                         "BUILTIN_WAVEFORM_PARAMETERS" => Ok("WaveformParameters".into()),
+                        "BUILTIN_POINT_ID" => Ok("PointID".into()),
+                        "BUILTIN_NORMAL" => Ok("Normal".into()),
                         // TODO Other attributes
                         _ => {
                             return Err(Error::new_spanned(
@@ -422,6 +424,8 @@ fn calculate_offsets_and_alignment(
 /// - `BUILTIN_WAVEFORM_PACKET_SIZE` corresponding to the [WAVEFORM_PACKET_SIZE](pasture_core::layout::attributes::WAVEFORM_PACKET_SIZE) attribute
 /// - `BUILTIN_RETURN_POINT_WAVEFORM_LOCATION` corresponding to the [RETURN_POINT_WAVEFORM_LOCATION](pasture_core::layout::attributes::RETURN_POINT_WAVEFORM_LOCATION) attribute
 /// - `BUILTIN_WAVEFORM_PARAMETERS` corresponding to the [WAVEFORM_PARAMETERS](pasture_core::layout::attributes::WAVEFORM_PARAMETERS) attribute
+/// - `BUILTIN_POINT_ID` corresponding to the [POINT_ID](pasture_core::layout::attributes::POINT_ID) attribute
+/// - `BUILTIN_NORMAL` corresponding to the [NORMAL](pasture_core::layout::attributes::NORMAL) attribute
 ///
 /// # Custom attributes
 ///
