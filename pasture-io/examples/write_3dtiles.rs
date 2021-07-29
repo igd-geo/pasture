@@ -65,9 +65,12 @@ fn gen_points() -> PerAttributeVecPointStorage {
 }
 
 fn create_tileset_for_points() -> RootTileset {
-    // We know the bounds statically, but you could also use `calculate_bounds` from `pasture-algorithms`
+    // Using some approximate bounds here, but you could also use `calculate_bounds` from `pasture-algorithms` to
+    // get a tight-fitting bounding box
     let bounds = AABB::from_min_max(Point3::new(0.0, 0.0, -4.0), Point3::new(63.0, 63.0, 4.0));
 
+    // We have a single tileset in this example, which has the given bounds, references the .pnts file
+    // and has some extra parameters that are required for the visualization in e.g. Cesium
     let tileset = Tileset {
         bounding_volume: BoundingVolume::Box(bounds.into()),
         content: TilesetContent {
@@ -87,6 +90,12 @@ fn create_tileset_for_points() -> RootTileset {
 }
 
 fn main() -> Result<()> {
+    // 3D Tiles is made up of 'tilesets', which are stored inside a 'tileset.json' file. Each tileset represents
+    // a piece of geometry (a point cloud in our case) associated with some meta-information, such as the bounding
+    // volume of the geometry. Point clouds themselves are stored in the '.pnts' format with 3D Tiles, so we first
+    // write some points into the points.pnts file, then create a corresponding tileset and write it into the tileset.json
+    // file. The tileset internally references the points.pnts file
+
     let points = gen_points();
     {
         let mut writer = PntsWriter::from_write_and_layout(
