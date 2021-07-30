@@ -681,9 +681,9 @@ impl<T: Read + Seek> RawLASReader<T> {
         point_scales: &Vector3<f64>,
         point_offsets: &Vector3<f64>,
     ) -> Result<Vector3<f64>> {
-        let local_x = reader.read_u32::<LittleEndian>()?;
-        let local_y = reader.read_u32::<LittleEndian>()?;
-        let local_z = reader.read_u32::<LittleEndian>()?;
+        let local_x = reader.read_i32::<LittleEndian>()?;
+        let local_y = reader.read_i32::<LittleEndian>()?;
+        let local_z = reader.read_i32::<LittleEndian>()?;
         let global_x = (local_x as f64 * point_scales.x) + point_offsets.x;
         let global_y = (local_y as f64 * point_scales.y) + point_offsets.y;
         let global_z = (local_z as f64 * point_scales.z) + point_offsets.z;
@@ -1508,9 +1508,9 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         &self,
         decompressed_data: &mut Cursor<&mut [u8]>,
     ) -> Result<Vector3<f64>> {
-        let local_x = decompressed_data.read_u32::<LittleEndian>()?;
-        let local_y = decompressed_data.read_u32::<LittleEndian>()?;
-        let local_z = decompressed_data.read_u32::<LittleEndian>()?;
+        let local_x = decompressed_data.read_i32::<LittleEndian>()?;
+        let local_y = decompressed_data.read_i32::<LittleEndian>()?;
+        let local_z = decompressed_data.read_i32::<LittleEndian>()?;
         let global_x = (local_x as f64 * self.point_scales.x) + self.point_offsets.x;
         let global_y = (local_y as f64 * self.point_scales.y) + self.point_offsets.y;
         let global_z = (local_z as f64 * self.point_scales.z) + self.point_offsets.z;
