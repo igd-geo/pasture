@@ -95,7 +95,15 @@ impl<T: Read + Seek> RawLASReader<T> {
 
         let format = Format::new(self.metadata.point_format())?;
 
-        for _ in 0..num_points_in_chunk {
+        let offset_to_first_point_in_file = self.reader.seek(SeekFrom::Current(0))?;
+
+        for point_index in 0..num_points_in_chunk {
+            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
+            // supported by pasture at the moment, so we skip over them
+            let start_of_source_point =
+                offset_to_first_point_in_file + point_index as u64 * self.size_of_point_in_file;
+            self.reader.seek(SeekFrom::Start(start_of_source_point))?;
+
             // XYZ
             let local_x = self.reader.read_u32::<LittleEndian>()?;
             let local_y = self.reader.read_u32::<LittleEndian>()?;
@@ -352,6 +360,11 @@ impl<T: Read + Seek> RawLASReader<T> {
         let mut source_reader = Cursor::new(source_data);
 
         for point_index in 0..num_points_in_chunk {
+            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
+            // supported by pasture at the moment, so we skip over them
+            let start_of_source_point = point_index as u64 * self.size_of_point_in_file;
+            source_reader.seek(SeekFrom::Start(start_of_source_point))?;
+
             let start_of_target_point_in_chunk = point_index * target_point_size;
 
             run_parser(
@@ -903,7 +916,14 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         let mut target_chunk_cursor = Cursor::new(chunk_buffer);
 
         // Convert the decompressed points - which have XYZ as u32 - into the target layout
-        for _ in 0..num_points_in_chunk {
+        for point_index in 0..num_points_in_chunk {
+            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
+            // supported by pasture at the moment, so we skip over them
+            let start_of_point_in_decompressed_data =
+                point_index as u64 * self.size_of_point_in_file;
+            decompression_chunk_cursor
+                .seek(SeekFrom::Start(start_of_point_in_decompressed_data))?;
+
             let local_x = decompression_chunk_cursor.read_i32::<LittleEndian>()?;
             let local_y = decompression_chunk_cursor.read_i32::<LittleEndian>()?;
             let local_z = decompression_chunk_cursor.read_i32::<LittleEndian>()?;
@@ -1179,6 +1199,12 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         }
 
         for point_index in 0..num_points_in_chunk {
+            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
+            // supported by pasture at the moment, so we skip over them
+            let start_of_point_in_decompressed_data =
+                point_index as u64 * self.size_of_point_in_file;
+            decompressed_data.seek(SeekFrom::Start(start_of_point_in_decompressed_data))?;
+
             let start_of_target_point_in_chunk = point_index * target_point_size;
 
             run_parser(
@@ -1508,6 +1534,11 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         &self,
         decompressed_data: &mut Cursor<&mut [u8]>,
     ) -> Result<Vector3<f64>> {
+        // I am 90% sure that it was wrong to read u32 here, but the switch to i32 didn't help
+        // I am expecting data in the range -40k to +40k, but I get stuff like 900M
+        // What went wrong? Decompression? Wrong memory alignment? Wrong offsets in file? Forgot to skip over some data? We can
+        // maybe check the current offset here, should be something like N*point_size_in_layout whenever we enter this function
+        let cur_pos = decompressed_data.position();
         let local_x = decompressed_data.read_i32::<LittleEndian>()?;
         let local_y = decompressed_data.read_i32::<LittleEndian>()?;
         let local_z = decompressed_data.read_i32::<LittleEndian>()?;
