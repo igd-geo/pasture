@@ -8,6 +8,7 @@ use laz::{
     las::laszip::{LASZIP_RECORD_ID, LASZIP_USER_ID},
     LasZipDecompressor,
 };
+use pasture_core::layout::PointAttributeDefinition;
 use pasture_core::{
     containers::InterleavedPointView,
     containers::{InterleavedVecPointStorage, PointBuffer, PointBufferWriteable},
@@ -217,22 +218,30 @@ impl<T: Read + Seek> RawLASReader<T> {
         // With this information, we can build a bunch of these objects and execute the I/O operations with them, should be more readable
 
         fn get_attribute_parser(
-            name: &str,
+            default_attribute: &PointAttributeDefinition,
             source_layout: &PointLayout,
             target_layout: &PointLayout,
         ) -> Option<(usize, usize, Option<AttributeConversionFn>)> {
             target_layout
-                .get_attribute_by_name(name)
+                .get_attribute_by_name(default_attribute.name())
                 .map_or(None, |target_attribute| {
-                    let converter =
-                        source_layout
-                            .get_attribute_by_name(name)
-                            .and_then(|source_attribute| {
-                                get_converter_for_attributes(
-                                    &source_attribute.into(),
-                                    &target_attribute.into(),
-                                )
-                            });
+                    let converter = source_layout
+                        .get_attribute_by_name(default_attribute.name())
+                        .and_then(|source_attribute| {
+                            get_converter_for_attributes(
+                                &source_attribute.into(),
+                                &target_attribute.into(),
+                            )
+                        })
+                        .or_else(|| {
+                            // If the source_layout does not contain the desired attribute, we still might need a converter
+                            // because in this case a default attribute is read (e.g. Vector3<u16> for COLOR_RGB), and this
+                            // default attribute might have a different data type from the target attribute
+                            get_converter_for_attributes(
+                                default_attribute,
+                                &target_attribute.into(),
+                            )
+                        });
                     let offset_of_attribute = target_attribute.offset() as usize;
                     let size_of_attribute = target_attribute.size() as usize;
                     Some((offset_of_attribute, size_of_attribute, converter))
@@ -240,84 +249,65 @@ impl<T: Read + Seek> RawLASReader<T> {
         }
 
         let target_position_parser =
-            get_attribute_parser(attributes::POSITION_3D.name(), &self.layout, target_layout);
+            get_attribute_parser(&attributes::POSITION_3D, &self.layout, target_layout);
         let target_intensity_parser =
-            get_attribute_parser(attributes::INTENSITY.name(), &self.layout, target_layout);
-        let target_return_number_parser = get_attribute_parser(
-            attributes::RETURN_NUMBER.name(),
-            &self.layout,
-            target_layout,
-        );
-        let target_number_of_returns_parser = get_attribute_parser(
-            attributes::NUMBER_OF_RETURNS.name(),
-            &self.layout,
-            target_layout,
-        );
+            get_attribute_parser(&attributes::INTENSITY, &self.layout, target_layout);
+        let target_return_number_parser =
+            get_attribute_parser(&attributes::RETURN_NUMBER, &self.layout, target_layout);
+        let target_number_of_returns_parser =
+            get_attribute_parser(&attributes::NUMBER_OF_RETURNS, &self.layout, target_layout);
         let target_classification_flags_parser = get_attribute_parser(
-            attributes::CLASSIFICATION_FLAGS.name(),
+            &attributes::CLASSIFICATION_FLAGS,
             &self.layout,
             target_layout,
         );
-        let target_scanner_channel_parser = get_attribute_parser(
-            attributes::SCANNER_CHANNEL.name(),
-            &self.layout,
-            target_layout,
-        );
+        let target_scanner_channel_parser =
+            get_attribute_parser(&attributes::SCANNER_CHANNEL, &self.layout, target_layout);
         let target_scan_direction_flag_parser = get_attribute_parser(
-            attributes::SCAN_DIRECTION_FLAG.name(),
+            &attributes::SCAN_DIRECTION_FLAG,
             &self.layout,
             target_layout,
         );
         let target_eof_parser = get_attribute_parser(
-            attributes::EDGE_OF_FLIGHT_LINE.name(),
+            &attributes::EDGE_OF_FLIGHT_LINE,
             &self.layout,
             target_layout,
         );
-        let target_classification_parser = get_attribute_parser(
-            attributes::CLASSIFICATION.name(),
-            &self.layout,
-            target_layout,
-        );
-        let target_scan_angle_rank_parser = get_attribute_parser(
-            attributes::SCAN_ANGLE_RANK.name(),
-            &self.layout,
-            target_layout,
-        );
+        let target_classification_parser =
+            get_attribute_parser(&attributes::CLASSIFICATION, &self.layout, target_layout);
+        let target_scan_angle_rank_parser =
+            get_attribute_parser(&attributes::SCAN_ANGLE_RANK, &self.layout, target_layout);
         let target_user_data_parser =
-            get_attribute_parser(attributes::USER_DATA.name(), &self.layout, target_layout);
-        let target_point_source_id_parser = get_attribute_parser(
-            attributes::POINT_SOURCE_ID.name(),
-            &self.layout,
-            target_layout,
-        );
+            get_attribute_parser(&attributes::USER_DATA, &self.layout, target_layout);
+        let target_point_source_id_parser =
+            get_attribute_parser(&attributes::POINT_SOURCE_ID, &self.layout, target_layout);
         let target_gps_time_parser =
-            get_attribute_parser(attributes::GPS_TIME.name(), &self.layout, target_layout);
+            get_attribute_parser(&attributes::GPS_TIME, &self.layout, target_layout);
         let target_color_parser =
-            get_attribute_parser(attributes::COLOR_RGB.name(), &self.layout, target_layout);
-        let target_nir_parser =
-            get_attribute_parser(attributes::NIR.name(), &self.layout, target_layout);
+            get_attribute_parser(&attributes::COLOR_RGB, &self.layout, target_layout);
+        let target_nir_parser = get_attribute_parser(&attributes::NIR, &self.layout, target_layout);
         let target_wave_packet_index_parser = get_attribute_parser(
-            attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name(),
+            &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
             &self.layout,
             target_layout,
         );
         let target_waveform_byte_offset_parser = get_attribute_parser(
-            attributes::WAVEFORM_DATA_OFFSET.name(),
+            &attributes::WAVEFORM_DATA_OFFSET,
             &self.layout,
             target_layout,
         );
         let target_waveform_packet_size_parser = get_attribute_parser(
-            attributes::WAVEFORM_PACKET_SIZE.name(),
+            &attributes::WAVEFORM_PACKET_SIZE,
             &self.layout,
             target_layout,
         );
         let target_waveform_return_point_parser = get_attribute_parser(
-            attributes::RETURN_POINT_WAVEFORM_LOCATION.name(),
+            &attributes::RETURN_POINT_WAVEFORM_LOCATION,
             &self.layout,
             target_layout,
         );
         let target_waveform_parameters_parser = get_attribute_parser(
-            attributes::WAVEFORM_PARAMETERS.name(),
+            &attributes::WAVEFORM_PARAMETERS,
             &self.layout,
             target_layout,
         );
@@ -1055,22 +1045,30 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         let source_format = Format::new(self.metadata.point_format())?;
 
         fn get_attribute_parser(
-            name: &str,
+            default_attribute: &PointAttributeDefinition,
             source_layout: &PointLayout,
             target_layout: &PointLayout,
         ) -> Option<(usize, usize, Option<AttributeConversionFn>)> {
             target_layout
-                .get_attribute_by_name(name)
+                .get_attribute_by_name(default_attribute.name())
                 .map_or(None, |target_attribute| {
-                    let converter =
-                        source_layout
-                            .get_attribute_by_name(name)
-                            .and_then(|source_attribute| {
-                                get_converter_for_attributes(
-                                    &source_attribute.into(),
-                                    &target_attribute.into(),
-                                )
-                            });
+                    let converter = source_layout
+                        .get_attribute_by_name(default_attribute.name())
+                        .and_then(|source_attribute| {
+                            get_converter_for_attributes(
+                                &source_attribute.into(),
+                                &target_attribute.into(),
+                            )
+                        })
+                        .or_else(|| {
+                            // If the source_layout does not contain the desired attribute, we still might need a converter
+                            // because in this case a default attribute is read (e.g. Vector3<u16> for COLOR_RGB), and this
+                            // default attribute might have a different data type from the target attribute
+                            get_converter_for_attributes(
+                                default_attribute,
+                                &target_attribute.into(),
+                            )
+                        });
                     let offset_of_attribute = target_attribute.offset() as usize;
                     let size_of_attribute = target_attribute.size() as usize;
                     Some((offset_of_attribute, size_of_attribute, converter))
@@ -1078,84 +1076,65 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         }
 
         let target_position_parser =
-            get_attribute_parser(attributes::POSITION_3D.name(), &self.layout, target_layout);
+            get_attribute_parser(&attributes::POSITION_3D, &self.layout, target_layout);
         let target_intensity_parser =
-            get_attribute_parser(attributes::INTENSITY.name(), &self.layout, target_layout);
-        let target_return_number_parser = get_attribute_parser(
-            attributes::RETURN_NUMBER.name(),
-            &self.layout,
-            target_layout,
-        );
-        let target_number_of_returns_parser = get_attribute_parser(
-            attributes::NUMBER_OF_RETURNS.name(),
-            &self.layout,
-            target_layout,
-        );
+            get_attribute_parser(&attributes::INTENSITY, &self.layout, target_layout);
+        let target_return_number_parser =
+            get_attribute_parser(&attributes::RETURN_NUMBER, &self.layout, target_layout);
+        let target_number_of_returns_parser =
+            get_attribute_parser(&attributes::NUMBER_OF_RETURNS, &self.layout, target_layout);
         let target_classification_flags_parser = get_attribute_parser(
-            attributes::CLASSIFICATION_FLAGS.name(),
+            &attributes::CLASSIFICATION_FLAGS,
             &self.layout,
             target_layout,
         );
-        let target_scanner_channel_parser = get_attribute_parser(
-            attributes::SCANNER_CHANNEL.name(),
-            &self.layout,
-            target_layout,
-        );
+        let target_scanner_channel_parser =
+            get_attribute_parser(&attributes::SCANNER_CHANNEL, &self.layout, target_layout);
         let target_scan_direction_flag_parser = get_attribute_parser(
-            attributes::SCAN_DIRECTION_FLAG.name(),
+            &attributes::SCAN_DIRECTION_FLAG,
             &self.layout,
             target_layout,
         );
         let target_eof_parser = get_attribute_parser(
-            attributes::EDGE_OF_FLIGHT_LINE.name(),
+            &attributes::EDGE_OF_FLIGHT_LINE,
             &self.layout,
             target_layout,
         );
-        let target_classification_parser = get_attribute_parser(
-            attributes::CLASSIFICATION.name(),
-            &self.layout,
-            target_layout,
-        );
-        let target_scan_angle_rank_parser = get_attribute_parser(
-            attributes::SCAN_ANGLE_RANK.name(),
-            &self.layout,
-            target_layout,
-        );
+        let target_classification_parser =
+            get_attribute_parser(&attributes::CLASSIFICATION, &self.layout, target_layout);
+        let target_scan_angle_rank_parser =
+            get_attribute_parser(&attributes::SCAN_ANGLE_RANK, &self.layout, target_layout);
         let target_user_data_parser =
-            get_attribute_parser(attributes::USER_DATA.name(), &self.layout, target_layout);
-        let target_point_source_id_parser = get_attribute_parser(
-            attributes::POINT_SOURCE_ID.name(),
-            &self.layout,
-            target_layout,
-        );
+            get_attribute_parser(&attributes::USER_DATA, &self.layout, target_layout);
+        let target_point_source_id_parser =
+            get_attribute_parser(&attributes::POINT_SOURCE_ID, &self.layout, target_layout);
         let target_gps_time_parser =
-            get_attribute_parser(attributes::GPS_TIME.name(), &self.layout, target_layout);
+            get_attribute_parser(&attributes::GPS_TIME, &self.layout, target_layout);
         let target_color_parser =
-            get_attribute_parser(attributes::COLOR_RGB.name(), &self.layout, target_layout);
-        let target_nir_parser =
-            get_attribute_parser(attributes::NIR.name(), &self.layout, target_layout);
+            get_attribute_parser(&attributes::COLOR_RGB, &self.layout, target_layout);
+        let target_nir_parser = get_attribute_parser(&attributes::NIR, &self.layout, target_layout);
         let target_wave_packet_index_parser = get_attribute_parser(
-            attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name(),
+            &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
             &self.layout,
             target_layout,
         );
         let target_waveform_byte_offset_parser = get_attribute_parser(
-            attributes::WAVEFORM_DATA_OFFSET.name(),
+            &attributes::WAVEFORM_DATA_OFFSET,
             &self.layout,
             target_layout,
         );
         let target_waveform_packet_size_parser = get_attribute_parser(
-            attributes::WAVEFORM_PACKET_SIZE.name(),
+            &attributes::WAVEFORM_PACKET_SIZE,
             &self.layout,
             target_layout,
         );
         let target_waveform_return_point_parser = get_attribute_parser(
-            attributes::RETURN_POINT_WAVEFORM_LOCATION.name(),
+            &attributes::RETURN_POINT_WAVEFORM_LOCATION,
             &self.layout,
             target_layout,
         );
         let target_waveform_parameters_parser = get_attribute_parser(
-            attributes::WAVEFORM_PARAMETERS.name(),
+            &attributes::WAVEFORM_PARAMETERS,
             &self.layout,
             target_layout,
         );
@@ -1534,11 +1513,6 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         &self,
         decompressed_data: &mut Cursor<&mut [u8]>,
     ) -> Result<Vector3<f64>> {
-        // I am 90% sure that it was wrong to read u32 here, but the switch to i32 didn't help
-        // I am expecting data in the range -40k to +40k, but I get stuff like 900M
-        // What went wrong? Decompression? Wrong memory alignment? Wrong offsets in file? Forgot to skip over some data? We can
-        // maybe check the current offset here, should be something like N*point_size_in_layout whenever we enter this function
-        let cur_pos = decompressed_data.position();
         let local_x = decompressed_data.read_i32::<LittleEndian>()?;
         let local_y = decompressed_data.read_i32::<LittleEndian>()?;
         let local_z = decompressed_data.read_i32::<LittleEndian>()?;
@@ -1677,8 +1651,9 @@ mod tests {
 
     use crate::las::{
         compare_to_reference_data, compare_to_reference_data_range, get_test_las_path,
-        get_test_laz_path, test_data_bounds, test_data_classifications, test_data_point_count,
-        test_data_point_source_ids, test_data_positions, test_data_wavepacket_parameters,
+        get_test_laz_path, test_data_bounds, test_data_classifications, test_data_colors,
+        test_data_point_count, test_data_point_source_ids, test_data_positions,
+        test_data_wavepacket_parameters,
     };
 
     use super::*;
@@ -1790,6 +1765,7 @@ mod tests {
                             .with_custom_datatype(PointAttributeDataType::Vec3f32),
                         attributes::CLASSIFICATION
                             .with_custom_datatype(PointAttributeDataType::U32),
+                        attributes::COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
                         attributes::POINT_SOURCE_ID,
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
@@ -1823,6 +1799,26 @@ mod tests {
                         expected_classifications, classifications,
                         "Classifications do not match"
                     );
+
+                    let colors = buffer
+                        .iter_attribute::<Vector3<u8>>(
+                            &attributes::COLOR_RGB
+                                .with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        )
+                        .collect::<Vec<_>>();
+                    let expected_colors = if format.has_color {
+                        test_data_colors()
+                            .iter()
+                            .map(|c| {
+                                Vector3::new((c.x >> 8) as u8, (c.y >> 8) as u8, (c.z >> 8) as u8)
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        (0..10)
+                            .map(|_| -> Vector3<u8> { Default::default() })
+                            .collect::<Vec<_>>()
+                    };
+                    assert_eq!(expected_colors, colors, "Colors do not match");
 
                     let point_source_ids = buffer
                         .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
