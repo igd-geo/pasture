@@ -147,6 +147,7 @@ impl<'a> Device<'a> {
         self.bind_groups.push(bind_group);
     }
 
+    // TODO: support WGSL shaders?
     pub fn set_compute_shader(&mut self, compute_shader_src: &str) {
         self.cs_module = self.compile_and_create_compute_module(compute_shader_src);
 

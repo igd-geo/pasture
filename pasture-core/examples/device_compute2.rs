@@ -1,6 +1,6 @@
 use pasture_core::gpu;
 use pasture_core::nalgebra::Vector3;
-use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage};
+use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage, PointBuffer};
 use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
@@ -147,11 +147,9 @@ async fn run() {
         binding: 0
     };
 
-
-
     let mut gpu_point_buffer = GpuPointBufferInterleaved::new();
-    // gpu_point_buffer.alloc(3, &buffer_info_interleaved, &mut device.wgpu_device);
-    gpu_point_buffer.upload(&mut point_buffer, buffer_info_interleaved, &mut device.wgpu_device);
+    gpu_point_buffer.malloc(3, &buffer_info_interleaved, &mut device.wgpu_device);
+    gpu_point_buffer.upload(&point_buffer, 0..point_buffer.len(), &buffer_info_interleaved, &mut device.wgpu_device, &device.wgpu_queue).await;
 
     device.add_bind_group(gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
     device.set_compute_shader(include_str!("shaders/device2.comp"));

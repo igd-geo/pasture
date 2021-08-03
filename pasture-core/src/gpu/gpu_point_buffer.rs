@@ -3,7 +3,6 @@ use bytemuck::__core::convert::TryInto;
 use crate::containers::PointBuffer;
 use crate::gpu::{BufferInfoInterleaved, BufferInfoPerAttribute};
 use wgpu::util::DeviceExt;
-use wgpu::Buffer;
 
 pub trait GpuPointBuffer {
     fn bytes_per_element(&self, datatype: PointAttributeDataType) -> u32 {
@@ -263,6 +262,7 @@ pub trait GpuPointBuffer {
         return ret_bytes;
     }
 
+    // TODO: see if this can be done better with less duplication (the offset parameter is also ugly)
     fn calc_size(&self, num_bytes: usize, datatype: PointAttributeDataType, offset: &mut usize) {
         match datatype {
             PointAttributeDataType::U8 | PointAttributeDataType::I8 | PointAttributeDataType::Bool => {
@@ -386,10 +386,7 @@ pub struct GpuPointBufferInterleaved {
 
     buffer: Option<wgpu::Buffer>,
     buffer_size: Option<wgpu::BufferAddress>,
-
-    buffers: Vec<wgpu::Buffer>,
-    buffer_sizes: Vec<wgpu::BufferAddress>,
-    buffer_bindings: Vec<u32>,
+    buffer_binding: Option<u32>,
 }
 
 impl GpuPointBuffer for GpuPointBufferInterleaved {}
@@ -401,13 +398,11 @@ impl GpuPointBufferInterleaved {
             bind_group: None,
             buffer: None,
             buffer_size: None,
-            buffers: vec![],
-            buffer_sizes: vec![],
-            buffer_bindings: vec![],
+            buffer_binding: None,
         }
     }
 
-    pub fn alloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
+    pub fn malloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
         let mut offset: usize = 0;
         for _ in 0..num_points {
             for attrib in buffer_info.attributes {
@@ -419,6 +414,8 @@ impl GpuPointBufferInterleaved {
         let size = offset as wgpu::BufferAddress;
         println!("Calculated size: {}", size);
         self.buffer_size = Some(size);
+
+        self.buffer_binding = Some(buffer_info.binding);
 
         self.buffer = Some(wgpu_device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -434,34 +431,26 @@ impl GpuPointBufferInterleaved {
         ));
     }
 
-    pub fn upload(&mut self, buffer: &mut dyn PointBuffer, buffer_info: BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
-        let len = buffer.len();
-
-        let layout = buffer.point_layout();
-        layout.size_of_point_entry();
-
-        // TODO: needed?
-        let mut struct_alignment = 0;
-        for attrib in buffer_info.attributes {
-            let alignment = self.alignment_per_element(attrib.datatype()) as usize;
-            if alignment > struct_alignment {
-                struct_alignment = alignment;
-            }
-        }
-
-        println!("Struct alignment: {}", struct_alignment);
-
+    // TODO: check if points_range valid etc.
+    pub async fn upload(
+        &mut self,
+        point_buffer: &dyn PointBuffer,
+        points_range: std::ops::Range<usize>,
+        buffer_info: &BufferInfoInterleaved<'_>,
+        wgpu_device: &mut wgpu::Device,
+        wgpu_queue: &wgpu::Queue)
+    {
         // Get bytes in interleaved format
         let mut offset: usize = 0;
         let mut bytes_to_write: Vec<u8> = vec![];
-        for i in 0..len {
+        for i in points_range {
             // buffer.get_raw_point(i, &mut bytes_to_write[i..(i + bytes_per_point)]);
             for attrib in buffer_info.attributes {
                 // Store the bytes for the current attribute in 'bytes_for_attrib'
                 let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
 
                 let mut bytes_for_attrib: Vec<u8> = vec![0; num_bytes];
-                buffer.get_raw_attribute(i, attrib, &mut *bytes_for_attrib);
+                point_buffer.get_raw_attribute(i, attrib, &mut *bytes_for_attrib);
 
                 // Align each attribute TODO: may require custom align method for struct
                 let bytes_for_attrib: &[u8] = &*bytes_for_attrib;
@@ -476,84 +465,60 @@ impl GpuPointBufferInterleaved {
         // Change Vec<u8> to &[u8]
         let bytes_to_write: &[u8] = &*bytes_to_write;
 
-        let size_in_bytes = bytes_to_write.len() as wgpu::BufferAddress;
-        println!("Size = {}", size_in_bytes);
-        self.buffer_sizes.push(size_in_bytes);
+        // Write to GPU memory
+        let gpu_buffer = self.buffer.as_ref().unwrap();
+        let map = gpu_buffer.slice(..).map_async(wgpu::MapMode::Write);
+        wgpu_device.poll(wgpu::Maintain::Wait);
 
-        self.buffers.push(wgpu_device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytes_to_write,
-                usage: wgpu::BufferUsage::STORAGE |
-                    wgpu::BufferUsage::MAP_READ |
-                    wgpu::BufferUsage::MAP_WRITE |
-                    wgpu::BufferUsage::COPY_SRC |
-                    wgpu::BufferUsage::COPY_DST
-            }
-        ));
-
-        self.buffer_bindings.push(buffer_info.binding);
+        if let Ok(()) = map.await {
+            wgpu_queue.write_buffer(&gpu_buffer, 0, bytes_to_write);
+            gpu_buffer.unmap();
+        }
 
         self.create_bind_group(wgpu_device);
     }
 
+    // TODO: provide range? (But cannot be 'points_range', we only see bytes...)
     pub async fn download(&self, wgpu_device: &wgpu::Device) -> Vec<Vec<u8>> {
         let mut output_bytes: Vec<Vec<u8>> = Vec::new();
 
-        for i in 0..self.buffers.len() {
-            let download = self.buffers.get(i).unwrap();
+        let gpu_buffer = self.buffer.as_ref().unwrap();
 
-            let result_buffer_slice = download.slice(..);
-            let result_buffer_future = result_buffer_slice.map_async(wgpu::MapMode::Read);
-            wgpu_device.poll(wgpu::Maintain::Wait); // TODO: "Should be called in event loop or other thread ..."
+        let result_buffer_slice = gpu_buffer.slice(..);
+        let map = result_buffer_slice.map_async(wgpu::MapMode::Read);
+        wgpu_device.poll(wgpu::Maintain::Wait); // TODO: "Should be called in event loop or other thread ..."
 
-            // TODO: how to know the data type of the current buffer?
-            if let Ok(()) = result_buffer_future.await {
-                let result_as_bytes = result_buffer_slice.get_mapped_range();
-                &output_bytes.push(result_as_bytes.to_vec());
+        // TODO: how to know the data type of the current buffer?
+        if let Ok(()) = map.await {
+            let result_as_bytes = result_buffer_slice.get_mapped_range();
+            &output_bytes.push(result_as_bytes.to_vec());
 
-                // Drop all mapped views before unmapping buffer
-                drop(result_as_bytes);
-                download.unmap();
-            }
-        };
+            // Drop all mapped views before unmapping buffer
+            drop(result_as_bytes);
+            gpu_buffer.unmap();
+        }
 
         output_bytes
     }
 
     fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
-        let mut group_layout_entries: Vec<wgpu::BindGroupLayoutEntry> = vec![];
-        let mut group_entries: Vec<wgpu::BindGroupEntry> = vec![];
-
-        // TODO: just assumes that all layouts are COMPUTE + rw STORAGE + ...
-        for i in 0..self.buffer_bindings.len() {
-            let b = self.buffer_bindings[i];
-
-            group_layout_entries.push(
-                wgpu::BindGroupLayoutEntry {
-                    binding: b,
-                    visibility: wgpu::ShaderStage::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }
-            );
-
-            group_entries.push(
-                wgpu::BindGroupEntry {
-                    binding: b,
-                    resource: self.buffers.get(i).unwrap().as_entire_binding(),
-                }
-            );
-        }
-
         let bind_group_layout = wgpu_device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 label: None,
-                entries: &group_layout_entries,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: self.buffer_binding.unwrap(),
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage {
+                                read_only: false
+                            },
+                            has_dynamic_offset: false,
+                            min_binding_size: None
+                        },
+                        count: None
+                    }
+                ],
             }
         );
 
@@ -561,7 +526,12 @@ impl GpuPointBufferInterleaved {
             &wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &bind_group_layout,
-                entries: &group_entries,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: self.buffer_binding.unwrap(),
+                        resource: self.buffer.as_ref().unwrap().as_entire_binding(),
+                    }
+                ],
             }
         );
 
