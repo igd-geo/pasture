@@ -3,6 +3,7 @@ use bytemuck::__core::convert::TryInto;
 use crate::containers::PointBuffer;
 use crate::gpu::{BufferInfoInterleaved, BufferInfoPerAttribute};
 use wgpu::util::DeviceExt;
+use wgpu::Buffer;
 
 pub trait GpuPointBuffer {
     fn bytes_per_element(&self, datatype: PointAttributeDataType) -> u32 {
@@ -54,6 +55,7 @@ pub trait GpuPointBuffer {
 
         let num_bytes = slice.len();
 
+        println!("Num bytes = {}", num_bytes);
         println!("{}: {}", datatype, offset);
 
         // Remember, signed and unsigned have the same bit-level behavior.
@@ -76,6 +78,8 @@ pub trait GpuPointBuffer {
                     let current = (slice[i] as u32).to_ne_bytes();
                     ret_bytes.extend_from_slice(&current);
                     *offset += current.len();
+                    println!("Current length = {}", current.len());
+                    println!("Current length = {}", std::mem::size_of::<u32>());
                 }
             }
             PointAttributeDataType::U16 | PointAttributeDataType::I16 => {
@@ -96,7 +100,7 @@ pub trait GpuPointBuffer {
 
                     let current = (current as u32).to_ne_bytes();
                     ret_bytes.extend_from_slice(&current);
-                    *offset += current.len();
+                    *offset += std::mem::size_of::<u32>();
                 }
             }
             PointAttributeDataType::U32 | PointAttributeDataType::I32 => {
@@ -258,11 +262,130 @@ pub trait GpuPointBuffer {
 
         return ret_bytes;
     }
+
+    fn calc_size(&self, num_bytes: usize, datatype: PointAttributeDataType, offset: &mut usize) {
+        match datatype {
+            PointAttributeDataType::U8 | PointAttributeDataType::I8 | PointAttributeDataType::Bool => {
+                // Treating as u32
+                for _ in 0..num_bytes {
+                    // Alignment is 4 bytes
+                    while *offset % 4 != 0 {
+                        *offset += 1;
+                    }
+                    *offset += std::mem::size_of::<u32>();
+                }
+            }
+            PointAttributeDataType::U16 | PointAttributeDataType::I16 => {
+                // Treating as u32
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = num_bytes / stride;
+
+                for _ in 0..num_elements {
+                    // Alignment is 4 bytes
+                    while *offset % 4 != 0 {
+                        *offset += 1;
+                    }
+                    *offset += std::mem::size_of::<u32>();
+                }
+            }
+            PointAttributeDataType::U32 | PointAttributeDataType::I32 => {
+                // Alignment is 4 bytes
+                while *offset % 4 != 0 {
+                    *offset += 1;
+                }
+                *offset += num_bytes;
+            }
+            PointAttributeDataType::U64 | PointAttributeDataType::I64 => {
+                // Trouble: no 64-bit integer types on GPU
+                // TODO: consider extensions for GLSL that allow 64-bit integer types, eg. u64int
+                panic!("Uploading 64-bit integer types to the GPU is not supported.")
+            }
+            PointAttributeDataType::F32 => {
+                // Alignment is 4 bytes
+                while *offset % 4 != 0 {
+                    *offset += 1;
+                }
+                *offset += num_bytes;
+            }
+            PointAttributeDataType::F64 => {
+                // Alignment is 8 bytes
+                while *offset % 8 != 0 {
+                    *offset += 1;
+                }
+                *offset += num_bytes;
+            }
+            PointAttributeDataType::Vec3u8 => {
+                // Each entry is 8 bits, ie. 1 byte -> each Vec3 has 3 bytes
+                let stride = self.bytes_per_element(datatype) as usize;
+                let num_elements = num_bytes / stride;
+
+                // Iteration over each Vec3
+                for _ in 0..num_elements {
+                    // Alignment is 16 bytes
+                    while *offset % 16 != 0 {
+                        *offset += 1;
+                    }
+
+                    // Treating a Vec4u32: [x y z w]
+                    *offset += 4 * std::mem::size_of::<u32>();
+                }
+            }
+            PointAttributeDataType::Vec3u16 => {
+                // Each entry is 16 bits, ie. 2 bytes -> each Vec3 has 3*2 = 6 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 6
+                let num_elements = num_bytes / stride;
+
+                // Iteration over each Vec3
+                for _ in 0..num_elements {
+                    // Alignment is 16 bytes
+                    while *offset % 16 != 0 {
+                        *offset += 1;
+                    }
+
+                    // Treating a Vec4u32: [x y z w]
+                    *offset += 4 * std::mem::size_of::<u32>();
+                }
+            }
+            PointAttributeDataType::Vec3f32 => {
+                // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let num_elements = num_bytes / stride;
+
+                for _ in 0..num_elements {
+                    // Alignment is 16 bytes
+                    while *offset % 16 != 0 {
+                        *offset += 1;
+                    }
+
+                    // Treating a Vec4f32: [x y z w]
+                    *offset += 4 * std::mem::size_of::<f32>();
+                }
+            }
+            PointAttributeDataType::Vec3f64 => {
+                // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
+                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let num_elements = num_bytes / stride;
+
+                for _ in 0..num_elements {
+                    // Alignment is 32 bytes
+                    while *offset % 32 != 0 {
+                        *offset += 1;
+                    }
+
+                    // Treating a Vec4f64: [x y z w]
+                    *offset += 4 * std::mem::size_of::<f64>();
+                }
+            }
+        }
+    }
 }
 
 pub struct GpuPointBufferInterleaved {
     pub bind_group_layout: Option<wgpu::BindGroupLayout>,
     pub bind_group: Option<wgpu::BindGroup>,
+
+    buffer: Option<wgpu::Buffer>,
+    buffer_size: Option<wgpu::BufferAddress>,
 
     buffers: Vec<wgpu::Buffer>,
     buffer_sizes: Vec<wgpu::BufferAddress>,
@@ -274,12 +397,41 @@ impl GpuPointBuffer for GpuPointBufferInterleaved {}
 impl GpuPointBufferInterleaved {
     pub fn new() -> GpuPointBufferInterleaved {
         GpuPointBufferInterleaved {
+            bind_group_layout: None,
+            bind_group: None,
+            buffer: None,
+            buffer_size: None,
             buffers: vec![],
             buffer_sizes: vec![],
             buffer_bindings: vec![],
-            bind_group_layout: None,
-            bind_group: None,
         }
+    }
+
+    pub fn alloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
+        let mut offset: usize = 0;
+        for _ in 0..num_points {
+            for attrib in buffer_info.attributes {
+                let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
+                self.calc_size(num_bytes, attrib.datatype(), &mut offset);
+            }
+        }
+
+        let size = offset as wgpu::BufferAddress;
+        println!("Calculated size: {}", size);
+        self.buffer_size = Some(size);
+
+        self.buffer = Some(wgpu_device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: None,
+                size,
+                usage: wgpu::BufferUsage::STORAGE |
+                    wgpu::BufferUsage::MAP_READ |
+                    wgpu::BufferUsage::MAP_WRITE |
+                    wgpu::BufferUsage::COPY_SRC |
+                    wgpu::BufferUsage::COPY_DST,
+                mapped_at_creation: false
+            }
+        ));
     }
 
     pub fn upload(&mut self, buffer: &mut dyn PointBuffer, buffer_info: BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
@@ -437,6 +589,21 @@ impl GpuPointBufferPerAttribute {
             buffer_bindings: vec![],
             bind_group_layout: None,
             bind_group: None,
+        }
+    }
+
+
+    pub fn alloc(&mut self, num_points: u64, buffer_infos: Vec<BufferInfoPerAttribute>, wgpu_device: &mut wgpu::Device) {
+        for info in buffer_infos {
+            let mut size: usize = 0;
+            let mut offset: usize = 0;
+
+            let num_bytes = self.bytes_per_element(info.attribute.datatype()) as usize;
+            let num_bytes = num_bytes * (num_points as usize);
+            self.calc_size(num_bytes, info.attribute.datatype(), &mut offset);
+
+            size = offset;
+            println!("Calculated size ({}): {}", info.attribute, size);
         }
     }
 
