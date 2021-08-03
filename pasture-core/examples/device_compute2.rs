@@ -5,6 +5,7 @@ use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
 use bytemuck::__core::convert::TryInto;
+use pasture_core::gpu::GpuPointBuffer;
 
 #[repr(C)]
 #[derive(PointType, Debug)]
@@ -146,14 +147,19 @@ async fn run() {
         binding: 0
     };
 
-    // device.upload(&mut point_buffer, buffer_infos);
-    device.upload_interleaved(&mut point_buffer, buffer_info_interleaved);
+
+
+    let mut gpu_point_buffer = GpuPointBuffer::new();
+    gpu_point_buffer.upload_interleaved(&mut point_buffer, buffer_info_interleaved, &mut device.wgpu_device);
+
+    device.add_bind_group(gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
     device.set_compute_shader(include_str!("shaders/device2.comp"));
     device.compute(1, 1, 1);
+
     println!("\n===== COMPUTE =====\n");
 
     //TODO: download() should just return an altered point buffer
-    let results_as_bytes = device.download().await;
+    let results_as_bytes = gpu_point_buffer.download(&mut device.wgpu_device).await;
 
     let interleaved_results = &results_as_bytes[0];
     let stride = 128;   // Size of struct (padding included)

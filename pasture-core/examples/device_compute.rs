@@ -5,6 +5,7 @@ use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
 use bytemuck::__core::convert::TryInto;
+use pasture_core::gpu::GpuPointBuffer;
 
 #[repr(C)]
 #[derive(PointType, Debug)]
@@ -178,13 +179,16 @@ async fn run() {
         },
     ];
 
-    device.upload_per_attribute(&mut point_buffer, buffer_infos);
+    let mut gpu_point_buffer = GpuPointBuffer::new();
+    gpu_point_buffer.upload_per_attribute(&mut point_buffer, buffer_infos, &mut device.wgpu_device);
+
+    device.add_bind_group(gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
     device.set_compute_shader(include_str!("shaders/device.comp"));
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 
     //TODO: download() should just return an altered point buffer
-    let results_as_bytes = device.download().await;
+    let results_as_bytes = gpu_point_buffer.download(&mut device.wgpu_device).await;
 
     let pos_result_vec: Vec<f64> = results_as_bytes[0]
         .chunks_exact(8)
