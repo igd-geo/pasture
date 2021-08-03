@@ -5,7 +5,7 @@ use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
 use bytemuck::__core::convert::TryInto;
-use pasture_core::gpu::GpuPointBuffer;
+use pasture_core::gpu::{GpuPointBufferPerAttribute};
 
 #[repr(C)]
 #[derive(PointType, Debug)]
@@ -179,8 +179,8 @@ async fn run() {
         },
     ];
 
-    let mut gpu_point_buffer = GpuPointBuffer::new();
-    gpu_point_buffer.upload_per_attribute(&mut point_buffer, buffer_infos, &mut device.wgpu_device);
+    let mut gpu_point_buffer = GpuPointBufferPerAttribute::new();
+    gpu_point_buffer.upload(&mut point_buffer, buffer_infos, &mut device.wgpu_device);
 
     device.add_bind_group(gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
     device.set_compute_shader(include_str!("shaders/device.comp"));
