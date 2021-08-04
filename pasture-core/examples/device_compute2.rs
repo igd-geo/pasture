@@ -149,7 +149,7 @@ async fn run() {
 
     let mut gpu_point_buffer = GpuPointBufferInterleaved::new();
     gpu_point_buffer.malloc(3, &buffer_info_interleaved, &mut device.wgpu_device);
-    gpu_point_buffer.upload(&point_buffer, 0..point_buffer.len(), &buffer_info_interleaved, &mut device.wgpu_device, &device.wgpu_queue).await;
+    gpu_point_buffer.upload(&point_buffer, 0..point_buffer.len(), &buffer_info_interleaved, &mut device.wgpu_device, &device.wgpu_queue);
 
     device.add_bind_group(gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
     device.set_compute_shader(include_str!("shaders/device2.comp"));

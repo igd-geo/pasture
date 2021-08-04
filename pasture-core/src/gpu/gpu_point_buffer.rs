@@ -432,11 +432,11 @@ impl GpuPointBufferInterleaved {
     }
 
     // TODO: check if points_range valid etc.
-    pub async fn upload(
+    pub fn upload(
         &mut self,
         point_buffer: &dyn PointBuffer,
         points_range: std::ops::Range<usize>,
-        buffer_info: &BufferInfoInterleaved<'_>,
+        buffer_info: &BufferInfoInterleaved,
         wgpu_device: &mut wgpu::Device,
         wgpu_queue: &wgpu::Queue)
     {
@@ -465,15 +465,9 @@ impl GpuPointBufferInterleaved {
         // Change Vec<u8> to &[u8]
         let bytes_to_write: &[u8] = &*bytes_to_write;
 
-        // Write to GPU memory
+        // Schedule write to GPU memory
         let gpu_buffer = self.buffer.as_ref().unwrap();
-        let map = gpu_buffer.slice(..).map_async(wgpu::MapMode::Write);
-        wgpu_device.poll(wgpu::Maintain::Wait);
-
-        if let Ok(()) = map.await {
-            wgpu_queue.write_buffer(&gpu_buffer, 0, bytes_to_write);
-            gpu_buffer.unmap();
-        }
+        wgpu_queue.write_buffer(&gpu_buffer, 0, bytes_to_write);
 
         self.create_bind_group(wgpu_device);
     }
