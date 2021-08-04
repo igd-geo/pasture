@@ -27,7 +27,7 @@ pub trait GpuPointBuffer {
         num_bytes
     }
 
-    fn alignment_per_element(&self, datatype: PointAttributeDataType) -> u32 {
+    fn alignment_per_element(&self, datatype: PointAttributeDataType) -> usize {
         let alignment = match datatype {
             PointAttributeDataType::U8 => { 4 }
             PointAttributeDataType::I8 => { 4 }
@@ -77,8 +77,6 @@ pub trait GpuPointBuffer {
                     let current = (slice[i] as u32).to_ne_bytes();
                     ret_bytes.extend_from_slice(&current);
                     *offset += current.len();
-                    println!("Current length = {}", current.len());
-                    println!("Current length = {}", std::mem::size_of::<u32>());
                 }
             }
             PointAttributeDataType::U16 | PointAttributeDataType::I16 => {
@@ -440,10 +438,12 @@ impl GpuPointBufferInterleaved {
         wgpu_device: &mut wgpu::Device,
         wgpu_queue: &wgpu::Queue
     ) {
+        let pt_rng = &points_range;
+
         // Get bytes in interleaved format
         let mut offset: usize = 0;
         let mut bytes_to_write: Vec<u8> = vec![];
-        for i in points_range {
+        for i in pt_rng.start..pt_rng.end {
             // buffer.get_raw_point(i, &mut bytes_to_write[i..(i + bytes_per_point)]);
             for attrib in buffer_info.attributes {
                 // Store the bytes for the current attribute in 'bytes_for_attrib'
@@ -466,8 +466,19 @@ impl GpuPointBufferInterleaved {
         let bytes_to_write: &[u8] = &*bytes_to_write;
 
         // Schedule write to GPU memory
+        let mut offset: usize = 0;
+        for _ in 0..pt_rng.start { // Note: inclusive range
+            for attrib in buffer_info.attributes {
+                let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
+                self.calc_size(num_bytes, attrib.datatype(), &mut offset);
+            }
+        }
+        offset += 8;    // TODO: have to include padding for the last element
+        println!("New offset: {}", offset);
+
         let gpu_buffer = self.buffer.as_ref().unwrap();
-        wgpu_queue.write_buffer(&gpu_buffer, 0, bytes_to_write);
+        wgpu_queue.write_buffer(&gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
+        // wgpu_queue.write_buffer(&gpu_buffer, 0, bytes_to_write);
 
         self.create_bind_group(wgpu_device);
     }
@@ -562,19 +573,14 @@ impl GpuPointBufferPerAttribute {
 
     pub fn malloc(&mut self, num_points: u64, buffer_infos: &Vec<BufferInfoPerAttribute>, wgpu_device: &mut wgpu::Device) {
         for info in buffer_infos {
-            let mut offset: usize = 0;
-
-            let num_bytes = self.bytes_per_element(info.attribute.datatype()) as usize;
-            let num_bytes = num_bytes * (num_points as usize);
-            self.calc_size(num_bytes, info.attribute.datatype(), &mut offset);
-
-            let size = offset;
+            let size = (num_points as usize) * self.alignment_per_element(info.attribute.datatype());
             println!("Calculated size ({}): {}", info.attribute, size);
 
-            self.buffer_keys.push(String::from(info.attribute.name()));
-            self.buffer_sizes.insert(String::from(info.attribute.name()), size as wgpu::BufferAddress);
-            self.buffer_bindings.insert(String::from(info.attribute.name()), info.binding);
-            self.buffers.insert(String::from(info.attribute.name()), wgpu_device.create_buffer(
+            let key = String::from(info.attribute.name());
+            self.buffer_keys.push(key.clone());
+            self.buffer_sizes.insert(key.clone(), size as wgpu::BufferAddress);
+            self.buffer_bindings.insert(key.clone(), info.binding);
+            self.buffers.insert(key.clone(), wgpu_device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: None,
                     size: size as wgpu::BufferAddress,
@@ -600,20 +606,24 @@ impl GpuPointBufferPerAttribute {
         let len = points_range.len();
 
         for info in buffer_infos {
-            let mut offset: usize = 0;
-
-            let num_bytes = self.bytes_per_element(info.attribute.datatype()) as usize;
-            let mut bytes_to_write: Vec<u8> = vec![0; len * num_bytes];
-
+            // Allocate enough space and load the points into the vector
+            let bytes_per_element = self.bytes_per_element(info.attribute.datatype()) as usize;
+            let mut bytes_to_write: Vec<u8> = vec![0; len * bytes_per_element];
             point_buffer.get_raw_attribute_range(points_range.start..points_range.end, info.attribute, &mut *bytes_to_write);
 
-            // Change Vec<u8> to &[u8]
+            // Change Vec<u8> to &[u8] and align bytes
+            let mut unused_for_per_attrib: usize = 0;
             let bytes_to_write: &[u8] = &*bytes_to_write;
-            let bytes_to_write = &self.align_slice(bytes_to_write, info.attribute.datatype(), &mut offset)[..];
+            let bytes_to_write = &self.align_slice(bytes_to_write, info.attribute.datatype(), &mut unused_for_per_attrib)[..];
+            println!("--- Offset = {}", unused_for_per_attrib);
 
-            // Schedule write to GPU memory
+            // Schedule write to GPU memory, starting from correct offset
+            let mut offset: usize = 0;
+            self.calc_size(bytes_per_element * points_range.start, info.attribute.datatype(), &mut offset);
+            println!("*** Offset = {}", offset);
+
             let gpu_buffer = self.buffers.get(info.attribute.name()).unwrap();
-            wgpu_queue.write_buffer(gpu_buffer, 0, &bytes_to_write);
+            wgpu_queue.write_buffer(gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
         }
 
         self.create_bind_group(wgpu_device);
