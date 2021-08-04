@@ -92,7 +92,9 @@ impl<W: Write + Seek> PntsWriter<W> {
         }
     }
 
-    /// Sets the given vector as the parameter for the `RTC_CENTER` semantic in the FeatureTable
+    /// Sets the given vector as the parameter for the `RTC_CENTER` semantic in the FeatureTable. As per the 3D Tiles specification,
+    /// points can be defined relative to a center point, which is given by the `RTC_CENTER` semantic. Setting this value however
+    /// **does not automatically translate points relative to this center!** This has to be done prior to calling `write`!
     pub fn set_rtc_center(&mut self, rtc_center: Vector3<f64>) {
         self.rtc_center = Some(rtc_center);
     }

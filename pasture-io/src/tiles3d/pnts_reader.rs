@@ -10,6 +10,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
     containers::{
         PerAttributePointBufferMut, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable,
+        PointBufferWriteableExt,
     },
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
@@ -17,7 +18,7 @@ use pasture_core::{
         FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout,
     },
     meta::Metadata,
-    nalgebra::clamp,
+    nalgebra::{clamp, Vector3},
 };
 
 use crate::tiles3d::{deser_feature_table_header, FeatureTableValue, PntsHeader};
@@ -28,12 +29,25 @@ use crate::{
 
 use super::PntsMetadata;
 
+/// Defines how the `PntsReader` reads positions if the `RTC_CENTER` point semantic is present
+#[derive(Copy, Clone, Debug)]
+pub enum PntsReadPositionsMode {
+    /// Reads points relative to center. If the position `(10, 10, 10)` is stored in the PNTS file and
+    /// `RTC_CENTER` is `(20, 20, 20)`, calling `PntsReader::read` will return the position `(10, 10, 10)`
+    RelativeToCenter,
+    /// Reads points in absolute coordinates. If the position `(10, 10, 10)` is stored in the PNTS file and
+    /// `RTC_CENTER` is `(20, 20, 20)`, calling `PntsReader::read` will return the position `(30, 30, 30)`
+    Absolute,
+}
+
+/// A reader for points in the 3D Tiles PNTS format
 pub struct PntsReader<R: BufRead + Seek> {
     reader: R,
     metadata: PntsMetadata,
     layout: PointLayout,
     current_point_index: usize,
     attribute_offsets: HashMap<String, u64>,
+    read_positions_mode: PntsReadPositionsMode,
 }
 
 impl<R: BufRead + Seek> PntsReader<R> {
@@ -85,7 +99,18 @@ impl<R: BufRead + Seek> PntsReader<R> {
             layout,
             current_point_index: 0,
             attribute_offsets,
+            read_positions_mode: PntsReadPositionsMode::Absolute,
         })
+    }
+
+    /// Sets the `PntsReadPositionsMode` for this `PntsReader`
+    pub fn set_read_positions_mode(&mut self, read_mode: PntsReadPositionsMode) {
+        self.read_positions_mode = read_mode;
+    }
+
+    /// Returns the `PntsReadPositionsMode` for this `PntsReader`. The default value is always `PntsReadPositionsMode::Absolute`.
+    pub fn read_positions_mode(&self) -> PntsReadPositionsMode {
+        self.read_positions_mode
     }
 
     /// Creates a `PointLayout` from the given FeatureTable header. Since 3D Tiles PNTS stores point attributes in per-attribute
@@ -226,6 +251,39 @@ impl<R: BufRead + Seek> PntsReader<R> {
             batch_length,
         ))
     }
+
+    fn apply_rtc_center_offset(&self, point_buffer: &mut dyn PointBufferWriteable) {
+        let maybe_position = point_buffer
+            .point_layout()
+            .get_attribute_by_name(POSITION_3D.name());
+        if let (Some(rtc_center), Some(position_attribute)) =
+            (self.metadata.rtc_center(), maybe_position)
+        {
+            // The default datatype for positions in the PNTS format is Vec3f32, so we try to apply the offset
+            // first on this datatype. If the datatype does not match, we just use Vec3f64, no matter the underlying
+            // datatype. `transform_attribute` handles any potential conversion
+            if position_attribute.datatype() == PointAttributeDataType::Vec3f32 {
+                point_buffer.transform_attribute(
+                    POSITION_3D.name(),
+                    |_, position: &mut Vector3<f32>| {
+                        *position += rtc_center;
+                    },
+                );
+            } else {
+                let rtc_center_highp = Vector3::new(
+                    rtc_center.x as f64,
+                    rtc_center.y as f64,
+                    rtc_center.z as f64,
+                );
+                point_buffer.transform_attribute(
+                    POSITION_3D.name(),
+                    |_, position: &mut Vector3<f64>| {
+                        *position += rtc_center_highp;
+                    },
+                );
+            }
+        }
+    }
 }
 
 impl<R: BufRead + Seek> PointReader for PntsReader<R> {
@@ -253,6 +311,10 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
         }
 
         self.current_point_index += num_to_read;
+
+        if let PntsReadPositionsMode::Absolute = self.read_positions_mode {
+            self.apply_rtc_center_offset(&mut buffer);
+        }
 
         Ok(Box::new(buffer))
     }
@@ -316,6 +378,11 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
         }
 
         self.current_point_index += num_to_read;
+
+        if let PntsReadPositionsMode::Absolute = self.read_positions_mode {
+            self.apply_rtc_center_offset(point_buffer);
+        }
+
         Ok(num_to_read)
     }
 
@@ -347,4 +414,66 @@ impl<R: BufRead + Seek> SeekToPoint for PntsReader<R> {
     }
 }
 
-// No testes for reader for now, there are tests inside pnts_writer.rs which test both the reader and writer!
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use crate::{base::PointWriter, tiles3d::PntsWriter};
+
+    use super::*;
+    use pasture_core::{containers::PointBufferExt, layout::PointType};
+    use pasture_derive::PointType;
+
+    #[repr(C, packed)]
+    #[derive(Copy, Clone, PartialEq, PointType, Debug)]
+    struct TestPoint(#[pasture(BUILTIN_POSITION_3D)] Vector3<f32>);
+
+    #[test]
+    fn test_pnts_reader_read_modes() {
+        let test_points = vec![
+            TestPoint(Vector3::new(10.0_f32, 10.0_f32, 10.0_f32)),
+            TestPoint(Vector3::new(20.0_f32, 20.0_f32, 20.0_f32)),
+        ];
+        let test_points_global = vec![
+            TestPoint(Vector3::new(20.0_f32, 20.0_f32, 20.0_f32)),
+            TestPoint(Vector3::new(30.0_f32, 30.0_f32, 30.0_f32)),
+        ];
+
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+
+        {
+            let points: PerAttributeVecPointStorage = test_points.clone().into();
+            let mut writer = PntsWriter::from_write_and_layout(&mut cursor, TestPoint::layout());
+            writer.set_rtc_center(Vector3::new(10.0, 10.0, 10.0));
+            writer
+                .write(&points)
+                .expect("Could not write points in PNTS format");
+        }
+
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+
+        // Read once with Absolute positioning and once with RelativeToCenter positioning
+        {
+            let mut reader = PntsReader::from_read(&mut cursor).expect("Could not open PntsReader");
+            let points = reader
+                .read(reader.get_metadata().number_of_points().unwrap())
+                .expect("Could not read points in PNTS format");
+
+            let actual_points = points.iter_point::<TestPoint>().collect::<Vec<_>>();
+            assert_eq!(test_points_global, actual_points);
+        }
+
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+
+        {
+            let mut reader = PntsReader::from_read(&mut cursor).expect("Could not open PntsReader");
+            reader.set_read_positions_mode(PntsReadPositionsMode::RelativeToCenter);
+            let points = reader
+                .read(reader.get_metadata().number_of_points().unwrap())
+                .expect("Could not read points in PNTS format");
+
+            let actual_points = points.iter_point::<TestPoint>().collect::<Vec<_>>();
+            assert_eq!(test_points, actual_points);
+        }
+    }
+}
