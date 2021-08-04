@@ -1,6 +1,12 @@
 use std::{mem::MaybeUninit, ops::Range};
 
-use crate::layout::{PointAttributeDefinition, PointLayout, PointType, PrimitiveType};
+use crate::{
+    layout::{
+        conversion::get_converter_for_attributes, PointAttributeDefinition, PointLayout, PointType,
+        PrimitiveType,
+    },
+    util::view_raw_bytes,
+};
 
 use super::{
     attr1::AttributeIteratorByRef,
@@ -330,6 +336,155 @@ impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
         attribute: &'a PointAttributeDefinition,
     ) -> AttributeIteratorByValueWithConversion<'a, T, B> {
         AttributeIteratorByValueWithConversion::new(self, attribute)
+    }
+}
+
+/// Extension trait that provides generic methods for manipulating point and attribute data in a `PointBufferWriteable`
+pub trait PointBufferWriteableExt<B: PointBufferWriteable + ?Sized> {
+    /// Sets the point at the given index to the given `point`, strongly typed to the `PointType` `T`.
+    /// # Panics
+    /// If the `PointLayout` of `T` does not match the `PointLayout` of this buffer.
+    /// If `index` is out of bounds.
+    fn set_point<T: PointType>(&mut self, index: usize, point: T);
+    /// Sets the given `attribute` at the given index to the given `attribute_value`, strongly typed to the `PrimitiveType` `T`
+    /// # Panics
+    /// If the `PointLayout` of this buffer does not contain the given `attribute`.
+    /// If the `PointAttributeDataType` of `attribute` does not match the type `T`.
+    /// If `index` is out of bounds.
+    fn set_attribute<T: PrimitiveType>(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+        attribute_value: T,
+    );
+
+    /// Applies the given transformation `func` to all values of the attribute with the given `attribute_name` in the buffer. The function gets a mutable
+    /// borrow to the attribute value, through which the attribute value can be manipulated in-place. This is an easier alternative
+    /// to calling `get_attribute` and `set_attribute` in a loop.
+    /// **This method also performs data type conversions!** So e.g. if the underlying `PointBuffer` stores a POSITION_3D attribute as
+    /// `Vector3<f32>`, you can call this method with a function accepting e.g. `Vector3<f64>` and the data will be converted internally
+    /// using the default conversion (see `layout/conversion.rs` for more information on conversions).
+    /// # Panics
+    /// If no attribute with the name of `attribute` is present in this buffer.
+    /// If no conversion between type `T` and the underlying data type of the `attribute` in this buffer can be performed.
+    /// # Examples
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    /// # use pasture_derive::PointType;
+    ///
+    /// #[repr(C)]
+    /// #[derive(PointType, Debug, PartialEq, Eq)]
+    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
+    ///
+    /// {
+    ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
+    ///   storage.push_points(&[MyPointType(42), MyPointType(43)]);
+    ///   storage.transform_attribute(attributes::INTENSITY.name(), |_index, intensity: &mut u16| {
+    ///     *intensity *= 2;
+    ///   });
+    ///   assert_eq!(MyPointType(84), storage.get_point::<MyPointType>(0));
+    ///   assert_eq!(MyPointType(86), storage.get_point::<MyPointType>(1));
+    /// }
+    /// ```
+    fn transform_attribute<T: PrimitiveType, F: Fn(usize, &mut T) -> ()>(
+        &mut self,
+        attribute_name: &'static str,
+        func: F,
+    );
+}
+
+impl<B: PointBufferWriteable + ?Sized> PointBufferWriteableExt<B> for B {
+    fn set_point<T: PointType>(&mut self, index: usize, point: T) {
+        if T::layout() != *self.point_layout() {
+            panic!("PointLayout of type T does not match PointLayout of this buffer");
+        }
+        let point_bytes = unsafe { view_raw_bytes(&point) };
+        self.set_raw_point(index, point_bytes);
+    }
+
+    fn set_attribute<T: PrimitiveType>(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+        attribute_value: T,
+    ) {
+        let attribute_bytes = unsafe { view_raw_bytes(&attribute_value) };
+        self.set_raw_attribute(index, attribute, attribute_bytes);
+    }
+
+    fn transform_attribute<T: PrimitiveType, F: Fn(usize, &mut T) -> ()>(
+        &mut self,
+        attribute_name: &'static str,
+        func: F,
+    ) {
+        let source_attribute = PointAttributeDefinition::custom(attribute_name, T::data_type());
+        if let Some(target_attribute) = self.point_layout().get_attribute_by_name(attribute_name) {
+            // It is important that we use 'set_attribute' and 'get_attribute' here. This is the blanket implementation
+            // of 'transform_attribute', so it makes no assumptions on the memory layout of the point data. Since the
+            // attribute data might not be properly aligned, we can't get a mutable reference to the attribute value inside
+            // the buffer, since reading from such a reference will be UB. Only if the buffer is a PerAttribute buffer could
+            // we do this. Unfortunately, we can't implement the trait again for a more specific type, so we would have to
+            // do the test if the underlying buffer is PerAttribute here using a virtual call. We could implement this in
+            // the future, for now it is left here as a TODO
+            if target_attribute.datatype() == source_attribute.datatype() {
+                for point_index in 0..self.len() {
+                    let mut attribute_value: T = self.get_attribute(&source_attribute, point_index);
+                    func(point_index, &mut attribute_value);
+                    self.set_attribute(&source_attribute, point_index, attribute_value);
+                }
+            } else {
+                // If the datatypes are different, we have to convert from and to the target datatype
+                let target_attribute_definition: PointAttributeDefinition = target_attribute.into();
+                if let (Some(convert_to_t), Some(convert_from_t)) = (
+                    get_converter_for_attributes(&target_attribute_definition, &source_attribute),
+                    get_converter_for_attributes(&source_attribute, &target_attribute_definition),
+                ) {
+                    // The following code is a bit involved. Assume that 'U' is the type of the attribute stored in
+                    // the buffer (but we don't know this type at compile-time). Then the process is as follows:
+                    // 1) Get the raw bytes for the value 'U'
+                    // 2) Create a temporary variable of type 'T'
+                    // 3) Convert from 'U' to 'T'
+                    // 4) Apply the transformation function to the 'T' value
+                    // 5) Convert from 'T' to 'U'
+                    // 6) Set the raw bytes of 'U' in the buffer
+                    let mut buffer = vec![0; target_attribute_definition.size() as usize];
+                    for point_index in 0..self.len() {
+                        self.get_raw_attribute(
+                            point_index,
+                            &target_attribute_definition,
+                            buffer.as_mut_slice(),
+                        );
+
+                        let mut as_t = MaybeUninit::<T>::uninit();
+                        let mut as_t = unsafe {
+                            let tmp_value_bytes = std::slice::from_raw_parts_mut(
+                                as_t.as_mut_ptr() as *mut u8,
+                                std::mem::size_of::<T>(),
+                            );
+                            convert_to_t(buffer.as_slice(), tmp_value_bytes);
+                            as_t.assume_init()
+                        };
+
+                        func(point_index, &mut as_t);
+
+                        unsafe {
+                            convert_from_t(view_raw_bytes(&as_t), buffer.as_mut_slice());
+                        }
+
+                        self.set_raw_attribute(
+                            point_index,
+                            &target_attribute_definition,
+                            buffer.as_slice(),
+                        );
+                    }
+                } else {
+                    panic!("No conversion possible between requested attribute {} and attribute in buffer {}", source_attribute, target_attribute_definition);
+                }
+            }
+        } else {
+            panic!("attribute not found in PointLayout of this buffer");
+        }
     }
 }
 
