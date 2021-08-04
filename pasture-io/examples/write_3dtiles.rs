@@ -10,7 +10,7 @@ use pasture_core::{
 use pasture_derive::PointType;
 use pasture_io::{
     base::PointWriter,
-    tiles3d::{BoundingVolume, PntsWriter, Refinement, RootTileset, Tileset, TilesetContent},
+    tiles3d::{BoundingVolume, PntsWriter, Refinement, RootTileset, Tileset, TilesetBuilder},
 };
 
 #[derive(Copy, Clone, Debug, PointType)]
@@ -71,16 +71,12 @@ fn create_tileset_for_points() -> RootTileset {
 
     // We have a single tileset in this example, which has the given bounds, references the .pnts file
     // and has some extra parameters that are required for the visualization in e.g. Cesium
-    let tileset = Tileset {
-        bounding_volume: BoundingVolume::Box(bounds.into()),
-        content: TilesetContent {
-            uri: "points.pnts".into(),
-            ..Default::default()
-        },
-        geometric_error: 16.0,
-        refinement: Some(Refinement::Add),
-        ..Default::default()
-    };
+    let tileset: Tileset = TilesetBuilder::new()
+        .bounding_volume(BoundingVolume::Box(bounds.into()))
+        .content("points.pnts".into(), None)
+        .geometric_error(16.0)
+        .refinement(Refinement::Add)
+        .into();
 
     RootTileset {
         geometric_error: 16.0,

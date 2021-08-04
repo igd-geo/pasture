@@ -15,6 +15,7 @@ use pasture_core::{
         FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout,
     },
     math::Alignable,
+    nalgebra::Vector3,
 };
 use serde_json::json;
 
@@ -67,6 +68,7 @@ pub struct PntsWriter<W: Write + Seek> {
     default_layout: PointLayout,
     cached_points: PerAttributeVecPointStorage,
     attribute_converters: HashMap<&'static str, Option<AttributeConversionFn>>,
+    rtc_center: Option<Vector3<f64>>,
     requires_flush: bool,
 }
 
@@ -85,8 +87,14 @@ impl<W: Write + Seek> PntsWriter<W> {
             default_layout: cache_layout,
             cached_points: cache,
             attribute_converters,
+            rtc_center: None,
             requires_flush: true,
         }
+    }
+
+    /// Sets the given vector as the parameter for the `RTC_CENTER` semantic in the FeatureTable
+    pub fn set_rtc_center(&mut self, rtc_center: Vector3<f64>) {
+        self.rtc_center = Some(rtc_center);
     }
 
     /// Makes the given `PointLayout` compatible with the supported point semantics of the 3D Tiles .pnts format. Doing
@@ -248,6 +256,17 @@ impl<W: Write + Seek> PntsWriter<W> {
             FeatureTableValue::SingleValue(json!(num_points)),
         );
 
+        if let Some(ref rtc_center) = self.rtc_center {
+            point_semantics.insert(
+                "RTC_CENTER".into(),
+                FeatureTableValue::Array(vec![
+                    json!(rtc_center.x),
+                    json!(rtc_center.y),
+                    json!(rtc_center.z),
+                ]),
+            );
+        }
+
         point_semantics
     }
 
@@ -272,6 +291,7 @@ impl<W: Write + Seek> PntsWriter<W> {
 
     fn write_feature_table_body(&mut self) -> Result<()> {
         let num_points = self.cached_points.len();
+
         for attribute in self.default_layout.attributes() {
             let attribute_data = self
                 .cached_points
@@ -308,6 +328,7 @@ impl<W: Write + Seek> PointWriter for PntsWriter<W> {
         if points.point_layout() != &self.expected_layout {
             panic!("PointLayout of buffer does not match the PointLayout that this PntsReader was constructed with! Make sure that you only pass PointBuffers with the same layout as the one you used to create this PntsWriter!");
         }
+
         if points.point_layout() == self.cached_points.point_layout() {
             self.cached_points.push(points);
         } else {

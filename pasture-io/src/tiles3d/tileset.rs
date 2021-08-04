@@ -139,6 +139,8 @@ impl Default for BoundingVolume {
     }
 }
 
+/// Content of a `Tileset`. This refers to the file that contains the actual geometry, in the case of pasture
+/// this will mostly be `.pnts` files.
 #[derive(Clone, Serialize, Deserialize, Default, PartialEq, Debug)]
 pub struct TilesetContent {
     #[serde(rename = "boundingVolume", skip_serializing_if = "Option::is_none")]
@@ -160,15 +162,96 @@ pub struct Tileset {
         skip_serializing_if = "Option::is_none"
     )]
     pub viewer_request_volume: Option<BoundingVolume>,
-    pub content: TilesetContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<TilesetContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transform: Option<Matrix4<f64>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Tileset>,
 }
 
+/// Builder for `Tileset` structures
+pub struct TilesetBuilder {
+    tileset: Tileset,
+}
+
+impl TilesetBuilder {
+    /// Creates a new `TilesetBuilder` with default values for the `Tileset` to be created
+    pub fn new() -> Self {
+        Self {
+            tileset: Default::default(),
+        }
+    }
+
+    /// Sets the geometric error of the `Tileset` to the given value
+    /// # Panics
+    /// If the `geometric_error` is less than 0
+    pub fn geometric_error(mut self, geometric_error: f64) -> Self {
+        if geometric_error < 0.0 {
+            panic!("Geometric error must be >= 0");
+        }
+        self.tileset.geometric_error = geometric_error;
+        self
+    }
+
+    /// Sets the refinement strategy to use for the `Tileset`
+    pub fn refinement(mut self, refinement: Refinement) -> Self {
+        self.tileset.refinement = Some(refinement);
+        self
+    }
+
+    /// Sets the given `bounding_volume` for the `Tileset`
+    pub fn bounding_volume(mut self, bounding_volume: BoundingVolume) -> Self {
+        self.tileset.bounding_volume = bounding_volume;
+        self
+    }
+
+    /// Sets the given `viewer_request_volume` for the `Tileset`
+    pub fn viewer_request_volume(mut self, viewer_request_volume: BoundingVolume) -> Self {
+        self.tileset.viewer_request_volume = Some(viewer_request_volume);
+        self
+    }
+
+    /// Sets the given content for the `Tileset`. `uri` is mandatory but the `bounding_volume` is optional. If it is not
+    /// set, the bounding volume of the `Tileset` will be used
+    pub fn content(mut self, uri: String, bounding_volume: Option<BoundingVolume>) -> Self {
+        self.tileset.content = Some(TilesetContent {
+            bounding_volume,
+            uri,
+        });
+        self
+    }
+
+    /// Sets a transformation matrix for the `Tileset`
+    pub fn transform(mut self, transform: Matrix4<f64>) -> Self {
+        self.tileset.transform = Some(transform);
+        self
+    }
+
+    /// Adds the given `Tileset` as a child of this `Tileset`
+    pub fn add_child(mut self, child: Tileset) -> Self {
+        self.tileset.children.push(child);
+        self
+    }
+
+    /// Adds the given `Tilesets` as children of this `Tileset`
+    pub fn add_children<I: IntoIterator<Item = Tileset>>(mut self, children: I) -> Self {
+        self.tileset.children.extend(children);
+        self
+    }
+}
+
+impl Into<Tileset> for TilesetBuilder {
+    fn into(self) -> Tileset {
+        self.tileset
+    }
+}
+
+/// Version information of a `Tileset`. Identifies both the 3D Tiles version that is used, as well as
+/// an optional version of the `Tileset` itself
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct TilesetAssetInfo {
+    /// 3D Tiles version that the `Tileset` uses. This defaults to version `"1.0"`
     pub version: String,
     #[serde(rename = "tilesetVersion", skip_serializing_if = "Option::is_none")]
     pub tileset_version: Option<String>,
@@ -191,6 +274,7 @@ pub struct TilesetProperty {
     pub maximum: f64,
 }
 
+/// Root tileset within a `tileset.json` file
 #[derive(Clone, Serialize, Deserialize, Default, PartialEq, Debug)]
 pub struct RootTileset {
     pub asset: TilesetAssetInfo,
@@ -229,19 +313,20 @@ mod tests {
         );
         tileset.geometric_error = 494.509;
 
-        let inner_tileset = Tileset {
-            bounding_volume: BoundingVolume::Region(BoundingRegion::new(
+        let inner_tileset: Tileset = TilesetBuilder::new()
+            .bounding_volume(BoundingVolume::Region(BoundingRegion::new(
                 -0.000568296657741,
                 0.8987233516605286,
                 0.0001164658209855,
                 0.8990603398325034,
                 0.0,
                 241.6,
-            )),
-            geometric_error: 268.378,
-            refinement: Some(Refinement::Add),
-            content: TilesetContent {
-                bounding_volume: Some(BoundingVolume::Region(BoundingRegion::new(
+            )))
+            .geometric_error(268.378)
+            .refinement(Refinement::Add)
+            .content(
+                "0/0/0.b3dm".into(),
+                Some(BoundingVolume::Region(BoundingRegion::new(
                     -0.000400169090897,
                     0.8988700116775743,
                     0.0001009672972278,
@@ -249,10 +334,9 @@ mod tests {
                     0.0,
                     241.6,
                 ))),
-                uri: "0/0/0.b3dm".into(),
-            },
-            ..Default::default()
-        };
+            )
+            .into();
+
         let mut root_tileset = inner_tileset.clone();
         root_tileset.children = vec![inner_tileset];
 
