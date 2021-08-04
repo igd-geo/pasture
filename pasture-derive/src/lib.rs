@@ -306,7 +306,6 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
 /// Describes a single field within a `PointType` struct. Contains the name of the field, the point attribute
 /// that the field maps to, as well as the primitive type of the field
 struct FieldLayoutDescription {
-    pub field_name: String,
     pub attribute_name: String,
     pub primitive_type: PasturePrimitiveType,
 }
@@ -316,15 +315,10 @@ fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescr
         .iter()
         .map(|field| match field.ty {
             Type::Path(ref type_path) => {
-                let field_name = field
-                    .ident
-                    .as_ref()
-                    .map_or("_".into(), |ident| ident.to_string());
                 let primitive_type = type_path_to_primitive_type(type_path)?;
                 let attribute_name = get_attribute_name_from_field(field)?;
 
                 Ok(FieldLayoutDescription {
-                    field_name,
                     attribute_name,
                     primitive_type,
                 })
