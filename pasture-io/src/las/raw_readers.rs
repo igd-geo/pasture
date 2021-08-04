@@ -106,9 +106,9 @@ impl<T: Read + Seek> RawLASReader<T> {
             self.reader.seek(SeekFrom::Start(start_of_source_point))?;
 
             // XYZ
-            let local_x = self.reader.read_u32::<LittleEndian>()?;
-            let local_y = self.reader.read_u32::<LittleEndian>()?;
-            let local_z = self.reader.read_u32::<LittleEndian>()?;
+            let local_x = self.reader.read_i32::<LittleEndian>()?;
+            let local_y = self.reader.read_i32::<LittleEndian>()?;
+            let local_z = self.reader.read_i32::<LittleEndian>()?;
             let global_x = (local_x as f64 * self.point_scales.x) + self.point_offsets.x;
             let global_y = (local_y as f64 * self.point_scales.y) + self.point_offsets.y;
             let global_z = (local_z as f64 * self.point_scales.z) + self.point_offsets.z;
