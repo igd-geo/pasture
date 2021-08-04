@@ -3,8 +3,8 @@
 layout (local_size_x = 8) in;
 
 struct PointBuffer {
-    dvec4 position;
     uvec4 icolor;
+    dvec4 position;
     vec4 fcolor;
     uvec4 byte_val;
     uint classification;

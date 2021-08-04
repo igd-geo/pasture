@@ -54,7 +54,6 @@ pub trait GpuPointBuffer {
 
         let num_bytes = slice.len();
 
-        println!("Num bytes = {}", num_bytes);
         println!("{}: {}", datatype, offset);
 
         // Remember, signed and unsigned have the same bit-level behavior.
@@ -401,8 +400,14 @@ impl GpuPointBufferInterleaved {
     }
 
     pub fn malloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
+        // Determine struct alignment
+        let mut struct_alignment =  self.struct_alignment(&buffer_info);
+
         let mut offset: usize = 0;
         for _ in 0..num_points {
+            // Align to struct
+            offset += self.padding_for_struct_alignment(offset, struct_alignment);
+
             for attrib in buffer_info.attributes {
                 let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
                 self.calc_size(num_bytes, attrib.datatype(), &mut offset);
@@ -436,23 +441,30 @@ impl GpuPointBufferInterleaved {
         points_range: std::ops::Range<usize>,
         buffer_info: &BufferInfoInterleaved,
         wgpu_device: &mut wgpu::Device,
-        wgpu_queue: &wgpu::Queue
-    ) {
+        wgpu_queue: &wgpu::Queue)
+    {
         let pt_rng = &points_range;
+
+        // Determine struct alignment
+        let mut struct_alignment = self.struct_alignment(&buffer_info);
+        println!("Struct alignment = {}", struct_alignment);
 
         // Get bytes in interleaved format
         let mut offset: usize = 0;
         let mut bytes_to_write: Vec<u8> = vec![];
         for i in pt_rng.start..pt_rng.end {
-            // buffer.get_raw_point(i, &mut bytes_to_write[i..(i + bytes_per_point)]);
+            // Align to struct
+            let required_padding = self.padding_for_struct_alignment(offset, struct_alignment);
+            offset += required_padding;
+            bytes_to_write.append(&mut vec![0_u8; required_padding]);
+
             for attrib in buffer_info.attributes {
                 // Store the bytes for the current attribute in 'bytes_for_attrib'
-                let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
-
-                let mut bytes_for_attrib: Vec<u8> = vec![0; num_bytes];
+                let bytes_per_element = self.bytes_per_element(attrib.datatype()) as usize;
+                let mut bytes_for_attrib: Vec<u8> = vec![0; bytes_per_element];
                 point_buffer.get_raw_attribute(i, attrib, &mut *bytes_for_attrib);
 
-                // Align each attribute TODO: may require custom align method for struct
+                // Align each attribute
                 let bytes_for_attrib: &[u8] = &*bytes_for_attrib;
                 let mut bytes_for_attrib = self.align_slice(bytes_for_attrib, attrib.datatype(), &mut offset);
 
@@ -467,18 +479,17 @@ impl GpuPointBufferInterleaved {
 
         // Schedule write to GPU memory
         let mut offset: usize = 0;
-        for _ in 0..pt_rng.start { // Note: inclusive range
+        for _ in 0..pt_rng.start {
             for attrib in buffer_info.attributes {
-                let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
-                self.calc_size(num_bytes, attrib.datatype(), &mut offset);
+                let bytes_per_element = self.bytes_per_element(attrib.datatype()) as usize;
+                self.calc_size(bytes_per_element, attrib.datatype(), &mut offset);
             }
         }
-        offset += 8;    // TODO: have to include padding for the last element
+        offset += self.padding_for_struct_alignment(offset, struct_alignment);
         println!("New offset: {}", offset);
 
         let gpu_buffer = self.buffer.as_ref().unwrap();
         wgpu_queue.write_buffer(&gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
-        // wgpu_queue.write_buffer(&gpu_buffer, 0, bytes_to_write);
 
         self.create_bind_group(wgpu_device);
     }
@@ -542,6 +553,29 @@ impl GpuPointBufferInterleaved {
 
         self.bind_group_layout = Some(bind_group_layout);
         self.bind_group = Some(bind_group);
+    }
+
+    fn struct_alignment(&self, buffer_info: &BufferInfoInterleaved) -> usize {
+        let mut struct_alignment: usize = 0;
+
+        for attrib in buffer_info.attributes {
+            let alignment = self.alignment_per_element(attrib.datatype());
+            if alignment > struct_alignment {
+                struct_alignment = alignment;
+            }
+        }
+
+        struct_alignment
+    }
+
+    fn padding_for_struct_alignment(&self, offset: usize, struct_alignment: usize) -> usize {
+        let mut padding: usize = 0;
+
+        while (offset + padding) % struct_alignment != 0 {
+            padding += 1;
+        }
+
+        padding
     }
 }
 

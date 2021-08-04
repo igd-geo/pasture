@@ -128,8 +128,8 @@ async fn run() {
     println!("\n");
 
     let attribs = &[
-        attributes::POSITION_3D,
         attributes::COLOR_RGB,
+        attributes::POSITION_3D,
         custom_color_attrib,
         custom_byte_vec_attrib,
         attributes::CLASSIFICATION,
@@ -161,80 +161,80 @@ async fn run() {
     let results_as_bytes = gpu_point_buffer.download(&mut device.wgpu_device).await;
 
     let interleaved_results = &results_as_bytes[0];
-    let stride = 128;   // Size of struct (padding included)
+    let stride = 160;   // Size of struct (padding included)
     for i in 0..3 {
         println!("\nPoint {}", (i + 1));
         let offset = i * stride;
         println!("Offset = {}", offset);
 
-        let pos_result_vec: Vec<f64> = interleaved_results[offset..(offset + 32)]
+        let pos_result_vec: Vec<f64> = interleaved_results[(offset + 32)..(offset + 32 + 32)]
             .chunks_exact(8)
             .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
             .collect();
         println!("Positions: {:?}", pos_result_vec);
 
-        let icol_result_vec: Vec<u16> = interleaved_results[(offset + 32)..(offset + 32 + 16)]
+        let icol_result_vec: Vec<u16> = interleaved_results[(offset)..(offset + 16)]
             .chunks_exact(4)
             .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
             .collect();
         println!("Colors (u16): {:?}", icol_result_vec);
 
-        let fcol_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 16)..(offset + 32 + 16 + 16)]
+        let fcol_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 32)..(offset + 32 + 32 + 16)]
             .chunks_exact(4)
             .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
             .collect();
         println!("Colors (f32): {:?}", fcol_result_vec);
 
-        let byte_vec_result_vec: Vec<u8> = interleaved_results[(offset + 32 + 16 + 16)..(offset + 32 + 16 + 16 + 16)]
+        let byte_vec_result_vec: Vec<u8> = interleaved_results[(offset + 32 + 32 + 16)..(offset + 32 + 32 + 16 + 16)]
             .chunks_exact(4)
             .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
             .collect();
         println!("Bytes vecs: {:?}", byte_vec_result_vec);
 
-        let classification_result_vec: Vec<u8> = interleaved_results[(offset + 32 + 16 + 16 + 16)..(offset + 32 + 16 + 16 + 16 + 4)]
+        let classification_result_vec: Vec<u8> = interleaved_results[(offset + 32 + 32 + 16 + 16)..(offset + 32 + 32 + 16 + 16 + 4)]
             .chunks_exact(4)
             .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
             .collect();
         println!("Classifications: {:?}", classification_result_vec);
 
-        let intensity_result_vec: Vec<u16> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4)]
+        let intensity_result_vec: Vec<u16> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4)]
             .chunks_exact(4)
             .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
             .collect();
         println!("Intensities: {:?}", intensity_result_vec);
 
-        let scan_angle_result_vec: Vec<i16> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4)]
+        let scan_angle_result_vec: Vec<i16> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4)]
             .chunks_exact(4)
             .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i16)
             .collect();
         println!("Scan angles: {:?}", scan_angle_result_vec);
 
         // Note: cannot cast u32 to bool. Instead check whether bytes != 0.
-        let scan_dir_flag_result_vec: Vec<bool> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4)]
+        let scan_dir_flag_result_vec: Vec<bool> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4)]
             .chunks_exact(4)
             .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) != 0)
             .collect();
         println!("Scan direction flags: {:?}", scan_dir_flag_result_vec);
 
-        let my_int_result_vec: Vec<i32> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4)]
+        let my_int_result_vec: Vec<i32> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4)]
             .chunks_exact(4)
             .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
             .collect();
         println!("Integers (i32): {:?}", my_int_result_vec);
 
-        let packet_size_result_vec: Vec<u32> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)]
+        let packet_size_result_vec: Vec<u32> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)]
             .chunks_exact(4)
             .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
             .collect();
         println!("Packet sizes: {:?}", packet_size_result_vec);
 
-        let ret_point_loc_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4)]
+        let ret_point_loc_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4)]
             .chunks_exact(4)
             .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
             .collect();
         println!("Return locations: {:?}", ret_point_loc_result_vec);
 
-        let gps_time_result_vec: Vec<f64> = interleaved_results[(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 16 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 8)]
+        let gps_time_result_vec: Vec<f64> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 8)]
             .chunks_exact(8)
             .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
             .collect();
