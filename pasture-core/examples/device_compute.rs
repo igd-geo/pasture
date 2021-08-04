@@ -180,8 +180,8 @@ async fn run() {
     ];
 
     let mut gpu_point_buffer = GpuPointBufferPerAttribute::new();
-    // gpu_point_buffer.alloc(3, buffer_infos, &mut device.wgpu_device);
-    gpu_point_buffer.upload(&mut point_buffer, buffer_infos, &mut device.wgpu_device);
+    gpu_point_buffer.malloc(3, &buffer_infos, &mut device.wgpu_device);
+    gpu_point_buffer.upload(&mut point_buffer, 0..3, &buffer_infos, &mut device.wgpu_device, &device.wgpu_queue);
 
     device.add_bind_group(gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
     device.set_compute_shader(include_str!("shaders/device.comp"));
