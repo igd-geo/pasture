@@ -1396,8 +1396,9 @@ mod tests {
     use super::*;
     use crate::containers::{
         InterleavedPointView, PerAttributePointBufferExt, PerAttributePointView, PointBufferExt,
+        PointBufferWriteableExt,
     };
-    use crate::layout::attributes::{GPS_TIME, POSITION_3D};
+    use crate::layout::attributes::{CLASSIFICATION, COLOR_RGB, GPS_TIME, INTENSITY, POSITION_3D};
     use crate::util::view_raw_bytes;
     use crate::{
         layout::{attributes, PointLayout},
@@ -3154,5 +3155,275 @@ mod tests {
 
         let buf = vec![0; 24];
         buffer.set_raw_attribute(0, &POSITION_3D, buf.as_slice());
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_set_point_interleaved() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_point(0, TestPointType(42, 43.0));
+        assert_eq!(
+            TestPointType(42, 43.0),
+            buffer.get_point::<TestPointType>(0)
+        );
+        assert_eq!(TestPointType(0, 0.0), buffer.get_point::<TestPointType>(1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_point_interleaved_wrong_type() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_point(0, OtherPointType(Vector3::new(0.0, 1.0, 2.0), 0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_point_interleaved_oob() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_point(23, TestPointType(0, 0.0));
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_set_attribute_interleaved() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&GPS_TIME, 1, 43.0);
+
+        assert_eq!(0.0, buffer.get_attribute::<f64>(&GPS_TIME, 0));
+        assert_eq!(43.0, buffer.get_attribute::<f64>(&GPS_TIME, 1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_attribute_interleaved_wrong_attribute() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&CLASSIFICATION, 0, 0_u8);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_attribute_interleaved_attribute_doesnt_match_type() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&CLASSIFICATION, 0, 0.0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_attribute_interleaved_oob() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&INTENSITY, 23, 0_u16);
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_set_point_per_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_point(0, TestPointType(42, 43.0));
+        assert_eq!(
+            TestPointType(42, 43.0),
+            buffer.get_point::<TestPointType>(0)
+        );
+        assert_eq!(TestPointType(0, 0.0), buffer.get_point::<TestPointType>(1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_point_per_attribute_wrong_type() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_point(0, OtherPointType(Vector3::new(0.0, 1.0, 2.0), 0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_point_per_attribute_oob() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_point(23, TestPointType(0, 0.0));
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_set_attribute_per_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&GPS_TIME, 1, 43.0);
+
+        assert_eq!(0.0, buffer.get_attribute::<f64>(&GPS_TIME, 0));
+        assert_eq!(43.0, buffer.get_attribute::<f64>(&GPS_TIME, 1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_attribute_per_attribute_wrong_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&CLASSIFICATION, 0, 0_u8);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_attribute_per_attribute_attribute_doesnt_match_type() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&CLASSIFICATION, 0, 0.0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_set_attribute_per_attribute_oob() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.set_attribute(&INTENSITY, 23, 0_u16);
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_transform_attribute_interleaved() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(INTENSITY.name(), |index, value: &mut u16| {
+            *value = (index as u16) + 10;
+        });
+
+        assert_eq!(TestPointType(10, 0.0), buffer.get_point::<TestPointType>(0));
+        assert_eq!(TestPointType(11, 0.0), buffer.get_point::<TestPointType>(1));
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_transform_attribute_with_different_type_interleaved() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(INTENSITY.name(), |index, value: &mut u32| {
+            *value = (index as u32) + 10;
+        });
+
+        assert_eq!(TestPointType(10, 0.0), buffer.get_point::<TestPointType>(0));
+        assert_eq!(TestPointType(11, 0.0), buffer.get_point::<TestPointType>(1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_transform_attribute_interleaved_wrong_attribute() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(COLOR_RGB.name(), |_, _value: &mut Vector3<u16>| {});
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_transform_attribute_interleaved_inconvertible() {
+        let mut buffer = get_interleaved_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(INTENSITY.name(), |_, _value: &mut Vector3<u16>| {});
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_transform_attribute_per_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(INTENSITY.name(), |index, value: &mut u16| {
+            *value = (index as u16) + 10;
+        });
+
+        assert_eq!(TestPointType(10, 0.0), buffer.get_point::<TestPointType>(0));
+        assert_eq!(TestPointType(11, 0.0), buffer.get_point::<TestPointType>(1));
+    }
+
+    #[test]
+    fn test_point_buffer_writeable_ext_transform_attribute_with_different_type_per_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(INTENSITY.name(), |index, value: &mut u32| {
+            *value = (index as u32) + 10;
+        });
+
+        assert_eq!(TestPointType(10, 0.0), buffer.get_point::<TestPointType>(0));
+        assert_eq!(TestPointType(11, 0.0), buffer.get_point::<TestPointType>(1));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_transform_attribute_per_attribute_wrong_attribute() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(COLOR_RGB.name(), |_, _value: &mut Vector3<u16>| {});
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_point_buffer_writeable_ext_transform_attribute_per_attribute_inconvertible() {
+        let mut buffer = get_per_attribute_point_buffer_from_points(&[
+            TestPointType(0, 0.0),
+            TestPointType(0, 0.0),
+        ]);
+
+        buffer.transform_attribute(INTENSITY.name(), |_, _value: &mut Vector3<u16>| {});
     }
 }

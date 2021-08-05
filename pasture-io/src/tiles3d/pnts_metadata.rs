@@ -39,6 +39,10 @@ impl PntsMetadata {
     pub fn points_length(&self) -> usize {
         self.points_length
     }
+
+    pub fn rtc_center(&self) -> Option<Vector3<f32>> {
+        self.rtc_center
+    }
 }
 
 impl Metadata for PntsMetadata {
