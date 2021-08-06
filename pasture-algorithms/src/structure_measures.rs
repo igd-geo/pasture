@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use anyhow::{bail, Result};
 use kd_tree::KdSlice3;
 use pasture_core::{
@@ -7,7 +9,8 @@ use pasture_core::{
 };
 
 use self::attributes::{
-    ANISOTROPY, EIGENENTROPY, LINEARITY, OMNIVARIANCE, PLANARITY, SPHERICITY, SUM_OF_EIGENVALUES,
+    ANISOTROPY, EIGENENTROPY, LINEARITY, LOCAL_POINT_DENSITY, OMNIVARIANCE, PLANARITY, SPHERICITY,
+    SUM_OF_EIGENVALUES,
 };
 
 pub mod attributes {
@@ -51,6 +54,14 @@ pub mod attributes {
     /// of the structure tensor
     pub const SUM_OF_EIGENVALUES: PointAttributeDefinition = PointAttributeDefinition::custom(
         "StructureMeasureSumOfEigenvalues",
+        PointAttributeDataType::F32,
+    );
+
+    /// Point attribute that describes the local point density around each point. The local point density depends on the
+    /// `k` nearest neighbours of each point and is given by the formula `(k+1)/V(knn)`, where `V(knn)` is the volume of the
+    /// smallest sphere that contains the point and its `k` nearest neighbors
+    pub const LOCAL_POINT_DENSITY: PointAttributeDefinition = PointAttributeDefinition::custom(
+        "StructureMeasureLocalPointDensity",
         PointAttributeDataType::F32,
     );
 }
@@ -319,6 +330,61 @@ pub fn calculate_sum_of_eigenvalues<B: PointBufferWriteable + ?Sized>(
         &SUM_OF_EIGENVALUES,
         sum_of_eigenvalues,
     )
+}
+
+/// Calculates the local points density for each point of the given `PointBuffer` and stores it in the buffer in the `LOCAL_POINT_DENSITY` point
+/// attribute. Local point density calculation relies on the `k` nearest neighbours of each point. To accelerate this calculation, a kd-tree accelerator is required that must contain all positions
+/// of the associated `buffer`. The parameter `num_nearest_neighbours`defines the number of nearest neighbours to use at each point
+/// in the calculation. It must be `>=3`.
+///
+/// # Panics
+/// If the `buffer` does not contain the a `POSITION_3D` attribute or the `LOCAL_POINT_DENSITY` attribute.
+/// If `num_nearest_neighbours` is less than 3.
+/// If the `kd_tree` contains a different number of point than the `buffer`
+pub fn calculate_local_point_density<B: PointBufferWriteable + ?Sized>(
+    buffer: &mut B,
+    kd_tree: &KdSlice3<[f64; 3]>,
+    num_nearest_neighbours: usize,
+) -> Result<()> {
+    if !buffer.point_layout().has_attribute(&POSITION_3D) {
+        panic!("Buffer must contain the POSITION_3D attribute");
+    }
+    if !buffer.point_layout().has_attribute(&LOCAL_POINT_DENSITY) {
+        panic!("Buffer must contain the LOCAL_POINT_DENSITY attribute");
+    }
+    if num_nearest_neighbours < 3 {
+        panic!("num_nearest_neighbours must be at least 3");
+    }
+    if kd_tree.items().len() != buffer.len() {
+        panic!("kd_tree must contain the same number of points as the buffer");
+    }
+
+    let mut local_densities = Vec::with_capacity(buffer.len());
+
+    for position in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+        let knn = kd_tree.nearests(
+            &[position.x, position.y, position.z],
+            num_nearest_neighbours + 1,
+        );
+        // First element will be the point itself, we don't care for that so we remove it
+        let knn = knn
+            .iter()
+            .skip(1)
+            .map(|v| Vector3::new(v.item[0], v.item[1], v.item[2]))
+            .collect::<Vec<_>>();
+
+        let r_max = (knn.last().unwrap() - position).magnitude();
+        let local_density =
+            (num_nearest_neighbours + 1) as f64 / ((4.0 / 3.0) * PI * r_max * r_max * r_max);
+
+        local_densities.push(local_density as f32);
+    }
+
+    for (idx, density) in local_densities.iter().enumerate() {
+        buffer.set_attribute(&LOCAL_POINT_DENSITY, idx, *density);
+    }
+
+    Ok(())
 }
 
 fn compute_structure_measure<B: PointBufferWriteable + ?Sized, F: Fn(f64, f64, f64) -> f32>(
