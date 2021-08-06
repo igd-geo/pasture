@@ -11,3 +11,5 @@ pub mod minmax;
 // Contains ransac line- and plane-segmentation algorithms in serial and parallel that can be used
 // to get the best line-/plane-model and the corresponding inlier indices.
 pub mod segmentation;
+// Contains methods to compute various structure measures using the structure tensor.
+pub mod structure_measures;

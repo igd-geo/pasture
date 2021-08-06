@@ -17,3 +17,4 @@ anyhow = "1.0.34"
 pasture-derive = { version = "=0.1.0", path = "../pasture-derive" }
 rand = "0.8.3"
 rayon = "1.5"
+kd-tree = "0.3.0"
