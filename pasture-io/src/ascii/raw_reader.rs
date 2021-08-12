@@ -25,7 +25,6 @@ pub(crate) struct RawAsciiReader<T: Read + BufRead> {
     point_layout: PointLayout,
     parse_layout: Vec<PointDataType>,
 }
-
 impl<T: Read + BufRead> RawAsciiReader<T> {
     pub fn from_read(read: T, format: &str, delimiter: &str) -> Result<Self> {
         let parse_layout = PointDataType::get_parse_layout(format)?;
@@ -583,6 +582,7 @@ mod tests {
             assert_eq!(point.position, position_expected[index]);
             assert_eq!(point.classification, 0);
             assert_eq!(point.user_data, 0);
+
         }
         Ok(())
     }

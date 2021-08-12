@@ -50,6 +50,7 @@ pub struct UntypedPointBuffer<'layout> {
 }
 
 impl<'layout> UntypedPointBuffer<'layout> {
+
     pub fn new(layout: &'layout PointLayout) -> Self {
         Self {
             layout,
@@ -73,11 +74,11 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
         }
         Ok(&self.buffer[start..end])
     }
-
     fn set_raw_attribute(
         &mut self,
         attribute: &PointAttributeDefinition,
         value_byte_slice: &[u8],
+
     ) -> Result<()> {
         let attribute = self
             .layout
@@ -297,6 +298,7 @@ impl UntypedPoint for UntypedPointSlice<'_> {
 // - test getter setter
 // - test cursor
 // Test UntypedPointSlice
+
 // - test getter setter
 // - test cursor
 #[cfg(test)]
@@ -354,7 +356,6 @@ mod tests {
         // Readback
         let buffer = point.get_raw_attribute(&attributes::INTENSITY)?;
         let intensity_from_point = u16::from_le_bytes(buffer.try_into()?);
-
         assert_eq!(intensity_value, intensity_from_point);
         Ok(())
     }
