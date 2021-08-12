@@ -195,18 +195,32 @@ fn get_color_rgb_converter(
     COLOR_RGB_CONVERTERS.get(&key).map(|&fptr| fptr)
 }
 
-macro_rules! insert_converter {
+macro_rules! insert_converter_using_into {
     ($prim_from:ident, $prim_to:ident, $type_from:ident, $type_to:ident, $map:expr) => {
         ($map).insert(
             (
                 PointAttributeDataType::$type_from,
                 PointAttributeDataType::$type_to,
             ),
-            convert_generic_primitive::<$prim_from, $prim_to>,
+            convert_using_into::<$prim_from, $prim_to>,
         )
     };
 }
 
+macro_rules! insert_converter_using_as {
+    ($type_from:ident, $type_to:ident, $convert_fn:ident, $map:expr) => {
+        ($map).insert(
+            (
+                PointAttributeDataType::$type_from,
+                PointAttributeDataType::$type_to,
+            ),
+            $convert_fn,
+        )
+    };
+}
+
+/// Returns a generic converter that can convert between primitive types. Going from smaller to larger types is realized
+/// through `.into()` calls, while going from larger to smaller types is done through coercions (using `as`) where possible
 fn get_generic_converter(
     from_type: PointAttributeDataType,
     to_type: PointAttributeDataType,
@@ -217,26 +231,44 @@ fn get_generic_converter(
                 (PointAttributeDataType, PointAttributeDataType),
                 AttributeConversionFn,
             >::new();
-            insert_converter!(u8, u16, U8, U16, converters);
-            insert_converter!(u8, u32, U8, U32, converters);
-            insert_converter!(u8, u64, U8, U64, converters);
-            insert_converter!(u16, u32, U16, U32, converters);
-            insert_converter!(u16, u64, U16, U64, converters);
-            insert_converter!(u32, u64, U32, U64, converters);
+            insert_converter_using_into!(u8, u16, U8, U16, converters);
+            insert_converter_using_into!(u8, u32, U8, U32, converters);
+            insert_converter_using_into!(u8, u64, U8, U64, converters);
+            insert_converter_using_into!(u16, u32, U16, U32, converters);
+            insert_converter_using_into!(u16, u64, U16, U64, converters);
+            insert_converter_using_into!(u32, u64, U32, U64, converters);
 
-            insert_converter!(i8, i16, I8, I16, converters);
-            insert_converter!(i8, i32, I8, I32, converters);
-            insert_converter!(i8, i64, I8, I64, converters);
-            insert_converter!(i16, i32, I16, I32, converters);
-            insert_converter!(i16, i64, I16, I64, converters);
-            insert_converter!(i32, i64, I32, I64, converters);
+            insert_converter_using_into!(i8, i16, I8, I16, converters);
+            insert_converter_using_into!(i8, i32, I8, I32, converters);
+            insert_converter_using_into!(i8, i64, I8, I64, converters);
+            insert_converter_using_into!(i16, i32, I16, I32, converters);
+            insert_converter_using_into!(i16, i64, I16, I64, converters);
+            insert_converter_using_into!(i32, i64, I32, I64, converters);
+
+            insert_converter_using_as!(U16, U8, convert_u16_to_u8, converters);
+            insert_converter_using_as!(U32, U8, convert_u32_to_u8, converters);
+            insert_converter_using_as!(U64, U8, convert_u64_to_u8, converters);
+            insert_converter_using_as!(U32, U16, convert_u32_to_u16, converters);
+            insert_converter_using_as!(U64, U16, convert_u64_to_u16, converters);
+            insert_converter_using_as!(U64, U32, convert_u64_to_u32, converters);
+
+            insert_converter_using_as!(I16, I8, convert_i16_to_i8, converters);
+            insert_converter_using_as!(I32, I8, convert_i32_to_i8, converters);
+            insert_converter_using_as!(I64, I8, convert_i64_to_i8, converters);
+            insert_converter_using_as!(I32, I16, convert_i32_to_i16, converters);
+            insert_converter_using_as!(I64, I16, convert_i64_to_i16, converters);
+            insert_converter_using_as!(I64, I32, convert_i64_to_i32, converters);
+
+            insert_converter_using_as!(F64, F32, convert_f64_to_f32, converters);
 
             converters
         };
     }
 
     let key = (from_type, to_type);
-    let f = GENERIC_CONVERTERS.get(&key).unwrap_or_else(|| panic!("Invalid conversion {} -> {}", from_type, to_type));
+    let f = GENERIC_CONVERTERS
+        .get(&key)
+        .unwrap_or_else(|| panic!("Invalid conversion {} -> {}", from_type, to_type));
     Some(*f)
 }
 
@@ -380,13 +412,36 @@ where
     to_typed.z = from_typed.z.into();
 }
 
-unsafe fn convert_generic_primitive<F, T>(from: &[u8], to: &mut [u8])
+unsafe fn convert_using_into<F, T>(from: &[u8], to: &mut [u8])
 where
     F: Into<T> + Copy,
     T: Copy,
 {
-    let from_typed = *(from.as_ptr() as *const F);
-    let to_typed = &mut *(to.as_mut_ptr() as *mut T);
-
-    *to_typed = from_typed.into();
+    let from_typed = (from.as_ptr() as *const F).read_unaligned();
+    (to.as_mut_ptr() as *mut T).write_unaligned(from_typed.into());
 }
+
+macro_rules! convert_using_as {
+    ($type_from:ident, $type_to:ident, $name:ident) => {
+        unsafe fn $name(from: &[u8], to: &mut [u8]) {
+            let from_typed = (from.as_ptr() as *const $type_from).read_unaligned();
+            (to.as_mut_ptr() as *mut $type_to).write_unaligned(from_typed as $type_to);
+        }
+    };
+}
+
+convert_using_as!(u16, u8, convert_u16_to_u8);
+convert_using_as!(u32, u8, convert_u32_to_u8);
+convert_using_as!(u64, u8, convert_u64_to_u8);
+convert_using_as!(u32, u16, convert_u32_to_u16);
+convert_using_as!(u64, u16, convert_u64_to_u16);
+convert_using_as!(u64, u32, convert_u64_to_u32);
+
+convert_using_as!(i16, i8, convert_i16_to_i8);
+convert_using_as!(i32, i8, convert_i32_to_i8);
+convert_using_as!(i64, i8, convert_i64_to_i8);
+convert_using_as!(i32, i16, convert_i32_to_i16);
+convert_using_as!(i64, i16, convert_i64_to_i16);
+convert_using_as!(i64, i32, convert_i64_to_i32);
+
+convert_using_as!(f64, f32, convert_f64_to_f32);
