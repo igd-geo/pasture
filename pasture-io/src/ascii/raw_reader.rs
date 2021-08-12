@@ -14,6 +14,7 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 
 use super::AsciiMetadata;
+use super::PointDataType;
 use crate::base::PointReader;
 use pasture_core::containers::{UntypedPoint, UntypedPointBuffer};
 
@@ -22,12 +23,12 @@ pub(crate) struct RawAsciiReader<T: Read + BufRead> {
     metadata: AsciiMetadata,
     delimiter: String,
     point_layout: PointLayout,
-    parse_layout: Vec<PointDataTypes>,
+    parse_layout: Vec<PointDataType>,
 }
 
 impl<T: Read + BufRead> RawAsciiReader<T> {
     pub fn from_read(read: T, format: &str, delimiter: &str) -> Result<Self> {
-        let parse_layout = Self::get_parse_layout(format)?;
+        let parse_layout = PointDataType::get_parse_layout(format)?;
         let layout = Self::get_point_layout_from_parse_layout(&parse_layout);
         let metadata = AsciiMetadata::new();
 
@@ -40,29 +41,29 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         })
     }
 
-    fn get_point_layout_from_parse_layout(parse_layout: &[PointDataTypes]) -> PointLayout {
+    fn get_point_layout_from_parse_layout(parse_layout: &[PointDataType]) -> PointLayout {
         let hashset = parse_layout
             .iter()
-            .filter(|data_type| !matches!(data_type, PointDataTypes::Skip))
+            .filter(|data_type| !matches!(data_type, PointDataType::Skip))
             .map(|data_type| match data_type {
-                PointDataTypes::CoordinateX
-                | PointDataTypes::CoordinateY
-                | PointDataTypes::CoordinateZ => attributes::POSITION_3D,
-                PointDataTypes::Intensity => attributes::INTENSITY,
-                PointDataTypes::ReturnNumber => attributes::RETURN_NUMBER,
-                PointDataTypes::NumberOfReturns => attributes::NUMBER_OF_RETURNS,
-                PointDataTypes::Classification => attributes::CLASSIFICATION,
-                PointDataTypes::UserData => attributes::USER_DATA,
-                PointDataTypes::ColorR | PointDataTypes::ColorG | PointDataTypes::ColorB => {
+                PointDataType::CoordinateX
+                | PointDataType::CoordinateY
+                | PointDataType::CoordinateZ => attributes::POSITION_3D,
+                PointDataType::Intensity => attributes::INTENSITY,
+                PointDataType::ReturnNumber => attributes::RETURN_NUMBER,
+                PointDataType::NumberOfReturns => attributes::NUMBER_OF_RETURNS,
+                PointDataType::Classification => attributes::CLASSIFICATION,
+                PointDataType::UserData => attributes::USER_DATA,
+                PointDataType::ColorR | PointDataType::ColorG | PointDataType::ColorB => {
                     attributes::COLOR_RGB
                 }
-                PointDataTypes::GpsTime => attributes::GPS_TIME,
-                PointDataTypes::PointSourceID => attributes::POINT_SOURCE_ID,
-                PointDataTypes::EdgeOfFlightLine => attributes::EDGE_OF_FLIGHT_LINE,
-                PointDataTypes::ScanDirectionFlag => attributes::SCAN_DIRECTION_FLAG,
-                PointDataTypes::ScanAngleRank => attributes::SCAN_ANGLE_RANK,
-                PointDataTypes::NIR => attributes::NIR,
-                PointDataTypes::Skip => panic!("Skip should be filtered"),
+                PointDataType::GpsTime => attributes::GPS_TIME,
+                PointDataType::PointSourceID => attributes::POINT_SOURCE_ID,
+                PointDataType::EdgeOfFlightLine => attributes::EDGE_OF_FLIGHT_LINE,
+                PointDataType::ScanDirectionFlag => attributes::SCAN_DIRECTION_FLAG,
+                PointDataType::ScanAngleRank => attributes::SCAN_ANGLE_RANK,
+                PointDataType::NIR => attributes::NIR,
+                PointDataType::Skip => panic!("Skip should be filtered"),
             })
             .collect::<HashSet<_>>();
         PointLayout::from_attributes(&Vec::from_iter(hashset))
@@ -72,16 +73,16 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         point: &mut UntypedPointBuffer,
         line: &str,
         delimiter: &str,
-        parse_layout: &[PointDataTypes],
+        parse_layout: &[PointDataType],
     ) -> Result<()> {
         for pair in line.split(delimiter).zip_longest(parse_layout) {
             match pair {
                 Both(value_str, data_type) => match data_type {
-                    PointDataTypes::CoordinateX => {
+                    PointDataType::CoordinateX => {
                         Self::parse_to_point_f64(point, &attributes::POSITION_3D, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'x'))?;
                     }
-                    PointDataTypes::CoordinateY => {
+                    PointDataType::CoordinateY => {
                         Self::parse_to_point_f64(
                             point,
                             &attributes::POSITION_3D,
@@ -90,7 +91,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         )
                         .with_context(|| generate_parse_error(data_type, 'y'))?;
                     }
-                    PointDataTypes::CoordinateZ => {
+                    PointDataType::CoordinateZ => {
                         Self::parse_to_point_f64(
                             point,
                             &attributes::POSITION_3D,
@@ -99,15 +100,15 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         )
                         .with_context(|| generate_parse_error(data_type, 'z'))?;
                     }
-                    PointDataTypes::Intensity => {
+                    PointDataType::Intensity => {
                         Self::parse_to_point_u16(point, &attributes::INTENSITY, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'i'))?;
                     }
-                    PointDataTypes::ReturnNumber => {
+                    PointDataType::ReturnNumber => {
                         Self::parse_to_point_u8(point, &attributes::RETURN_NUMBER, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'r'))?;
                     }
-                    PointDataTypes::NumberOfReturns => {
+                    PointDataType::NumberOfReturns => {
                         Self::parse_to_point_u8(
                             point,
                             &attributes::NUMBER_OF_RETURNS,
@@ -116,19 +117,19 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         )
                         .with_context(|| generate_parse_error(data_type, 'n'))?;
                     }
-                    PointDataTypes::Classification => {
+                    PointDataType::Classification => {
                         Self::parse_to_point_u8(point, &attributes::CLASSIFICATION, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'c'))?;
                     }
-                    PointDataTypes::UserData => {
+                    PointDataType::UserData => {
                         Self::parse_to_point_u8(point, &attributes::USER_DATA, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'u'))?;
                     }
-                    PointDataTypes::ColorR => {
+                    PointDataType::ColorR => {
                         Self::parse_to_point_u16(point, &attributes::COLOR_RGB, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'R'))?;
                     }
-                    PointDataTypes::ColorG => {
+                    PointDataType::ColorG => {
                         Self::parse_to_point_u16(
                             point,
                             &attributes::COLOR_RGB,
@@ -137,7 +138,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         )
                         .with_context(|| generate_parse_error(data_type, 'G'))?;
                     }
-                    PointDataTypes::ColorB => {
+                    PointDataType::ColorB => {
                         Self::parse_to_point_u16(
                             point,
                             &attributes::COLOR_RGB,
@@ -146,15 +147,15 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         )
                         .with_context(|| generate_parse_error(data_type, 'B'))?;
                     }
-                    PointDataTypes::GpsTime => {
+                    PointDataType::GpsTime => {
                         Self::parse_to_point_f64(point, &attributes::GPS_TIME, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 't'))?;
                     }
-                    PointDataTypes::PointSourceID => {
+                    PointDataType::PointSourceID => {
                         Self::parse_to_point_u16(point, &attributes::POINT_SOURCE_ID, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'p'))?;
                     }
-                    PointDataTypes::EdgeOfFlightLine => {
+                    PointDataType::EdgeOfFlightLine => {
                         Self::parse_to_point_bool(
                             point,
                             &attributes::EDGE_OF_FLIGHT_LINE,
@@ -163,7 +164,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         )
                         .with_context(|| generate_parse_error(data_type, 'e'))?;
                     }
-                    PointDataTypes::ScanDirectionFlag => {
+                    PointDataType::ScanDirectionFlag => {
                         Self::parse_to_point_bool(
                             point,
                             &attributes::SCAN_DIRECTION_FLAG,
@@ -172,15 +173,15 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         )
                         .with_context(|| generate_parse_error(data_type, 'd'))?;
                     }
-                    PointDataTypes::ScanAngleRank => {
+                    PointDataType::ScanAngleRank => {
                         Self::parse_to_point_i8(point, &attributes::SCAN_ANGLE_RANK, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'a'))?;
                     }
-                    PointDataTypes::NIR => {
+                    PointDataType::NIR => {
                         Self::parse_to_point_u16(point, &attributes::NIR, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'I'))?;
                     }
-                    PointDataTypes::Skip => {}
+                    PointDataType::Skip => {}
                 },
                 Left(_) => continue,
                 Right(_) => {
@@ -299,89 +300,12 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         })
     }
 
-    //from LAStools
-    //s - skip this number
-    //x - x coordinate
-    //y - y coordinate
-    //z - z coordinate
-    //i - intensity
-    //r - ReturnNumber,
-    //n - number of returns of given pulse,
-    //c - classification
-    //u - user data
-    //R - red channel of RGB color
-    //G - green channel of RGB color
-    //B - blue channel of RGB color
-    //t - gps time
-    //p - point source ID
-    //e - edge of flight line flag
-    //d - direction of scan flag
-    //a - scan angle rank
-    //I - NIR channel
-    fn get_parse_layout(format: &str) -> Result<Vec<PointDataTypes>> {
-        let mut parse_layout = Vec::<PointDataTypes>::new();
-        for character in format.chars() {
-            match character {
-                's' => parse_layout.push(PointDataTypes::Skip),
-                'x' => parse_layout.push(PointDataTypes::CoordinateX),
-                'y' => parse_layout.push(PointDataTypes::CoordinateY),
-                'z' => parse_layout.push(PointDataTypes::CoordinateZ),
-                'i' => parse_layout.push(PointDataTypes::Intensity),
-                'n' => parse_layout.push(PointDataTypes::NumberOfReturns),
-                'r' => parse_layout.push(PointDataTypes::ReturnNumber),
-                'c' => parse_layout.push(PointDataTypes::Classification),
-                't' => parse_layout.push(PointDataTypes::GpsTime),
-                'u' => parse_layout.push(PointDataTypes::UserData),
-                'p' => parse_layout.push(PointDataTypes::PointSourceID),
-                'R' => parse_layout.push(PointDataTypes::ColorR),
-                'G' => parse_layout.push(PointDataTypes::ColorG),
-                'B' => parse_layout.push(PointDataTypes::ColorB),
-                'I' => parse_layout.push(PointDataTypes::NIR),
-                'a' => parse_layout.push(PointDataTypes::ScanAngleRank),
-                'e' => parse_layout.push(PointDataTypes::EdgeOfFlightLine),
-                'd' => parse_layout.push(PointDataTypes::ScanDirectionFlag),
-                _ => {
-                    bail!(
-                        "FormatError can't interpret format literal '{}' in format string '{}'.",
-                        character,
-                        format
-                    );
-                }
-            }
-        }
-        Ok(parse_layout)
-    }
+   
 }
 
-// This enum maps the different entrys on an ascii file to later map these entries to the corresponding attribute.
-#[derive(Debug)]
-enum PointDataTypes {
-    Skip,
-    CoordinateX,
-    CoordinateY,
-    CoordinateZ,       //Vec3f64
-    Intensity,         //U16
-    ReturnNumber,      //U8
-    NumberOfReturns,   //U8
-    Classification,    //U8
-    UserData,          //U8
-    ColorR,            //U16
-    ColorG,            //U16
-    ColorB,            //U16
-    GpsTime,           //F64
-    PointSourceID,     // U16
-    EdgeOfFlightLine,  //bool
-    ScanDirectionFlag, //bool
-    ScanAngleRank,     //I8
-    NIR,               //U16
-}
 
-impl std::fmt::Display for PointDataTypes {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-fn generate_parse_error(datatype: &PointDataTypes, character: char) -> String {
+
+fn generate_parse_error(datatype: &PointDataType, character: char) -> String {
     format!(
         "ParseError at parsing {} for format literal '{}'.",
         datatype.to_string(),

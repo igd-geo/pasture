@@ -236,7 +236,7 @@ fn get_generic_converter(
     }
 
     let key = (from_type, to_type);
-    let f = GENERIC_CONVERTERS.get(&key).expect("Invalid conversion");
+    let f = GENERIC_CONVERTERS.get(&key).unwrap_or_else(|| panic!("Invalid conversion {} -> {}", from_type, to_type));
     Some(*f)
 }
 
