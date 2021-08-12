@@ -50,7 +50,6 @@ pub struct UntypedPointBuffer<'layout> {
 }
 
 impl<'layout> UntypedPointBuffer<'layout> {
-
     pub fn new(layout: &'layout PointLayout) -> Self {
         Self {
             layout,
@@ -298,7 +297,6 @@ impl UntypedPoint for UntypedPointSlice<'_> {
 // - test getter setter
 // - test cursor
 // Test UntypedPointSlice
-
 // - test getter setter
 // - test cursor
 #[cfg(test)]
@@ -367,7 +365,9 @@ mod tests {
         let mut point = UntypedPointSlice::new(&layout, &mut buffer);
         let intensity_value: u16 = 42;
 
-        let offset = layout.offset_of(&attributes::INTENSITY).unwrap();
+        let offset = layout
+            .offset_of(&attributes::INTENSITY)
+            .unwrap();
         // Write
         let mut cursor = point.get_cursor();
         cursor.set_position(offset);
@@ -425,7 +425,7 @@ mod tests {
         let layout =
             PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
         let mut point = UntypedPointBuffer::new(&layout);
-        let intensity_value: u64 = 42;
+        let intensity_value: f32 = 42.0;
         point
             .set_attribute(&attributes::INTENSITY, &intensity_value)
             .unwrap();

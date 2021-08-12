@@ -582,7 +582,6 @@ mod tests {
             assert_eq!(point.position, position_expected[index]);
             assert_eq!(point.classification, 0);
             assert_eq!(point.user_data, 0);
-
         }
         Ok(())
     }

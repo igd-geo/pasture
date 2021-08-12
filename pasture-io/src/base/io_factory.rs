@@ -17,10 +17,10 @@ type WriterFactoryFn = dyn Fn(&Path) -> Result<Box<dyn PointWriter>>;
 /// Factory that can create `PointReader` and `PointWriter` objects based on file extensions. Use this if you have a file path
 /// and just want to create a `PointReader` or `PointWriter` from this path, without knowing the type of file. The `Default`
 /// implementation supports all file formats that Pasture natively works with, custom formats can be registered using the
-/// `register_...` functions
+/// `register_...` functions. An extension in this context is whatever [`Path::extension()`](Path::extension) returns for a valid file path
 pub struct IOFactory {
-    reader_factories: HashMap<&'static str, Box<ReaderFactoryFn>>,
-    writer_factories: HashMap<&'static str, Box<WriterFactoryFn>>,
+    reader_factories: HashMap<String, Box<ReaderFactoryFn>>,
+    writer_factories: HashMap<String, Box<WriterFactoryFn>>,
 }
 
 impl IOFactory {
@@ -39,12 +39,16 @@ impl IOFactory {
                 file.display()
             )
         })?;
-        let factory = self.reader_factories.get(extension_str).ok_or_else(|| {
-            anyhow!(
-                "Reading from point cloud files with extension {} is not supported",
-                extension_str
-            )
-        })?;
+        let extension_str_lower = extension_str.to_lowercase();
+        let factory = self
+            .reader_factories
+            .get(extension_str_lower.as_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Reading from point cloud files with extension {} is not supported",
+                    extension_str
+                )
+            })?;
 
         factory(file)
     }
@@ -64,52 +68,62 @@ impl IOFactory {
                 file.display()
             )
         })?;
-        let factory = self.writer_factories.get(extension_str).ok_or_else(|| {
-            anyhow!(
-                "Writing to point cloud files with extension {} is not supported",
-                extension_str
-            )
-        })?;
+        let extension_str_lower = extension_str.to_lowercase();
+        let factory = self
+            .writer_factories
+            .get(extension_str_lower.as_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Writing to point cloud files with extension {} is not supported",
+                    extension_str
+                )
+            })?;
 
         factory(file)
     }
 
     /// Returns `true` if the associated `IOFactory` supports creating `PointReader` objects for the given
     /// file `extension`
-    pub fn supports_reading_from(&self, extension: &'static str) -> bool {
-        self.reader_factories.contains_key(extension)
+    pub fn supports_reading_from(&self, extension: &str) -> bool {
+        let extension_lower = extension.to_lowercase();
+        self.reader_factories.contains_key(extension_lower.as_str())
     }
 
     /// Returns `true` if the associated `IOFactory` supports creating `PointWriter` objects for the given
     /// file `extension`
-    pub fn supports_writing_to(&self, extension: &'static str) -> bool {
-        self.writer_factories.contains_key(extension)
+    pub fn supports_writing_to(&self, extension: &str) -> bool {
+        let extension_lower = extension.to_lowercase();
+        self.writer_factories.contains_key(extension_lower.as_str())
     }
 
     /// Register a new readable file extension with the associated `IOFactory`. The `reader_factory` will be called whenever
     /// `extension` is encountered as a file extension in `make_reader`. Returns the previous reader factory function that
-    /// was registered for `extension`, if there was any.
+    /// was registered for `extension`, if there was any. File extensions are treated as lower-case internally, so if the
+    /// extension `.FOO` is registered here, it will match `file.foo` and `file.FOO` (and all case-variations thereof).
     pub fn register_reader_for_extension<
         F: Fn(&Path) -> Result<Box<dyn PointReadAndSeek>> + 'static,
     >(
         &mut self,
-        extension: &'static str,
+        extension: &str,
         reader_factory: F,
     ) -> Option<Box<ReaderFactoryFn>> {
+        let extension_lower = extension.to_lowercase();
         self.reader_factories
-            .insert(extension, Box::new(reader_factory))
+            .insert(extension_lower, Box::new(reader_factory))
     }
 
     /// Register a new writeable file extension with the associated `IOFactory`. The `writer_factory` will be called whenever
     /// `extension` is encountered as a file extension in `make_writer`. Returns the previous writer factory function that
-    /// was registered for `extension`, if there was any.
+    /// was registered for `extension`, if there was any. File extensions are treated as lower-case internally, so if the
+    /// extension `.FOO` is registered here, it will match `file.foo` and `file.FOO` (and all case-variations thereof).
     pub fn register_writer_for_extension<F: Fn(&Path) -> Result<Box<dyn PointWriter>> + 'static>(
         &mut self,
-        extension: &'static str,
+        extension: &str,
         writer_factory: F,
     ) -> Option<Box<WriterFactoryFn>> {
+        let extension_lower = extension.to_lowercase();
         self.writer_factories
-            .insert(extension, Box::new(writer_factory))
+            .insert(extension_lower, Box::new(writer_factory))
     }
 }
 
@@ -141,5 +155,28 @@ impl Default for IOFactory {
         });
 
         factory
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn io_factory_ignores_extension_case() {
+        let mut factory: IOFactory = Default::default();
+
+        assert!(factory.supports_reading_from("las"));
+        assert!(factory.supports_reading_from("LAS"));
+        assert!(factory.supports_writing_to("las"));
+        assert!(factory.supports_writing_to("LAS"));
+
+        factory.register_reader_for_extension("FOO", |_path| unimplemented!());
+        factory.register_writer_for_extension("FOO", |_path| unimplemented!());
+
+        assert!(factory.supports_reading_from("foo"));
+        assert!(factory.supports_reading_from("FOO"));
+        assert!(factory.supports_writing_to("foo"));
+        assert!(factory.supports_writing_to("FOO"));
     }
 }

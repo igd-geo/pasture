@@ -1,9 +1,9 @@
-use anyhow::Result;
 use pasture_core::{
     containers::{PerAttributeVecPointStorage, PointBuffer},
     layout::{attributes, PointLayout},
     nalgebra::Vector3,
 };
+use anyhow::Result;
 use std::path::PathBuf;
 
 /// Returns the resource/test/folder

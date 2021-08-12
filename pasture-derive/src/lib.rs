@@ -1,4 +1,6 @@
 extern crate proc_macro;
+use std::collections::HashSet;
+
 //use anyhow::{anyhow, bail, Result};
 use layout::{get_struct_member_layout, StructMemberLayout};
 use proc_macro::TokenStream;
@@ -27,6 +29,7 @@ enum PasturePrimitiveType {
     Vec3u16,
     Vec3f32,
     Vec3f64,
+    Vec4u8,
 }
 
 impl PasturePrimitiveType {
@@ -47,6 +50,7 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::Vec3u16 => 2,
             PasturePrimitiveType::Vec3f32 => 4,
             PasturePrimitiveType::Vec3f64 => 8,
+            &PasturePrimitiveType::Vec4u8 => 1,
         }
     }
 
@@ -67,6 +71,7 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::Vec3u16 => 6,
             PasturePrimitiveType::Vec3f32 => 12,
             PasturePrimitiveType::Vec3f64 => 24,
+            &PasturePrimitiveType::Vec4u8 => 4,
         }
     }
 
@@ -97,6 +102,9 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::Vec3f64 => {
                 quote! {pasture_core::layout::PointAttributeDataType::Vec3f64}
             }
+            PasturePrimitiveType::Vec4u8 => {
+                quote! {pasture_core::layout::PointAttributeDataType::Vec4u8}
+            }
         }
     }
 }
@@ -123,13 +131,15 @@ fn get_primitive_type_for_ident_type(ident: &Ident) -> Result<PasturePrimitiveTy
 }
 
 fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<PasturePrimitiveType> {
-    // Path should have an ident (Vector3), as well as one generic argument
+    // Path should have an ident (Vector3, Vector4, ...), as well as one generic argument
+    let valid_idents: HashSet<_> = ["Vector3", "Vector4"].iter().collect();
+
     let path_segment = type_path
         .path
         .segments
         .first()
         .ok_or_else(|| Error::new_spanned(&type_path.path, "Invalid type"))?;
-    if path_segment.ident != "Vector3" {
+    if !valid_idents.contains(&path_segment.ident.to_string().as_str()) {
         return Err(Error::new_spanned(&path_segment.ident, "Invalid type"));
     }
 
@@ -157,15 +167,25 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
         Some(ident) => {
             // Not ALL primitive types are supported as generic arguments for Vector3
             let type_name = ident.to_string();
-            match type_name.as_str() {
-                "u8" => Ok(PasturePrimitiveType::Vec3u8),
-                "u16" => Ok(PasturePrimitiveType::Vec3u16),
-                "f32" => Ok(PasturePrimitiveType::Vec3f32),
-                "f64" => Ok(PasturePrimitiveType::Vec3f64),
-                _ => Err(Error::new_spanned(
-                    ident,
-                    format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic arguments u8, u16, f32 or f64", type_name),
-                ))
+            match path_segment.ident.to_string().as_str() {
+                "Vector3" => match type_name.as_str() {
+                    "u8" => Ok(PasturePrimitiveType::Vec3u8),
+                    "u16" => Ok(PasturePrimitiveType::Vec3u16),
+                    "f32" => Ok(PasturePrimitiveType::Vec3f32),
+                    "f64" => Ok(PasturePrimitiveType::Vec3f64),
+                    _ => Err(Error::new_spanned(
+                        ident,
+                        format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic argument(s) u8, u16, f32 or f64", type_name),
+                    ))
+                },
+                "Vector4" => match type_name.as_str() {
+                    "u8" => Ok(PasturePrimitiveType::Vec4u8),
+                    _ => Err(Error::new_spanned(
+                        ident,
+                        format!("Vector4<{}> is no valid Pasture primitive type. Vector4 is supported, but only for generic argument(s) u8", type_name),
+                    ))
+                },
+                _ => Err(Error::new_spanned(ident, format!("Invalid type"))),
             }
         }
         None => Err(Error::new_spanned(&type_path.path, "Invalid type")),
@@ -250,6 +270,8 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
                             Ok("ReturnPointWaveformLocation".into())
                         }
                         "BUILTIN_WAVEFORM_PARAMETERS" => Ok("WaveformParameters".into()),
+                        "BUILTIN_POINT_ID" => Ok("PointID".into()),
+                        "BUILTIN_NORMAL" => Ok("Normal".into()),
                         // TODO Other attributes
                         _ => {
                             return Err(Error::new_spanned(
@@ -284,7 +306,6 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
 /// Describes a single field within a `PointType` struct. Contains the name of the field, the point attribute
 /// that the field maps to, as well as the primitive type of the field
 struct FieldLayoutDescription {
-    pub field_name: String,
     pub attribute_name: String,
     pub primitive_type: PasturePrimitiveType,
 }
@@ -294,15 +315,10 @@ fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescr
         .iter()
         .map(|field| match field.ty {
             Type::Path(ref type_path) => {
-                let field_name = field
-                    .ident
-                    .as_ref()
-                    .map_or("_".into(), |ident| ident.to_string());
                 let primitive_type = type_path_to_primitive_type(type_path)?;
                 let attribute_name = get_attribute_name_from_field(field)?;
 
                 Ok(FieldLayoutDescription {
-                    field_name,
                     attribute_name,
                     primitive_type,
                 })
@@ -402,6 +418,8 @@ fn calculate_offsets_and_alignment(
 /// - `BUILTIN_WAVEFORM_PACKET_SIZE` corresponding to the [WAVEFORM_PACKET_SIZE](pasture_core::layout::attributes::WAVEFORM_PACKET_SIZE) attribute
 /// - `BUILTIN_RETURN_POINT_WAVEFORM_LOCATION` corresponding to the [RETURN_POINT_WAVEFORM_LOCATION](pasture_core::layout::attributes::RETURN_POINT_WAVEFORM_LOCATION) attribute
 /// - `BUILTIN_WAVEFORM_PARAMETERS` corresponding to the [WAVEFORM_PARAMETERS](pasture_core::layout::attributes::WAVEFORM_PARAMETERS) attribute
+/// - `BUILTIN_POINT_ID` corresponding to the [POINT_ID](pasture_core::layout::attributes::POINT_ID) attribute
+/// - `BUILTIN_NORMAL` corresponding to the [NORMAL](pasture_core::layout::attributes::NORMAL) attribute
 ///
 /// # Custom attributes
 ///

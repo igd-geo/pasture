@@ -88,10 +88,31 @@
     - [ ] Examples
 - [ ] 3D Tiles
     - [ ] Reader
+        - [x] Positions
+        - [ ] Quantized positions
+        - [x] RGBA colors
+        - [x] RGB colors
+        - [ ] RGB565 colors
+        - [x] Normals
+        - [ ] Normals oct encoded
+        - [ ] Batch IDs
+        - [ ] Batch table and custom attributes
     - [ ] Writer
+        - [x] Positions
+        - [ ] Quantized positions
+        - [x] RGBA colors
+        - [x] RGB colors
+        - [x] Normals
+        - [ ] Normals oct encoded
+        - [ ] Batch IDs
+        - [ ] Batch table and custom attributes
+        - [ ] Write from custom PointLayout
 - [ ] ASCII
-    - [ ] Reader
+    - [x] Reader
     - [ ] Writer
+- [ ] Documentation
+    - [ ] Crate-documentation
+    - [ ] Module-level documentation
 
 # Algorithms
 
