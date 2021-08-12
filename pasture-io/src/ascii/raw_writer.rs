@@ -257,7 +257,7 @@ mod tests {
     }
     #[test]
     fn test_write_all_attribute() -> Result<()> {
-        let out_path = "./test_ascii_writer.txt";
+        let out_path = "./test_ascii_writer_attributes.txt";
         defer! {
              std::fs::remove_file(out_path).expect("Could not remove test file");
         }
@@ -283,5 +283,34 @@ mod tests {
         Ok(())
     }
 
-    
+    #[test]
+    #[should_panic(expected = "FormatError can't interpret format literal")]
+    fn test_error_format_unrecognized_literal() {
+        let path = "./test_ascii_writer_format_error.txt";
+        defer! {
+             std::fs::remove_file(path).expect("Could not remove test file");
+        }
+        let writer = BufWriter::new(File::create(path).unwrap());
+        RawAsciiWriter::from_write(writer, "xyzQ").unwrap();
+    }
+
+
+    #[test]
+    #[should_panic(expected = "Cannot find attribute.")]
+    fn test_attribute_not_found_error() {
+        // create point buffer with one point
+        let layout =
+            PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
+        let mut buffer = InterleavedVecPointStorage::new(layout.clone());
+        let mut point = UntypedPointBuffer::new(&layout);
+        point.set_attribute(&attributes::INTENSITY, &32_u16).unwrap();
+        buffer.push(&point.get_interleaved_point_view());
+        let out_path = "./test_ascii_writer_attribute_error.txt";
+        defer! {
+            std::fs::remove_file(out_path).expect("Could not remove test file");
+        }
+        let mut writer =
+            RawAsciiWriter::from_write(BufWriter::new(File::create(&out_path).unwrap()), "e").unwrap();
+        writer.write(&buffer).unwrap();
+    }
 }
