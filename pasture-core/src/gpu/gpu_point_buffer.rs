@@ -1,8 +1,9 @@
 use crate::layout::{PointAttributeDataType, PointAttributeDefinition};
 use bytemuck::__core::convert::TryInto;
-use crate::containers::PointBuffer;
+use crate::containers::{PointBuffer, PerAttributePointBufferMutExt, PerAttributePointBufferMut};
 use crate::gpu::{BufferInfoInterleaved, BufferInfoPerAttribute};
 use std::collections::HashMap;
+use crate::nalgebra::Vector3;
 
 pub trait GpuPointBuffer {
     fn bytes_per_element(&self, datatype: PointAttributeDataType) -> u32 {
@@ -401,7 +402,7 @@ impl GpuPointBufferInterleaved {
 
     pub fn malloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
         // Determine struct alignment
-        let mut struct_alignment =  self.struct_alignment(&buffer_info);
+        let struct_alignment =  self.struct_alignment(&buffer_info);
 
         let mut offset: usize = 0;
         for _ in 0..num_points {
@@ -446,7 +447,7 @@ impl GpuPointBufferInterleaved {
         let pt_rng = &points_range;
 
         // Determine struct alignment
-        let mut struct_alignment = self.struct_alignment(&buffer_info);
+        let struct_alignment = self.struct_alignment(&buffer_info);
         println!("Struct alignment = {}", struct_alignment);
 
         // Get bytes in interleaved format
@@ -639,8 +640,8 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         points_range: std::ops::Range<usize>,
         buffer_infos: &Vec<BufferInfoPerAttribute>,
         wgpu_device: &mut wgpu::Device,
-        wgpu_queue: &wgpu::Queue
-    ) {
+        wgpu_queue: &wgpu::Queue)
+    {
         let len = points_range.len();
 
         for info in buffer_infos {
@@ -667,28 +668,186 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         self.create_bind_group(wgpu_device);
     }
 
-    pub async fn download(&self, wgpu_device: &wgpu::Device) -> Vec<Vec<u8>> {
-        let mut output_bytes: Vec<Vec<u8>> = Vec::new();
+    pub async fn download_into_per_attribute(
+        &self,
+        point_buffer: &mut dyn PerAttributePointBufferMut<'_>,
+        points_range: std::ops::Range<usize>,
+        buffer_infos: &Vec<BufferInfoPerAttribute<'_>>,
+        wgpu_device: &wgpu::Device)
+    {
+        for info in buffer_infos {
+            let gpu_buffer = self.buffers.get(info.attribute.name()).unwrap();
 
-        for key in self.buffer_keys.as_slice() {
-            let gpu_buffer = self.buffers.get(key.name()).unwrap();
-
-            let result_buffer_slice = gpu_buffer.slice(..);
-            let result_buffer_future = result_buffer_slice.map_async(wgpu::MapMode::Read);
+            let gpu_buffer_slice = gpu_buffer.slice(..);
+            let mapped_future = gpu_buffer_slice.map_async(wgpu::MapMode::Read);
             wgpu_device.poll(wgpu::Maintain::Wait); // TODO: "Should be called in event loop or other thread ..."
 
-            // TODO: how to know the data type of the current buffer?
-            if let Ok(()) = result_buffer_future.await {
-                let result_as_bytes = result_buffer_slice.get_mapped_range();
-                &output_bytes.push(result_as_bytes.to_vec());
+            if let Ok(()) = mapped_future.await {
+                let mapped_view = gpu_buffer_slice.get_mapped_range();
+                let result_as_bytes = mapped_view.to_vec();
+
+                let range = points_range.start..points_range.end;
+                match info.attribute.datatype() {
+                    PointAttributeDataType::Bool => {
+                        let result: Vec<bool> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) != 0)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<bool>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::U8 => {
+                        let result: Vec<u8> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<u8>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::I8 => {
+                        let result: Vec<i8> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i8)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<i8>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::U16 => {
+                        let result: Vec<u16> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<u16>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::I16 => {
+                        let result: Vec<i16> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i16)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<i16>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::U32 => {
+                        let result: Vec<u32> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<u32>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::I32 => {
+                        let result: Vec<i32> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<i32>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::U64 => {},
+                    PointAttributeDataType::I64 => {},
+                    PointAttributeDataType::F32 => {
+                        let result: Vec<f32> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<f32>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::F64 => {
+                        let result: Vec<f64> = result_as_bytes
+                            .chunks_exact(8)
+                            .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<f64>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i] = result[i];
+                        }
+                    },
+                    PointAttributeDataType::Vec3u8 => {
+                        let result: Vec<u8> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<Vector3<u8>>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i].x = result[i * 4 + 0];
+                            attrib[i].y = result[i * 4 + 1];
+                            attrib[i].z = result[i * 4 + 2];
+                        }
+                    },
+                    PointAttributeDataType::Vec3u16 => {
+                        let result: Vec<u16> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<Vector3<u16>>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i].x = result[i * 4 + 0];
+                            attrib[i].y = result[i * 4 + 1];
+                            attrib[i].z = result[i * 4 + 2];
+                        }
+                    },
+                    PointAttributeDataType::Vec3f32 => {
+                        let result: Vec<f32> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<Vector3<f32>>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i].x = result[i * 4 + 0];
+                            attrib[i].y = result[i * 4 + 1];
+                            attrib[i].z = result[i * 4 + 2];
+                        }
+                    },
+                    PointAttributeDataType::Vec3f64 => {
+                        let result: Vec<f64> = result_as_bytes
+                            .chunks_exact(8)
+                            .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<Vector3<f64>>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i].x = result[i * 4 + 0];
+                            attrib[i].y = result[i * 4 + 1];
+                            attrib[i].z = result[i * 4 + 2];
+                        }
+                    },
+                };
 
                 // Drop all mapped views before unmapping buffer
-                drop(result_as_bytes);
+                drop(mapped_view);
                 gpu_buffer.unmap();
             }
-        };
-
-        output_bytes
+        }
     }
 
     fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {

@@ -1,10 +1,9 @@
 use pasture_core::gpu;
 use pasture_core::nalgebra::Vector3;
-use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage};
+use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage, PointBufferExt};
 use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
-use bytemuck::__core::convert::TryInto;
 use pasture_core::gpu::{GpuPointBufferPerAttribute};
 
 #[repr(C)]
@@ -94,9 +93,9 @@ async fn run() {
     point_buffer.push_points(points.as_slice());
 
     // ... or interleaved layout (comment out to try per-attribute)
-    let layout = MyPointType::layout();
-    let mut point_buffer = InterleavedVecPointStorage::new(layout);
-    point_buffer.push_points(points.as_slice());
+    // let layout = MyPointType::layout();
+    // let mut point_buffer = InterleavedVecPointStorage::new(layout);
+    // point_buffer.push_points(points.as_slice());
 
     let custom_color_attrib =
         PointAttributeDefinition::custom("MyColorF32", PointAttributeDataType::Vec3f32);
@@ -188,79 +187,8 @@ async fn run() {
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 
-    //TODO: download() should just return an altered point buffer
-    let results_as_bytes = gpu_point_buffer.download(&mut device.wgpu_device).await;
-
-    let pos_result_vec: Vec<f64> = results_as_bytes[0]
-        .chunks_exact(8)
-        .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
-        .collect();
-    println!("Positions: {:?}", pos_result_vec);
-
-    let icol_result_vec: Vec<u16> = results_as_bytes[1]
-        .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
-        .collect();
-    println!("Colors (u16): {:?}", icol_result_vec);
-
-    let fcol_result_vec: Vec<f32> = results_as_bytes[2]
-        .chunks_exact(4)
-        .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
-        .collect();
-    println!("Colors (f32): {:?}", fcol_result_vec);
-
-    let byte_vec_result_vec: Vec<u8> = results_as_bytes[3]
-        .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
-        .collect();
-    println!("Bytes vecs: {:?}", byte_vec_result_vec);
-
-    let classification_result_vec: Vec<u8> = results_as_bytes[4]
-        .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
-        .collect();
-    println!("Classifications: {:?}", classification_result_vec);
-
-    let intensity_result_vec: Vec<u16> = results_as_bytes[5]
-        .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
-        .collect();
-    println!("Intensities: {:?}", intensity_result_vec);
-
-    let scan_angle_result_vec: Vec<i16> = results_as_bytes[6]
-        .chunks_exact(4)
-        .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i16)
-        .collect();
-    println!("Scan angles: {:?}", scan_angle_result_vec);
-
-    // Note: cannot cast u32 to bool. Instead check whether bytes != 0.
-    let scan_dir_flag_result_vec: Vec<bool> = results_as_bytes[7]
-        .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) != 0)
-        .collect();
-    println!("Scan direction flags: {:?}", scan_dir_flag_result_vec);
-
-    let my_int_result_vec: Vec<i32> = results_as_bytes[8]
-        .chunks_exact(4)
-        .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
-        .collect();
-    println!("Integers (i32): {:?}", my_int_result_vec);
-
-    let packet_size_result_vec: Vec<u32> = results_as_bytes[9]
-        .chunks_exact(4)
-        .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
-        .collect();
-    println!("Packet sizes: {:?}", packet_size_result_vec);
-
-    let ret_point_loc_result_vec: Vec<f32> = results_as_bytes[10]
-        .chunks_exact(4)
-        .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
-        .collect();
-    println!("Return locations: {:?}", ret_point_loc_result_vec);
-
-    let gps_time_result_vec: Vec<f64> = results_as_bytes[11]
-        .chunks_exact(8)
-        .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
-        .collect();
-    println!("GPS times: {:?}", gps_time_result_vec);
+    gpu_point_buffer.download_into_per_attribute(&mut point_buffer, 0..3, &buffer_infos, &device.wgpu_device).await;
+    for point in point_buffer.iter_point::<MyPointType>() {
+        println!("{:?}", point);
+    }
 }
