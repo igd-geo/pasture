@@ -1,4 +1,4 @@
-use crate::layout::PointAttributeDataType;
+use crate::layout::{PointAttributeDataType, PointAttributeDefinition};
 use bytemuck::__core::convert::TryInto;
 use crate::containers::PointBuffer;
 use crate::gpu::{BufferInfoInterleaved, BufferInfoPerAttribute};
@@ -579,7 +579,7 @@ impl GpuPointBufferInterleaved {
     }
 }
 
-pub struct GpuPointBufferPerAttribute {
+pub struct GpuPointBufferPerAttribute<'a> {
     pub bind_group_layout: Option<wgpu::BindGroupLayout>,
     pub bind_group: Option<wgpu::BindGroup>,
 
@@ -588,13 +588,13 @@ pub struct GpuPointBufferPerAttribute {
     buffers: HashMap<String, wgpu::Buffer>,
     buffer_sizes: HashMap<String, wgpu::BufferAddress>,
     buffer_bindings: HashMap<String, u32>,
-    buffer_keys: Vec<String>,   // For now need order (because download code in device_compute depends on it)
+    buffer_keys: Vec<&'a PointAttributeDefinition>,   // For now need order (because download code in device_compute depends on it)
 }
 
-impl GpuPointBuffer for GpuPointBufferPerAttribute {}
+impl GpuPointBuffer for GpuPointBufferPerAttribute<'_> {}
 
-impl GpuPointBufferPerAttribute {
-    pub fn new() -> GpuPointBufferPerAttribute {
+impl<'a> GpuPointBufferPerAttribute<'a> {
+    pub fn new() -> GpuPointBufferPerAttribute<'a> {
         GpuPointBufferPerAttribute {
             bind_group_layout: None,
             bind_group: None,
@@ -605,13 +605,17 @@ impl GpuPointBufferPerAttribute {
         }
     }
 
-    pub fn malloc(&mut self, num_points: u64, buffer_infos: &Vec<BufferInfoPerAttribute>, wgpu_device: &mut wgpu::Device) {
+    pub fn malloc(&mut self, num_points: u64, buffer_infos: &'a Vec<BufferInfoPerAttribute>, wgpu_device: &mut wgpu::Device) {
         for info in buffer_infos {
             let size = (num_points as usize) * self.alignment_per_element(info.attribute.datatype());
             println!("Calculated size ({}): {}", info.attribute, size);
 
+            let key = info.attribute;
+            self.buffer_keys.push(key);
+
+            // HashMap need trait bound Hash, which PointAttributeDefinition does not have
+            // So use String instead
             let key = String::from(info.attribute.name());
-            self.buffer_keys.push(key.clone());
             self.buffer_sizes.insert(key.clone(), size as wgpu::BufferAddress);
             self.buffer_bindings.insert(key.clone(), info.binding);
             self.buffers.insert(key.clone(), wgpu_device.create_buffer(
@@ -667,7 +671,7 @@ impl GpuPointBufferPerAttribute {
         let mut output_bytes: Vec<Vec<u8>> = Vec::new();
 
         for key in self.buffer_keys.as_slice() {
-            let gpu_buffer = self.buffers.get(key).unwrap();
+            let gpu_buffer = self.buffers.get(key.name()).unwrap();
 
             let result_buffer_slice = gpu_buffer.slice(..);
             let result_buffer_future = result_buffer_slice.map_async(wgpu::MapMode::Read);
@@ -693,7 +697,7 @@ impl GpuPointBufferPerAttribute {
 
         for key in self.buffer_keys.as_slice() {
             println!("Key = {}", key);
-            let binding = *self.buffer_bindings.get(key).unwrap();
+            let binding = *self.buffer_bindings.get(key.name()).unwrap();
 
             group_layout_entries.push(
                 wgpu::BindGroupLayoutEntry {
@@ -711,7 +715,7 @@ impl GpuPointBufferPerAttribute {
             group_entries.push(
                 wgpu::BindGroupEntry {
                     binding,
-                    resource: self.buffers.get(key.as_str()).unwrap().as_entire_binding(),
+                    resource: self.buffers.get(key.name()).unwrap().as_entire_binding(),
                 }
             );
         }
