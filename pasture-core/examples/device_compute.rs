@@ -110,10 +110,17 @@ async fn run() {
 
     // Create a device with defaults...
     let device = gpu::Device::default().await;
+    let device = match device {
+        Ok(d) => d ,
+        Err(_) => {
+            println!("Failed to request device. Aborting.");
+            return;
+        }
+    };
     device.print_device_info();
 
     // ... or custom options
-    let mut device = gpu::Device::new(
+    let device = gpu::Device::new(
         gpu::DeviceOptions {
             device_power: gpu::DevicePower::High,
             device_backend: gpu::DeviceBackend::Vulkan,
@@ -121,6 +128,15 @@ async fn run() {
             use_adapter_limits: true,
         }
     ).await;
+
+    let mut device = match device {
+        Ok(d) => d ,
+        Err(_) => {
+            println!("Failed to request device. Aborting.");
+            return;
+        }
+    };
+
     device.print_device_info();
     device.print_active_features();
     device.print_active_limits();
@@ -182,8 +198,8 @@ async fn run() {
     gpu_point_buffer.malloc(3, &buffer_infos, &mut device.wgpu_device);
     gpu_point_buffer.upload(&mut point_buffer, 0..3, &buffer_infos, &mut device.wgpu_device, &device.wgpu_queue);
 
-    device.add_bind_group(gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
-    device.set_compute_shader(include_str!("shaders/device.comp"));
+    device.set_bind_group(0, gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
+    device.set_compute_shader_glsl(include_str!("shaders/device.comp"));
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 

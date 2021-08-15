@@ -6,29 +6,13 @@ use std::collections::HashMap;
 use crate::nalgebra::Vector3;
 
 pub trait GpuPointBuffer {
-    fn bytes_per_element(&self, datatype: PointAttributeDataType) -> u32 {
-        let num_bytes = match datatype {
-            PointAttributeDataType::U8 => { 1 }
-            PointAttributeDataType::I8 => { 1 }
-            PointAttributeDataType::U16 => { 2 }
-            PointAttributeDataType::I16 => { 2 }
-            PointAttributeDataType::U32 => { 4 }
-            PointAttributeDataType::I32 => { 4 }
-            PointAttributeDataType::U64 => { 8 }
-            PointAttributeDataType::I64 => { 8 }
-            PointAttributeDataType::F32 => { 4 }
-            PointAttributeDataType::F64 => { 8 }
-            PointAttributeDataType::Bool => { 1 }
-            PointAttributeDataType::Vec3u8 => { 3 }
-            PointAttributeDataType::Vec3u16 => { 6 }
-            PointAttributeDataType::Vec3f32 => { 12 }
-            PointAttributeDataType::Vec3f64 => { 24 }
-        };
-
-        num_bytes
-    }
-
     fn alignment_per_element(&self, datatype: PointAttributeDataType) -> usize {
+        // Assuming no extensions and GLSL:
+        // - Only 32-bit integers (signed or unsigned) on shader side
+        // - 32-bit and 64-bit floating point numbers
+        // - vec3's are treated as vec4's
+        //
+        // Hence a u8 takes up 4 bytes (32 bits) and a Vec3u8 takes up 16 bytes (4x 32 bits).
         let alignment = match datatype {
             PointAttributeDataType::U8 => { 4 }
             PointAttributeDataType::I8 => { 4 }
@@ -36,8 +20,8 @@ pub trait GpuPointBuffer {
             PointAttributeDataType::I16 => { 4 }
             PointAttributeDataType::U32 => { 4 }
             PointAttributeDataType::I32 => { 4 }
-            PointAttributeDataType::U64 => { 8 }    // TODO does not exist
-            PointAttributeDataType::I64 => { 8 }    // TODO does not exist
+            PointAttributeDataType::U64 => { 8 }    // Currently not supported on shader side
+            PointAttributeDataType::I64 => { 8 }    // Currently not supported on shader side
             PointAttributeDataType::F32 => { 4 }
             PointAttributeDataType::F64 => { 8 }
             PointAttributeDataType::Bool => { 4 }
@@ -54,8 +38,6 @@ pub trait GpuPointBuffer {
         let mut ret_bytes: Vec<u8> = Vec::new();
 
         let num_bytes = slice.len();
-
-        println!("{}: {}", datatype, offset);
 
         // Remember, signed and unsigned have the same bit-level behavior.
         // When casting to a larger type, first the size will change (zero or sign extension),
@@ -81,7 +63,7 @@ pub trait GpuPointBuffer {
             }
             PointAttributeDataType::U16 | PointAttributeDataType::I16 => {
                 // Treating as u32
-                let stride = self.bytes_per_element(datatype) as usize;
+                let stride = datatype.size() as usize;
                 let num_elements = num_bytes / stride;
 
                 for i in 0..num_elements {
@@ -140,7 +122,7 @@ pub trait GpuPointBuffer {
                 let one_as_bytes = 1_u32.to_ne_bytes();
 
                 // Each entry is 8 bits, ie. 1 byte -> each Vec3 has 3 bytes
-                let stride = self.bytes_per_element(datatype) as usize;
+                let stride = datatype.size() as usize;
                 let num_elements = num_bytes / stride;
 
                 // Iteration over each Vec3
@@ -172,7 +154,7 @@ pub trait GpuPointBuffer {
                 let one_as_bytes = 1_u32.to_ne_bytes();
 
                 // Each entry is 16 bits, ie. 2 bytes -> each Vec3 has 3*2 = 6 bytes
-                let stride = self.bytes_per_element(datatype) as usize;   // = 6
+                let stride = datatype.size() as usize;   // = 6
                 let num_elements = num_bytes / stride;
 
                 // Iteration over each Vec3
@@ -204,7 +186,7 @@ pub trait GpuPointBuffer {
                 let one_as_bytes = 1.0_f32.to_ne_bytes();
 
                 // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
-                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let stride = datatype.size() as usize;   // = 24
                 let num_elements = num_bytes / stride;
 
                 for i in 0..num_elements {
@@ -232,7 +214,7 @@ pub trait GpuPointBuffer {
                 let one_as_bytes = 1.0_f64.to_ne_bytes();
 
                 // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
-                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let stride = datatype.size() as usize;   // = 24
                 let num_elements = num_bytes / stride;
 
                 for i in 0..num_elements {
@@ -275,7 +257,7 @@ pub trait GpuPointBuffer {
             }
             PointAttributeDataType::U16 | PointAttributeDataType::I16 => {
                 // Treating as u32
-                let stride = self.bytes_per_element(datatype) as usize;
+                let stride = datatype.size() as usize;
                 let num_elements = num_bytes / stride;
 
                 for _ in 0..num_elements {
@@ -314,7 +296,7 @@ pub trait GpuPointBuffer {
             }
             PointAttributeDataType::Vec3u8 => {
                 // Each entry is 8 bits, ie. 1 byte -> each Vec3 has 3 bytes
-                let stride = self.bytes_per_element(datatype) as usize;
+                let stride = datatype.size() as usize;
                 let num_elements = num_bytes / stride;
 
                 // Iteration over each Vec3
@@ -330,7 +312,7 @@ pub trait GpuPointBuffer {
             }
             PointAttributeDataType::Vec3u16 => {
                 // Each entry is 16 bits, ie. 2 bytes -> each Vec3 has 3*2 = 6 bytes
-                let stride = self.bytes_per_element(datatype) as usize;   // = 6
+                let stride = datatype.size() as usize;   // = 6
                 let num_elements = num_bytes / stride;
 
                 // Iteration over each Vec3
@@ -346,7 +328,7 @@ pub trait GpuPointBuffer {
             }
             PointAttributeDataType::Vec3f32 => {
                 // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
-                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let stride = datatype.size() as usize;   // = 24
                 let num_elements = num_bytes / stride;
 
                 for _ in 0..num_elements {
@@ -361,7 +343,7 @@ pub trait GpuPointBuffer {
             }
             PointAttributeDataType::Vec3f64 => {
                 // Each entry is 64 bits and hence consists of 8 bytes -> a Vec3 has 24 bytes
-                let stride = self.bytes_per_element(datatype) as usize;   // = 24
+                let stride = datatype.size() as usize;   // = 24
                 let num_elements = num_bytes / stride;
 
                 for _ in 0..num_elements {
@@ -414,7 +396,7 @@ impl GpuPointBufferInterleaved {
 
             let mut datatype_offset_map: HashMap<PointAttributeDataType, usize> = HashMap::new();
             for attrib in buffer_info.attributes {
-                let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
+                let num_bytes = attrib.datatype().size() as usize;
                 self.calc_size(num_bytes, attrib.datatype(), &mut offset);
 
                 let start_offset = offset - self.alignment_per_element(attrib.datatype());
@@ -429,9 +411,12 @@ impl GpuPointBufferInterleaved {
 
         self.buffer_binding = Some(buffer_info.binding);
 
+        // TODO: warning message from wgpu
+        //  Feature MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu.
+        //  This is a massive performance footgun and likely not what you wanted.
         self.buffer = Some(wgpu_device.create_buffer(
             &wgpu::BufferDescriptor {
-                label: None,
+                label: Some("storage_buffer"),
                 size,
                 usage: wgpu::BufferUsage::STORAGE |
                     wgpu::BufferUsage::MAP_READ |
@@ -469,7 +454,7 @@ impl GpuPointBufferInterleaved {
 
             for attrib in buffer_info.attributes {
                 // Store the bytes for the current attribute in 'bytes_for_attrib'
-                let bytes_per_element = self.bytes_per_element(attrib.datatype()) as usize;
+                let bytes_per_element = attrib.datatype().size() as usize;
                 let mut bytes_for_attrib: Vec<u8> = vec![0; bytes_per_element];
                 point_buffer.get_raw_attribute(i, attrib, &mut *bytes_for_attrib);
 
@@ -479,9 +464,9 @@ impl GpuPointBufferInterleaved {
 
                 bytes_to_write.append(&mut bytes_for_attrib);
             }
-
-            println!("Current size: {}", bytes_to_write.len());
         }
+
+        println!("Current size: {}", bytes_to_write.len());
 
         // Change Vec<u8> to &[u8]
         let bytes_to_write: &[u8] = &*bytes_to_write;
@@ -490,7 +475,7 @@ impl GpuPointBufferInterleaved {
         let mut offset: usize = 0;
         for _ in 0..pt_rng.start {
             for attrib in buffer_info.attributes {
-                let bytes_per_element = self.bytes_per_element(attrib.datatype()) as usize;
+                let bytes_per_element = attrib.datatype().size() as usize;
                 self.calc_size(bytes_per_element, attrib.datatype(), &mut offset);
             }
         }
@@ -727,7 +712,7 @@ impl GpuPointBufferInterleaved {
     fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
         let bind_group_layout = wgpu_device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: None,
+                label: Some("storage_bind_group_layout"),
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: self.buffer_binding.unwrap(),
@@ -747,7 +732,7 @@ impl GpuPointBufferInterleaved {
 
         let bind_group = wgpu_device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label: None,
+                label: Some("storage_bind_group"),
                 layout: &bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
@@ -825,9 +810,13 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
             let key = String::from(info.attribute.name());
             self.buffer_sizes.insert(key.clone(), size as wgpu::BufferAddress);
             self.buffer_bindings.insert(key.clone(), info.binding);
+
+            // TODO: warning message from wgpu
+            //  Feature MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu.
+            //  This is a massive performance footgun and likely not what you wanted.
             self.buffers.insert(key.clone(), wgpu_device.create_buffer(
                 &wgpu::BufferDescriptor {
-                    label: None,
+                    label: Some(format!("storage_buffer_{}", key).as_str()),
                     size: size as wgpu::BufferAddress,
                     usage: wgpu::BufferUsage::STORAGE |
                         wgpu::BufferUsage::MAP_READ |
@@ -852,7 +841,7 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
 
         for info in buffer_infos {
             // Allocate enough space and load the points into the vector
-            let bytes_per_element = self.bytes_per_element(info.attribute.datatype()) as usize;
+            let bytes_per_element = info.attribute.datatype().size() as usize;
             let mut bytes_to_write: Vec<u8> = vec![0; len * bytes_per_element];
             point_buffer.get_raw_attribute_range(points_range.start..points_range.end, info.attribute, &mut *bytes_to_write);
 
@@ -860,12 +849,10 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
             let mut unused_for_per_attrib: usize = 0;
             let bytes_to_write: &[u8] = &*bytes_to_write;
             let bytes_to_write = &self.align_slice(bytes_to_write, info.attribute.datatype(), &mut unused_for_per_attrib)[..];
-            println!("--- Offset = {}", unused_for_per_attrib);
 
             // Schedule write to GPU memory, starting from correct offset
             let mut offset: usize = 0;
             self.calc_size(bytes_per_element * points_range.start, info.attribute.datatype(), &mut offset);
-            println!("*** Offset = {}", offset);
 
             let gpu_buffer = self.buffers.get(info.attribute.name()).unwrap();
             wgpu_queue.write_buffer(gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
@@ -1061,7 +1048,6 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         let mut group_entries: Vec<wgpu::BindGroupEntry> = vec![];
 
         for key in self.buffer_keys.as_slice() {
-            println!("Key = {}", key);
             let binding = *self.buffer_bindings.get(key.name()).unwrap();
 
             group_layout_entries.push(
@@ -1087,14 +1073,14 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
 
         let bind_group_layout = wgpu_device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                label: None,
+                label: Some("storage_bind_group_layout"),
                 entries: &group_layout_entries,
             }
         );
 
         let bind_group = wgpu_device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label: None,
+                label: Some("storage_bind_group"),
                 layout: &bind_group_layout,
                 entries: &group_entries,
             }
