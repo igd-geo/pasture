@@ -1,6 +1,6 @@
 use pasture_core::gpu;
 use pasture_core::nalgebra::Vector3;
-use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage, PointBufferExt};
+use pasture_core::containers::{PerAttributeVecPointStorage, PointBufferExt};
 use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
@@ -187,7 +187,15 @@ async fn run() {
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 
+    println!("Before:");
+    for point in point_buffer.iter_point::<MyPointType>() {
+        println!("{:?}", point);
+    }
+    println!();
+
     gpu_point_buffer.download_into_per_attribute(&mut point_buffer, 0..3, &buffer_infos, &device.wgpu_device).await;
+
+    println!("After:");
     for point in point_buffer.iter_point::<MyPointType>() {
         println!("{:?}", point);
     }

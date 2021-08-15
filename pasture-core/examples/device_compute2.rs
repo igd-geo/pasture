@@ -1,10 +1,9 @@
 use pasture_core::gpu;
 use pasture_core::nalgebra::Vector3;
-use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage, PointBuffer};
+use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage, PointBuffer, PointBufferExt};
 use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
-use bytemuck::__core::convert::TryInto;
 use pasture_core::gpu::{GpuPointBufferInterleaved};
 
 #[repr(C)]
@@ -157,87 +156,16 @@ async fn run() {
 
     println!("\n===== COMPUTE =====\n");
 
-    //TODO: download() should just return an altered point buffer
-    let results_as_bytes = gpu_point_buffer.download(&mut device.wgpu_device).await;
+    println!("Before:");
+    for point in point_buffer.iter_point::<MyPointType>() {
+        println!("{:?}", point);
+    }
+    println!();
 
-    let interleaved_results = &results_as_bytes[0];
-    let stride = 160;   // Size of struct (padding included)
-    for i in 0..3 {
-        println!("\nPoint {}", (i + 1));
-        let offset = i * stride;
-        println!("Offset = {}", offset);
+    gpu_point_buffer.download_into_interleaved(&mut point_buffer, 0..3, &buffer_info_interleaved, &device.wgpu_device).await;
 
-        let pos_result_vec: Vec<f64> = interleaved_results[(offset + 32)..(offset + 32 + 32)]
-            .chunks_exact(8)
-            .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        println!("Positions: {:?}", pos_result_vec);
-
-        let icol_result_vec: Vec<u16> = interleaved_results[(offset)..(offset + 16)]
-            .chunks_exact(4)
-            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
-            .collect();
-        println!("Colors (u16): {:?}", icol_result_vec);
-
-        let fcol_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 32)..(offset + 32 + 32 + 16)]
-            .chunks_exact(4)
-            .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        println!("Colors (f32): {:?}", fcol_result_vec);
-
-        let byte_vec_result_vec: Vec<u8> = interleaved_results[(offset + 32 + 32 + 16)..(offset + 32 + 32 + 16 + 16)]
-            .chunks_exact(4)
-            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
-            .collect();
-        println!("Bytes vecs: {:?}", byte_vec_result_vec);
-
-        let classification_result_vec: Vec<u8> = interleaved_results[(offset + 32 + 32 + 16 + 16)..(offset + 32 + 32 + 16 + 16 + 4)]
-            .chunks_exact(4)
-            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
-            .collect();
-        println!("Classifications: {:?}", classification_result_vec);
-
-        let intensity_result_vec: Vec<u16> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4)]
-            .chunks_exact(4)
-            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
-            .collect();
-        println!("Intensities: {:?}", intensity_result_vec);
-
-        let scan_angle_result_vec: Vec<i16> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4)]
-            .chunks_exact(4)
-            .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i16)
-            .collect();
-        println!("Scan angles: {:?}", scan_angle_result_vec);
-
-        // Note: cannot cast u32 to bool. Instead check whether bytes != 0.
-        let scan_dir_flag_result_vec: Vec<bool> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4)]
-            .chunks_exact(4)
-            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) != 0)
-            .collect();
-        println!("Scan direction flags: {:?}", scan_dir_flag_result_vec);
-
-        let my_int_result_vec: Vec<i32> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4)]
-            .chunks_exact(4)
-            .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        println!("Integers (i32): {:?}", my_int_result_vec);
-
-        let packet_size_result_vec: Vec<u32> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)]
-            .chunks_exact(4)
-            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        println!("Packet sizes: {:?}", packet_size_result_vec);
-
-        let ret_point_loc_result_vec: Vec<f32> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4)]
-            .chunks_exact(4)
-            .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        println!("Return locations: {:?}", ret_point_loc_result_vec);
-
-        let gps_time_result_vec: Vec<f64> = interleaved_results[(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4)..(offset + 32 + 32 + 16 + 16 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 4 + 8)]
-            .chunks_exact(8)
-            .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        println!("GPS times: {:?}", gps_time_result_vec);
+    println!("After:");
+    for point in point_buffer.iter_point::<MyPointType>() {
+        println!("{:?}", point);
     }
 }

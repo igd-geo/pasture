@@ -1,6 +1,6 @@
 use crate::layout::{PointAttributeDataType, PointAttributeDefinition};
 use bytemuck::__core::convert::TryInto;
-use crate::containers::{PointBuffer, PerAttributePointBufferMutExt, PerAttributePointBufferMut};
+use crate::containers::{PointBuffer, PerAttributePointBufferMutExt, PerAttributePointBufferMut, InterleavedPointBufferMut, InterleavedVecPointStorage};
 use crate::gpu::{BufferInfoInterleaved, BufferInfoPerAttribute};
 use std::collections::HashMap;
 use crate::nalgebra::Vector3;
@@ -385,6 +385,8 @@ pub struct GpuPointBufferInterleaved {
     buffer: Option<wgpu::Buffer>,
     buffer_size: Option<wgpu::BufferAddress>,
     buffer_binding: Option<u32>,
+
+    offsets: Vec<HashMap<PointAttributeDataType, usize>>,
 }
 
 impl GpuPointBuffer for GpuPointBufferInterleaved {}
@@ -397,6 +399,7 @@ impl GpuPointBufferInterleaved {
             buffer: None,
             buffer_size: None,
             buffer_binding: None,
+            offsets: vec![],
         }
     }
 
@@ -409,10 +412,15 @@ impl GpuPointBufferInterleaved {
             // Align to struct
             offset += self.padding_for_struct_alignment(offset, struct_alignment);
 
+            let mut datatype_offset_map: HashMap<PointAttributeDataType, usize> = HashMap::new();
             for attrib in buffer_info.attributes {
                 let num_bytes = self.bytes_per_element(attrib.datatype()) as usize;
                 self.calc_size(num_bytes, attrib.datatype(), &mut offset);
+
+                let start_offset = offset - self.alignment_per_element(attrib.datatype());
+                datatype_offset_map.insert(attrib.datatype(), start_offset);
             }
+            self.offsets.push(datatype_offset_map);
         }
 
         let size = offset as wgpu::BufferAddress;
@@ -495,27 +503,225 @@ impl GpuPointBufferInterleaved {
         self.create_bind_group(wgpu_device);
     }
 
-    // TODO: provide range? (But cannot be 'points_range', we only see bytes...)
-    pub async fn download(&self, wgpu_device: &wgpu::Device) -> Vec<Vec<u8>> {
-        let mut output_bytes: Vec<Vec<u8>> = Vec::new();
-
+    pub async fn download_into_interleaved(
+        &self,
+        point_buffer: &mut InterleavedVecPointStorage,
+        points_range: std::ops::Range<usize>,
+        buffer_info: &BufferInfoInterleaved<'_>,
+        wgpu_device: &wgpu::Device)
+    {
         let gpu_buffer = self.buffer.as_ref().unwrap();
 
-        let result_buffer_slice = gpu_buffer.slice(..);
-        let map = result_buffer_slice.map_async(wgpu::MapMode::Read);
+        let gpu_buffer_slice = gpu_buffer.slice(..);
+        let mapped_future = gpu_buffer_slice.map_async(wgpu::MapMode::Read);
         wgpu_device.poll(wgpu::Maintain::Wait); // TODO: "Should be called in event loop or other thread ..."
 
-        // TODO: how to know the data type of the current buffer?
-        if let Ok(()) = map.await {
-            let result_as_bytes = result_buffer_slice.get_mapped_range();
-            &output_bytes.push(result_as_bytes.to_vec());
+        if let Ok(()) = mapped_future.await {
+            let mapped_view = gpu_buffer_slice.get_mapped_range();
+            let result_as_bytes = mapped_view.to_vec();
 
-            // Drop all mapped views before unmapping buffer
-            drop(result_as_bytes);
+            // Used to determine the offset of an attribute
+            let point_layout = point_buffer.point_layout().clone();
+
+            for j in points_range {
+                let point_as_bytes = point_buffer.get_raw_point_mut(j);
+                let datatype_offset_map = self.offsets.get(j).unwrap();
+
+                for attrib in buffer_info.attributes {
+                    let attrib_offset = point_layout.get_attribute(&attrib).unwrap().offset() as usize;
+                    let offset = *datatype_offset_map.get(&attrib.datatype()).unwrap();
+                    let size = self.alignment_per_element(attrib.datatype());
+
+                    match attrib.datatype() {
+                        PointAttributeDataType::Bool => {
+                            let result: Vec<bool> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) != 0)
+                                .collect();
+
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = result[i - attrib_offset] as u8;
+                            }
+                        },
+                        PointAttributeDataType::U8 => {
+                            let result: Vec<u8> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
+                                .collect();
+
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = result[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::I8 => {
+                            let result: Vec<i8> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i8)
+                                .collect();
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::U16 => {
+                            let result: Vec<u16> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
+                                .collect();
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::I16 => {
+                            let result: Vec<i16> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| i32::from_ne_bytes(b.try_into().unwrap()) as i16)
+                                .collect();
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::U32 => {
+                            let result: Vec<u32> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+                                .collect();
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::I32 => {
+                            let result: Vec<i32> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
+                                .collect();
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::U64 => { /* Currently not supported */ },
+                        PointAttributeDataType::I64 => { /* Currently not supported */ },
+                        PointAttributeDataType::F32 => {
+                            let result: Vec<f32> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
+                                .collect();
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::F64 => {
+                            let result: Vec<f64> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(8)
+                                .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
+                                .collect();
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::Vec3u8 => {
+                            let result4d: Vec<u8> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
+                                .collect();
+
+                            // Throw 4th coordinate away
+                            let mut result: Vec<u8> = vec![];
+                            for i in 0..result4d.len() {
+                                if (i + 1) % 4 == 0 {
+                                    continue;
+                                }
+
+                                result.push(result4d[i]);
+                            }
+
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = result[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::Vec3u16 => {
+                            let result4d: Vec<u16> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u16)
+                                .collect();
+
+                            // Throw 4th coordinate away
+                            let mut result: Vec<u16> = vec![];
+                            for i in 0..result4d.len() {
+                                if (i + 1) % 4 == 0 {
+                                    continue;
+                                }
+
+                                result.push(result4d[i]);
+                            }
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::Vec3f32 => {
+                            let result4d: Vec<f32> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
+                                .collect();
+
+                            // Throw 4th coordinate away
+                            let mut result: Vec<f32> = vec![];
+                            for i in 0..result4d.len() {
+                                if (i + 1) % 4 == 0 {
+                                    continue;
+                                }
+
+                                result.push(result4d[i]);
+                            }
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                        PointAttributeDataType::Vec3f64 => {
+                            let result4d: Vec<f64> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(8)
+                                .map(|b| f64::from_ne_bytes(b.try_into().unwrap()))
+                                .collect();
+
+                            // Throw 4th coordinate away
+                            let mut result: Vec<f64> = vec![];
+                            for i in 0..result4d.len() {
+                                if (i + 1) % 4 == 0 {
+                                    continue;
+                                }
+
+                                result.push(result4d[i]);
+                            }
+
+                            let bytes: &[u8] = bytemuck::cast_slice(result.as_slice());
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = bytes[i - attrib_offset];
+                            }
+                        },
+                    }
+                }
+            }
+
+            drop(mapped_view);
             gpu_buffer.unmap();
         }
-
-        output_bytes
     }
 
     fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
