@@ -13,3 +13,5 @@ pub mod convexhull;
 // Contains ransac line- and plane-segmentation algorithms in serial and parallel that can be used
 // to get the best line-/plane-model and the corresponding inlier indices.
 pub mod segmentation;
+// Contains an algorithm to reproject coordinate systems
+pub mod reprojection;
