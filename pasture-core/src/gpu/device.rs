@@ -1,6 +1,7 @@
 use crate::layout;
 use wgpu::util::DeviceExt;
 use std::collections::BTreeMap;
+use std::ops::BitAnd;
 
 /// The base structure used to get access to the GPU. In addition it handles things like
 /// shader compilation and the actual dispatch of work to the GPU.
@@ -22,13 +23,13 @@ impl<'a> Device<'a> {
     /// Create a device with default options:
     /// - Low power GPU
     /// - `Vulkan` as backend
-    /// - No features enabled
+    /// - `wgpu`'s [MAPPABLE_PRIMARY_BUFFERS](wgpu::Features::MAPPABLE_PRIMARY_BUFFERS) feature enabled
     /// - Minimal limits
     pub async fn default() -> Result<Device<'a>, wgpu::RequestDeviceError> {
         Device::new(DeviceOptions::default()).await
     }
 
-    /// Create and return a device respecting the desired [DeviceOptions]
+    /// Create and return a device respecting the desired [DeviceOptions].
     ///
     /// # Arguments
     /// * `device_options` - specifies the capabilities the device should have.
@@ -36,6 +37,10 @@ impl<'a> Device<'a> {
     /// # Errors
     /// If no device on the physical system can match the requested capabilities, an error
     /// is returned.
+    ///
+    /// Note that the device must have support for `wgpu`'s
+    /// [MAPPABLE_PRIMARY_BUFFERS](wgpu::Features::MAPPABLE_PRIMARY_BUFFERS) feature, otherwise
+    /// an error is returned.
     ///
     /// # Examples
     ///
@@ -99,9 +104,13 @@ impl<'a> Device<'a> {
 
         // == Create a device and a queue from the given adapter ==================================
 
+        if !adapter.features().contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS) {
+            return Result::Err(wgpu::RequestDeviceError);
+        }
+
         let features = match device_options.use_adapter_features {
-            true => adapter.features(),
-            false => wgpu::Features::default(),
+            true => adapter.features().bitand(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS),
+            false => wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
         };
 
         let limits = match device_options.use_adapter_limits {
@@ -367,7 +376,6 @@ impl<'a> Device<'a> {
 // == Helper types ===============================================================================
 
 // TODO: it may be beneficial to be more flexible about features and limits.
-//  Currently between two extremes: default and whatever the GPU supports.
 /// Defines the desired capabilities of a device that is to be retrieved.
 pub struct DeviceOptions {
     pub device_power: DevicePower,
