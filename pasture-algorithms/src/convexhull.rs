@@ -1,9 +1,10 @@
 use std::hash::{Hash, Hasher};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
+use std::usize;
 use pasture_core::{
     containers::{PointBuffer, PointBufferExt},
-    layout::attributes::{POSITION_3D},
-    nalgebra::{Vector3},
+    layout::attributes::POSITION_3D,
+    nalgebra::Vector3,
 };
 use anyhow::{Result, anyhow};
 
@@ -54,7 +55,7 @@ pub fn convex_hull_as_triangle_mesh<T: PointBuffer>(buffer: &T) -> Result<Vec<Ve
 }
 
 /// Convex Hull generation as points
-/// Returns the convex hull as a vector that contains the indices the points forming a convex hull around all input points.
+/// Returns the convex hull as an unsorted vector that contains the indices the points forming a convex hull around all input points.
 ///
 /// #Panics
 ///
@@ -62,10 +63,20 @@ pub fn convex_hull_as_triangle_mesh<T: PointBuffer>(buffer: &T) -> Result<Vec<Ve
 pub fn convex_hull_as_points<T: PointBuffer>(buffer: &T) -> Vec<usize> {
     let triangles = create_convex_hull(buffer);
     let mut points = HashSet::new();
-    for tri in triangles {
+    if triangles.len() > 1 {
+        for tri in triangles {
+            points.insert(tri.a);
+            points.insert(tri.b);
+            points.insert(tri.c);
+        }
+    }
+    else {
+        let tri = triangles[0];
         points.insert(tri.a);
         points.insert(tri.b);
-        points.insert(tri.c);
+        if tri.c != 0 {
+            points.insert(tri.c);
+        }
     }
     let point_indices: Vec<usize> = points.into_iter().collect();
     return point_indices;
@@ -175,91 +186,155 @@ fn iteration<T: PointBuffer>(buffer: &T, pointid: usize, point: Vector3<f64>, tr
             }
         }
         else {
+            // Find all edges of the triangle of which the edge-normal is facing the point.
             let mut edges_facing_point = Vec::new();
-            let mut edge_distances = Vec::new();
             let mut edge_triangle_id = Vec::new();
             for (i, pt) in planar_triangles.iter().enumerate() {
                 let planar_a = buffer.get_attribute(&POSITION_3D, pt.a);
                 let planar_b = buffer.get_attribute(&POSITION_3D, pt.b);
                 let planar_c = buffer.get_attribute(&POSITION_3D, pt.c);
                 let dist_ab = dist_point_to_edge(point, planar_a, planar_b, pt.normal);
-                if dist_ab > 0.0 {
+                if dist_ab >= 0.0 {
                     edges_facing_point.push(Edge{a: pt.a, b: pt.b});
-                    edge_distances.push(dist_ab);
                     edge_triangle_id.push(i);
                 }
                 let dist_bc = dist_point_to_edge(point, planar_b, planar_c, pt.normal);
-                if dist_bc > 0.0 {
+                if dist_bc >= 0.0 {
                     edges_facing_point.push(Edge{a: pt.b, b: pt.c});
-                    edge_distances.push(dist_bc);
                     edge_triangle_id.push(i);
                 }
                 let dist_ca = dist_point_to_edge(point, planar_c, planar_a, pt.normal);
-                if dist_ca > 0.0 {
+                if dist_ca >= 0.0 {
                     edges_facing_point.push(Edge{a: pt.c, b: pt.a});
-                    edge_distances.push(dist_ca);
                     edge_triangle_id.push(i);
+                }
+                if dist_ab < 0.0 && dist_bc < 0.0 && dist_ca < 0.0 {
+                    edges_facing_point.clear();
+                    break;
                 }
             }
 
+            // Remove all edges occluded by other edges.
             let mut edge_triangle_normals = Vec::new();
-            let edgenum = edges_facing_point.len();
-            for i in (0..edgenum).rev() {
-                let edg = edges_facing_point[0];
-                let dist = edge_distances[i];
+            for i in (0..edges_facing_point.len()).rev() {
+                let edg = edges_facing_point[i];
                 let edg_a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, edg.a);
                 let edg_b: Vector3<f64> = buffer.get_attribute(&POSITION_3D, edg.b);
-                let edg_a_b: Vector3<f64> = edg_b - edg_a;
-                let edg_length = edg_a_b.magnitude();
+                let dist_edg_a_p = (edg_a - point).magnitude_squared();
+                let dist_edg_b_p = (edg_b - point).magnitude_squared();
+                let dist_edg_p = dist_point_to_line_segment(point, edg_a, edg_b);
                 let edg_triangle_normal: Vector3<f64> = planar_triangles[edge_triangle_id[i]].normal;
                 let mut remove = false;
-                for other_edge_id in 0..edgenum {
-                    if other_edge_id != i && edge_distances[other_edge_id] < dist {
+                for other_edge_id in 0..edges_facing_point.len() {
+                    if other_edge_id != i {
                         let other_edg_triangle_normal = planar_triangles[edge_triangle_id[other_edge_id]].normal;
                         if edg_triangle_normal.dot(&other_edg_triangle_normal) > 0.0 {
                             let other_edg = edges_facing_point[other_edge_id];
                             let other_edg_a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, other_edg.a);
                             let other_edg_b: Vector3<f64> = buffer.get_attribute(&POSITION_3D, other_edg.b);
-                            let edg_a_other_edg_a = other_edg_a - edg_a;
-                            let edg_a_other_edg_b = other_edg_b - edg_a;
-                            let other_a_region: u8;
-                            let other_b_region: u8;
-                            let dot_edg_to_other_edg_a = edg_a_b.dot(&edg_a_other_edg_a);
-                            let dot_edg_to_other_edg_b = edg_a_b.dot(&edg_a_other_edg_b);
-                            if dot_edg_to_other_edg_a < 0.0 {
-                                other_a_region = 1;
+                            let point_other_edg_a = other_edg_a - point;
+                            let point_other_edg_b = other_edg_b - point;
+                            let point_other_edg_a_norm = other_edg_triangle_normal.cross(&point_other_edg_a);
+                            let point_other_edg_b_norm = other_edg_triangle_normal.cross(&point_other_edg_b);
+                            let edg_a_other_edg_a = edg_a - other_edg_a;
+                            let edg_a_other_edg_b = edg_a - other_edg_b;
+                            let edg_b_other_edg_a = edg_b - other_edg_a;
+                            let edg_b_other_edg_b = edg_b - other_edg_b;
+                            let ea_oea_dot_border_a = point_other_edg_a_norm.dot(&edg_a_other_edg_a);
+                            let eb_oea_dot_border_a = point_other_edg_a_norm.dot(&edg_b_other_edg_a);
+                            let ea_oeb_dot_border_b = point_other_edg_b_norm.dot(&edg_a_other_edg_b);
+                            let eb_oeb_dot_border_b = point_other_edg_b_norm.dot(&edg_b_other_edg_b);
+                            if ea_oea_dot_border_a < 0.0 && ea_oeb_dot_border_b > 0.0 {
+                                let dist_other_edg_p = f64::min(point_other_edg_a.magnitude_squared(), point_other_edg_b.magnitude_squared());
+                                if dist_edg_a_p > dist_other_edg_p {
+                                    remove = true;
+                                    break;
+                                }
                             }
-                            else if dot_edg_to_other_edg_a < edg_length {
-                                remove = true;
-                                break;
+                            if eb_oea_dot_border_a < 0.0 && eb_oeb_dot_border_b > 0.0 {
+                                let dist_other_edg_p = f64::min(point_other_edg_a.magnitude_squared(), point_other_edg_b.magnitude_squared());
+                                if dist_edg_b_p > dist_other_edg_p {
+                                    remove = true;
+                                    break;
+                                }
                             }
-                            else {
-                                other_a_region = 2;
-                            }
-                            if dot_edg_to_other_edg_b < 0.0 {
-                                other_b_region = 1;
-                            }
-                            else if dot_edg_to_other_edg_b < edg_length {
-                                remove = true;
-                                break;
-                            }
-                            else {
-                                other_b_region = 2;
-                            }
-                            if other_a_region != other_b_region {
-                                remove = true;
-                                break;
+                            if (ea_oea_dot_border_a < 0.0 && eb_oeb_dot_border_b > 0.0) || (eb_oea_dot_border_a < 0.0 && ea_oeb_dot_border_b > 0.0) {
+                                let dist_other_edg_p = dist_point_to_line_segment(point, other_edg_a, other_edg_b);
+                                if dist_edg_p > dist_other_edg_p {
+                                    remove = true;
+                                    break;
+                                }
                             }
                         }
                     }
                 }
                 if remove {
                     edges_facing_point.remove(i);
-                    edge_distances.remove(i);
                     edge_triangle_id.remove(i);
                 }
                 else {
                     edge_triangle_normals.insert(0, -edg_triangle_normal);
+                }
+            }
+
+            // Remove all triangles with vertices that are contained in two edges facing point 
+            let edgenum = edges_facing_point.len();
+            if edgenum > 2 {
+                let mut edges_to_remove = HashSet::new();
+                let mut vertices_on_one_edge_start = HashMap::new();
+                let mut vertices_on_one_edge_end = HashMap::new();
+                let mut vertices_on_two_edges = HashMap::new();
+                for facing_edge in edges_facing_point.iter() {
+                    let res_a = vertices_on_one_edge_start.insert(facing_edge.a, (facing_edge.b, facing_edge.clone()));
+                    if res_a.is_some() && res_a.unwrap().0 != facing_edge.b {
+                        vertices_on_one_edge_start.remove(&facing_edge.a);
+                        vertices_on_two_edges.insert(facing_edge.a, (res_a.unwrap().1, facing_edge.clone()));
+                    }
+                    let res_b = vertices_on_one_edge_end.insert(facing_edge.b, (facing_edge.a, facing_edge.clone()));
+                    if res_b.is_some() && res_b.unwrap().0 != facing_edge.a {
+                        vertices_on_one_edge_end.remove(&facing_edge.b);
+                        vertices_on_two_edges.insert(facing_edge.b, (res_b.unwrap().1, facing_edge.clone()));
+                    }
+                }
+                let mut triangles_to_remove = Vec::new();
+                for t_id in 0..triangles.len() {
+                    let tri = triangles.get(t_id).unwrap();
+                    let res_a = vertices_on_two_edges.get(&tri.a);
+                    let res_b = vertices_on_two_edges.get(&tri.b);
+                    let res_c = vertices_on_two_edges.get(&tri.c);
+                    let a_on_two_edges = res_a.is_some();
+                    let b_on_two_edges = res_b.is_some();
+                    let c_on_two_edges = res_c.is_some();
+                    if a_on_two_edges || b_on_two_edges || c_on_two_edges {
+                        triangles_to_remove.push(t_id);
+                        if c_on_two_edges {
+                            edges_facing_point.push(Edge{a: tri.a, b: tri.b});
+                            edges_to_remove.insert(Edge{a: tri.b, b: tri.c});
+                            edges_to_remove.insert(Edge{a: tri.c, b: tri.a});
+                            edge_triangle_normals.push(tri.normal);
+                        }
+                        if b_on_two_edges {
+                            edges_facing_point.push(Edge{a: tri.c, b: tri.a});
+                            edges_to_remove.insert(Edge{a: tri.a, b: tri.b});
+                            edges_to_remove.insert(Edge{a: tri.b, b: tri.c});
+                            edge_triangle_normals.push(tri.normal);
+                        }
+                        if a_on_two_edges {
+                            edges_facing_point.push(Edge{a: tri.b, b: tri.c});
+                            edges_to_remove.insert(Edge{a: tri.c, b: tri.a});
+                            edges_to_remove.insert(Edge{a: tri.a, b: tri.b});
+                            edge_triangle_normals.push(tri.normal);
+                        }
+                    }
+                }
+                for t_id_remove in triangles_to_remove.iter().rev() {
+                    triangles.remove(*t_id_remove);
+                }
+                for efp in (0..edges_facing_point.len()).rev() {
+                    if edges_to_remove.contains(edges_facing_point.get(efp).unwrap()) {
+                        edges_facing_point.remove(efp);
+                        edge_triangle_normals.remove(efp);
+                    }
                 }
             }
 
@@ -281,6 +356,26 @@ fn dist_point_to_edge(point: Vector3<f64>, edge_a: Vector3<f64>, edge_b: Vector3
     let edge_ab: Vector3<f64> = edge_b - edge_a;
     let edge_ab_normal = triangle_normal.cross(&edge_ab);
     return edge_ab_normal.dot(&pa);
+}
+
+/// Calculates the distance of a point to a line segment.
+/// `point`: the point that lies in the same plane as the edge
+/// `line_a`: first vertex of the line segment
+/// `line_b`: second vertex of the line segment
+fn dist_point_to_line_segment(point: Vector3<f64>, segment_a: Vector3<f64>, segment_b: Vector3<f64>) -> f64 {
+    let ab: Vector3<f64> = segment_b - segment_a;
+    let ap: Vector3<f64> = point - segment_a;
+
+    if ap.dot(&ab) <= 0.0 {
+        return ap.magnitude();
+    }
+
+    let bp = point - segment_b;
+    if bp.dot(&ab) >= 0.0 {
+        return bp.magnitude();
+    }
+
+    return ab.cross(&ap).magnitude() / ab.magnitude();
 }
 
 /// Adds the given edge to the set of outer edges. If the given edge is already contained in the set of outer edges it is removed and added to the set of inner edges.
@@ -308,7 +403,7 @@ fn calc_normal(a: Vector3<f64>, b: Vector3<f64>, c: Vector3<f64>) -> Vector3<f64
 
 #[cfg(test)]
 mod tests {
-    use pasture_core::{containers::PerAttributeVecPointStorage, layout::PointType, nalgebra::Vector3};
+    use pasture_core::{containers::PerAttributeVecPointStorage, containers::{PointBuffer, PointBufferExt}, layout::PointType, layout::attributes::POSITION_3D, nalgebra::Vector3};
     use crate::convexhull;
     use pasture_derive::PointType;
     use anyhow::Result;
@@ -322,7 +417,7 @@ mod tests {
     }
 
     // Internal Tests
-    fn test_normals_for_triangles(triangles: Vec<convexhull::Triangle>, normals: Vec<Vector3<f64>>) {
+    fn test_normals_for_triangles(triangles: &Vec<convexhull::Triangle>, normals: &Vec<Vector3<f64>>) {
         for n in normals {
             let mut found = false;
             for t in triangles.iter() {
@@ -335,6 +430,27 @@ mod tests {
         }
     }
 
+    fn test_all_points_inside_hull<T: PointBuffer>(buffer: &T, triangles: &Vec<convexhull::Triangle>) {
+        let position_attribute = buffer.point_layout().get_attribute_by_name(POSITION_3D.name()).unwrap();
+        if position_attribute.datatype() == POSITION_3D.datatype() {
+            for point in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+                for t in triangles.iter() {
+                    let a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, t.a);
+                    let pa = a - point;
+                    assert!(pa.dot(&t.normal) >= -0.0000001);
+                }
+            }
+        } else {
+            for point in buffer.iter_attribute_as::<Vector3<f64>>(&POSITION_3D) {
+                for t in triangles.iter() {
+                    let a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, t.a);
+                    let pa = a - point;
+                    assert!(pa.dot(&t.normal) >= -0.0000001);
+                }
+            }
+        };
+    }
+
     #[test]
     fn test_convex_simple_triangle() -> Result<()> {
         let mut buffer = PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
@@ -345,7 +461,7 @@ mod tests {
 
         assert_eq!(result.len(), 2);
         let normals = vec![Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, -1.0, 0.0)];
-        test_normals_for_triangles(result, normals);
+        test_normals_for_triangles(&result, &normals);
 
         Ok(())
     }
@@ -362,7 +478,8 @@ mod tests {
         assert_eq!(result.len(), 4);
         let normals = vec![Vector3::new(-1.0, 0.0, 0.0), Vector3::new(0.0, -1.0, 0.0),
                 Vector3::new(0.0, 0.0, -1.0), Vector3::new(1.0, 1.0, 1.0).normalize()];
-        test_normals_for_triangles(result, normals);
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
 
         Ok(())
     }
@@ -380,7 +497,8 @@ mod tests {
         assert_eq!(result.len(), 4);
         let normals = vec![Vector3::new(1.0, 1.0, 1.0).normalize(), Vector3::new(1.0, 1.0, -3.0).normalize(), 
                 Vector3::new(1.0, -3.0, 1.0).normalize(), Vector3::new(-3.0, 1.0, 1.0).normalize()];
-        test_normals_for_triangles(result, normals);
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
 
         Ok(())
     }
@@ -453,7 +571,214 @@ mod tests {
 
         assert_eq!(result.len(), 4);
         let normals = vec![Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, -1.0, 0.0)];
-        test_normals_for_triangles(result, normals);
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_point_in_square() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 4);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_point_next_to_square_1() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(2.0, 0.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 6);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_point_next_to_square_2() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 2.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 6);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_point_next_to_square_3() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(2.0, 2.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 4);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_point_next_to_square_4() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-2.0, 2.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 4);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_random_1d_points_in_box_create_box_first() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(22, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 0.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
+        let mut rng = thread_rng();
+        for _ in 0..20 {
+            buffer.push_point(TestPointTypeSmall { position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0) });
+        }
+        let result = convexhull::convex_hull_as_points(&buffer);
+
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&0));
+        assert!(result.contains(&1));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_random_1d_points_in_box_create_box_last() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(22, TestPointTypeSmall::layout());
+        let mut rng = thread_rng();
+        for _ in 0..20 {
+            buffer.push_point(TestPointTypeSmall { position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0) });
+        }
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 0.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 0.0, 0.0) });
+        let result = convexhull::convex_hull_as_points(&buffer);
+
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&20));
+        assert!(result.contains(&21));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_random_2d_points_in_box_create_box_first() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(24, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        let mut rng = thread_rng();
+        for _ in 0..20 {
+            buffer.push_point(TestPointTypeSmall { position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)),
+                rng.sample(Uniform::new(-0.9, 0.9)), 0.0) });
+        }
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 4);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_points_in_box_create_box_last_case_1() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(6, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.5, 0.2, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-0.5, -0.3, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 4);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_points_in_box_create_box_last_case_2() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(6, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.2, 0.1, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-0.9, 0.3, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 4);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_2d_points_in_box_create_box_last_case_3() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(7, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-0.3, -0.3, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.9, -0.4, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.2, 0.1, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, 1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, 1.0, 0.0) });
+        let result = convexhull::create_convex_hull(&buffer);
+
+        assert_eq!(result.len(), 4);
+        let normals = vec![Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, 0.0, -1.0)];
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
 
         Ok(())
     }
@@ -479,7 +804,8 @@ mod tests {
         assert_eq!(result.len(), 12);
         let normals = vec![Vector3::new(1.0, 0.0, 0.0), Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, 0.0, 1.0),
                 Vector3::new(-1.0, 0.0, 0.0), Vector3::new(0.0, -1.0, 0.0), Vector3::new(0.0, 0.0, -1.0)];
-        test_normals_for_triangles(result, normals);
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
 
         Ok(())
     }
@@ -505,7 +831,23 @@ mod tests {
         assert_eq!(result.len(), 12);
         let normals = vec![Vector3::new(1.0, 0.0, 0.0), Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, 0.0, 1.0),
                 Vector3::new(-1.0, 0.0, 0.0), Vector3::new(0.0, -1.0, 0.0), Vector3::new(0.0, 0.0, -1.0)];
-        test_normals_for_triangles(result, normals);
+        test_normals_for_triangles(&result, &normals);
+        test_all_points_inside_hull(&buffer, &result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_random_points() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(100, TestPointTypeSmall::layout());
+        let mut rng = thread_rng();
+        for _ in 0..100 {
+            buffer.push_point(TestPointTypeSmall { position: Vector3::new(rng.sample(Uniform::new(-100.0, 100.0)),
+                rng.sample(Uniform::new(-100.0, 100.0)), rng.sample(Uniform::new(-100.0, 100.0))) });
+        }
+        let result = convexhull::create_convex_hull(&buffer);
+
+        test_all_points_inside_hull(&buffer, &result);
 
         Ok(())
     }
@@ -597,6 +939,23 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert!(result.contains(&0));
         assert!(result.contains(&2));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convex_4_point_output_point_in_triangle() -> Result<()> {
+        let mut buffer = PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 0.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(-1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(1.0, -1.0, 0.0) });
+        buffer.push_point(TestPointTypeSmall { position: Vector3::new(0.0, 1.0, 0.0) });
+        let result = convexhull::convex_hull_as_points(&buffer);
+
+        assert_eq!(result.len(), 3);
+        assert!(result.contains(&1));
+        assert!(result.contains(&2));
+        assert!(result.contains(&3));
 
         Ok(())
     }
