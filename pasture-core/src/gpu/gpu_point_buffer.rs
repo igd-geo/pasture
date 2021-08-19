@@ -361,6 +361,8 @@ trait GpuPointBuffer {
 }
 
 /// Manages point buffer data that is to be stored in interleaved format on the GPU.
+///
+/// Make sure to allocate enough memory before trying to upload anything.
 pub struct GpuPointBufferInterleaved {
     /// The [BindGroupLayout](wgpu::BindGroupLayout) that needs to be passed to the [Device](gpu::Device).
     /// It will be set with a call to [upload()](GpuPointBufferInterleaved::upload).
@@ -802,6 +804,8 @@ impl GpuPointBufferInterleaved {
 }
 
 /// Manages point buffer data that is to be stored in per-attribute format on the GPU.
+///
+/// Make sure to allocate enough memory before trying to upload anything.
 pub struct GpuPointBufferPerAttribute<'a> {
     /// The [BindGroupLayout](wgpu::BindGroupLayout) that needs to be passed to the [Device](gpu::Device).
     /// It will be set with a call to [upload()](GpuPointBufferPerAttribute::upload).
