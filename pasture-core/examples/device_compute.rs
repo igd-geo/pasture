@@ -199,7 +199,7 @@ async fn run() {
     gpu_point_buffer.upload(&mut point_buffer, 0..3, &buffer_infos, &mut device.wgpu_device, &device.wgpu_queue);
 
     device.set_bind_group(0, gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
-    device.set_compute_shader_glsl(include_str!("shaders/device.comp"));
+    // device.set_compute_shader_glsl(include_str!("shaders/device.comp"));
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 

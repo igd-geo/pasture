@@ -17,6 +17,5 @@ pub mod math;
 pub mod meta;
 /// Utilities
 pub mod util;
-/// GPU support
 #[cfg(feature = "gpu")]
 pub mod gpu;

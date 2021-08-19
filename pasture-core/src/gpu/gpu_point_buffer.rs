@@ -5,7 +5,7 @@ use crate::gpu::{BufferInfoInterleaved, BufferInfoPerAttribute};
 use std::collections::HashMap;
 use crate::nalgebra::Vector3;
 
-pub trait GpuPointBuffer {
+trait GpuPointBuffer {
     fn alignment_per_element(&self, datatype: PointAttributeDataType) -> usize {
         // Assuming no extensions and GLSL:
         // - Only 32-bit integers (signed or unsigned) on shader side

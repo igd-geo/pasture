@@ -2,13 +2,17 @@ use crate::layout;
 use wgpu::util::DeviceExt;
 use std::collections::BTreeMap;
 
+/// The base structure used to get access to the GPU. In addition it handles things like
+/// shader compilation and the actual dispatch of work to the GPU.
 pub struct Device<'a> {
+    /// A handle to `wgpu`'s [Device](wgpu::Device). Can be used to create buffers, bind groups, etc.
     pub wgpu_device: wgpu::Device,
+
+    /// A handle to `wgpu`'s [Queue](wgpu::Queue). Can be used to write to buffers, submit work, etc.
     pub wgpu_queue: wgpu::Queue,
 
     // Private fields
     adapter: wgpu::Adapter,
-
     cs_module: Option<wgpu::ShaderModule>,
     bind_group_data: BTreeMap<u32, BindGroupPair<'a>>,
     compute_pipeline: Option<wgpu::ComputePipeline>,
@@ -17,13 +21,44 @@ pub struct Device<'a> {
 impl<'a> Device<'a> {
     /// Create a device with default options:
     /// - Low power GPU
-    /// - [Vulkan] as backend
-    /// - Minimal adapter features and limits
+    /// - `Vulkan` as backend
+    /// - No features enabled
+    /// - Minimal limits
     pub async fn default() -> Result<Device<'a>, wgpu::RequestDeviceError> {
         Device::new(DeviceOptions::default()).await
     }
 
     /// Create and return a device respecting the desired [DeviceOptions]
+    ///
+    /// # Arguments
+    /// * `device_options` - specifies the capabilities the device should have.
+    ///
+    /// # Errors
+    /// If no device on the physical system can match the requested capabilities, an error
+    /// is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use pasture_core::gpu;
+    ///
+    /// let device = gpu::Device::new(
+    ///     gpu::DeviceOptions {
+    ///         device_power: gpu::DevicePower::High,
+    ///         device_backend: gpu::DeviceBackend::Vulkan,
+    ///         use_adapter_features: true,
+    ///         use_adapter_limits: true,
+    ///     }
+    /// ).await;
+    ///
+    /// let mut device = match device {
+    ///     Ok(d) => d ,
+    ///     Err(_) => {
+    ///         println!("Failed to request device. Aborting.");
+    ///         return;
+    ///     }
+    /// };
+    /// ```
     pub async fn new(device_options: DeviceOptions) -> Result<Device<'a>, wgpu::RequestDeviceError> {
         // == Create an instance from the desired backend =========================================
 
@@ -100,7 +135,7 @@ impl<'a> Device<'a> {
         })
     }
 
-    /// Prints name, type, backend, PCI id and vendor PCI id of the device.
+    /// Displays name, type, backend, PCI id and vendor PCI id of the device.
     pub fn print_device_info(&self) {
         let info = self.adapter.get_info();
 
@@ -112,32 +147,38 @@ impl<'a> Device<'a> {
         println!("Vendor PCI id: {}\n", info.vendor);
     }
 
-    pub fn print_default_features(&self) {
-        println!("Default features: {:?}", wgpu::Features::default());
-    }
-
+    /// Displays the features that the physical GPU is able to support.
     pub fn print_adapter_features(&self) {
         println!("Features supported by the adapter: {:?}", self.adapter.features());
     }
 
+    /// Displays the features that are currently active.
     pub fn print_active_features(&self) {
         println!("Currently active features: {:?}", self.wgpu_device.features());
     }
 
+    /// Displays the default limits that are likely supported by all devices.
     pub fn print_default_limits(&self) {
         println!("Default limits: {:?}", wgpu::Limits::default());
     }
 
+    /// Displays the best limits the physical GPU can support.
     pub fn print_adapter_limits(&self) {
         println!("\"Best\" limits supported by the adapter: {:?}", self.adapter.limits());
     }
 
+    /// Displays the limits that are currently active.
     pub fn print_active_limits(&self) {
         println!("Currently active limits: {:?}", self.wgpu_device.limits());
     }
 
-    /// Creates a UBO from [uniform_as_bytes] and returns a bind group together with a layout
-    /// for it at the given [binding].
+    /// Creates a UBO from `uniform_as_bytes` and returns a bind group together with a layout
+    /// for it at the given `binding`.
+    ///
+    /// # Arguments
+    /// * `uniform_as_bytes` - the uniform's content as bytes. Make sure it's correctly aligned
+    ///                        according to the `std140` layout rules.
+    /// * `binding` - the binding at which the uniform buffer object is set in the shader.
     pub fn create_uniform_bind_group(&self, uniform_as_bytes: &[u8], binding: u32) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
         // TODO: separate buffer from bind group -> should probably become part of Device state
         let uniform_buffer = self.wgpu_device.create_buffer_init(
@@ -184,7 +225,7 @@ impl<'a> Device<'a> {
 
     /// Associate a bind group and its layout with a given set on the shader side.
     /// Eg. if on the shader we have a buffer with `layout(std430, set=2, binding=0)`,
-    /// then the passed in [index] should equal 2.
+    /// then the passed in `index` should equal 2.
     pub fn set_bind_group(&mut self, index: u32, bind_group_layout: &'a wgpu::BindGroupLayout, bind_group: &'a wgpu::BindGroup) {
         let bind_group_pair = BindGroupPair {
             bind_group_layout,
@@ -290,7 +331,10 @@ impl<'a> Device<'a> {
 
     /// Launches compute work groups; `x`, `y`, `z` many in their respective dimensions.
     /// To launch a 1D or 2D work group, set the unwanted dimension to 1.
-    /// Assumes that shaders and bind groups have been set.
+    /// Assumes that shaders and bind groups have been sets.
+    ///
+    /// # Panics
+    /// Will panic if no shader is set.
     pub fn compute(&mut self, x: u32, y: u32, z: u32) {
         // Use a CommandEncoder to batch all commands that you wish to send to the GPU to execute.
         // The resulting CommandBuffer can then be submitted to the GPU via a Queue.
@@ -322,9 +366,9 @@ impl<'a> Device<'a> {
 
 // == Helper types ===============================================================================
 
-/// Defines the desired capabilities of a device that is to be retrieved.
 // TODO: it may be beneficial to be more flexible about features and limits.
 //  Currently between two extremes: default and whatever the GPU supports.
+/// Defines the desired capabilities of a device that is to be retrieved.
 pub struct DeviceOptions {
     pub device_power: DevicePower,
     pub device_backend: DeviceBackend,
@@ -333,7 +377,7 @@ pub struct DeviceOptions {
 }
 
 impl Default for DeviceOptions {
-    /// Default uses a low powert GPU with Vulkan backend and default features and limits.
+    /// Default uses a low power GPU with Vulkan backend and default features and limits.
     fn default() -> Self {
         Self {
             device_power: DevicePower::Low,
@@ -344,6 +388,7 @@ impl Default for DeviceOptions {
     }
 }
 
+/// Controls which kind of GPU should be retrieved.
 pub enum DevicePower {
     /// Usually an integrated GPU
     Low = 0,
@@ -356,8 +401,9 @@ impl Default for DevicePower {
     fn default() -> Self { Self::Low }
 }
 
-/// Currently only [Vulkan] is supported. It is the only backend that allows 64-bit floats on
-/// the shader side.
+/// Currently only `Vulkan` is supported, because it is the only backend that allows 64-bit floats
+/// on the shader side.
+/// In the future, support for other backends such as `DirectX12` and `Metal` may be added.
 pub enum DeviceBackend {
     // /// Primary backends for wgpu: Vulkan, Metal, Dx12, Browser
     // Primary,
@@ -372,12 +418,12 @@ pub enum DeviceBackend {
 }
 
 impl Default for DeviceBackend {
-    /// Default is [DeviceBackend::Primary]
+    /// Default is `Vulkan`
     fn default() -> Self { Self::Vulkan }
 }
 
 // TODO: consider usage (readonly vs read/write, shader stages, ...), size, mapped_at_creation, etc.
-/// Associates a point buffer attribute with a binding defined in a (compute) shader.
+/// Associates a point buffer attribute with one defined in a shader at the given binding.
 pub struct BufferInfoPerAttribute<'a> {
     pub attribute: &'a layout::PointAttributeDefinition,
     pub binding: u32,
