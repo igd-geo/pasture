@@ -1,7 +1,7 @@
 use crate::layout;
 use wgpu::util::DeviceExt;
 use std::collections::BTreeMap;
-use std::ops::BitAnd;
+use std::ops::BitOr;
 
 /// The base structure used to get access to the GPU. In addition it handles things like
 /// shader compilation and the actual dispatch of work to the GPU.
@@ -109,7 +109,7 @@ impl<'a> Device<'a> {
         }
 
         let features = match device_options.use_adapter_features {
-            true => adapter.features().bitand(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS),
+            true => adapter.features().bitor(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS),
             false => wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
         };
 
