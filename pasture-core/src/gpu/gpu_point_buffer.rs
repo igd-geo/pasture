@@ -415,7 +415,6 @@ impl GpuPointBufferInterleaved {
         }
 
         let size = offset as wgpu::BufferAddress;
-        println!("Calculated size: {}", size);
         self.buffer_size = Some(size);
 
         self.buffer_binding = Some(buffer_info.binding);
@@ -471,7 +470,6 @@ impl GpuPointBufferInterleaved {
 
         // Determine struct alignment
         let struct_alignment = self.struct_alignment(&buffer_info);
-        println!("Struct alignment = {}", struct_alignment);
 
         // Get bytes in interleaved format
         let mut offset: usize = 0;
@@ -496,8 +494,6 @@ impl GpuPointBufferInterleaved {
             }
         }
 
-        println!("Current size: {}", bytes_to_write.len());
-
         // Change Vec<u8> to &[u8]
         let bytes_to_write: &[u8] = &*bytes_to_write;
 
@@ -510,7 +506,6 @@ impl GpuPointBufferInterleaved {
             }
         }
         offset += self.padding_for_struct_alignment(offset, struct_alignment);
-        println!("New offset: {}", offset);
 
         let gpu_buffer = self.buffer.as_ref().unwrap();
         wgpu_queue.write_buffer(&gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
@@ -841,7 +836,6 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
     pub fn malloc(&mut self, num_points: u64, buffer_infos: &'a Vec<BufferInfoPerAttribute>, wgpu_device: &mut wgpu::Device) {
         for info in buffer_infos {
             let size = (num_points as usize) * self.alignment_per_element(info.attribute.datatype());
-            println!("Calculated size ({}): {}", info.attribute, size);
 
             let key = info.attribute;
             self.buffer_keys.push(key);
