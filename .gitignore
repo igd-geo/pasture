@@ -6,4 +6,6 @@ Cargo.lock
 .idea
 *.log
 
+.DS_Store
+
 /pasture-io/examples/out/test_output.las

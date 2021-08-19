@@ -7,6 +7,7 @@
 //! For understanding Pasture, it is best to look at the [PointLayout](crate::layout::PointLayout) type and the [containers](crate::containers) module.
 
 pub extern crate nalgebra;
+extern crate self as pasture_core;
 
 pub mod containers;
 /// Defines attributes and data layout of point cloud data
