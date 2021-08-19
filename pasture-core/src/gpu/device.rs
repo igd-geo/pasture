@@ -432,12 +432,74 @@ impl Default for DeviceBackend {
 
 // TODO: consider usage (readonly vs read/write, shader stages, ...), size, mapped_at_creation, etc.
 /// Associates a point buffer attribute with one defined in a shader at the given binding.
+///
+/// # Examples
+///
+/// If the attributes in the shader are defined as follows at the given bindings:
+/// ```ignore
+/// layout(std430, set=0, binding=0) buffer PosBuffer {
+///     dvec4 positions[];
+/// };
+///
+/// layout(std430, set=0, binding=1) buffer IntensityBuffer {
+///     uint intensities[];
+/// };
+/// ```
+///
+/// then the corresponding `BufferInfoPerAttribute` structure should look like this:
+/// ```
+/// use pasture_core::gpu;
+/// use pasture_core::layout::PointAttributeDefinition;
+/// use pasture_core::layout::attributes;
+///
+/// let buffer_infos = vec![
+///     gpu::BufferInfoPerAttribute {
+///         attribute: &attributes::POSITION_3D,
+///         binding: 0,
+///     },
+///     gpu::BufferInfoPerAttribute {
+///         attribute: &attributes::INTENSITY,
+///         binding: 1,
+///     },
+/// ];
+/// ```
 pub struct BufferInfoPerAttribute<'a> {
     pub attribute: &'a layout::PointAttributeDefinition,
     pub binding: u32,
 }
 
 /// Associates interleaved point buffer attributes with a struct in a shader at the given binding.
+///
+/// # Examples
+///
+/// If the point structure in the shader is defined as follows, set at binding 0:
+/// ```ignore
+/// struct PointBuffer {
+///     dvec4 position;
+///     uint intensity;
+/// }
+///
+/// layout(std430, set=0, binding=0) buffer PointBufferSsbo {
+///     PointBuffer pointBuffer[];
+/// };
+/// ```
+///
+/// then the corresponding `BufferInfoInterleaved` structure should look like this:
+///
+/// ```
+/// use pasture_core::gpu;
+/// use pasture_core::layout::PointAttributeDefinition;
+/// use pasture_core::layout::attributes;
+///
+/// let buffer_info = gpu::BufferInfoInterleaved {
+///        // Same order as in shader
+///        attributes: &[
+///            attributes::POSITION_3D,
+///            attributes::INTENSITY,
+///        ],
+///        binding: 0
+/// };
+/// ```
 pub struct BufferInfoInterleaved<'a> {
     pub attributes: &'a [layout::PointAttributeDefinition],
     pub binding: u32,

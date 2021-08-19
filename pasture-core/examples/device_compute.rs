@@ -87,15 +87,9 @@ async fn run() {
         },
     ];
 
-    // Can use per-attribute layout...
     let layout = MyPointType::layout();
     let mut point_buffer = PerAttributeVecPointStorage::new(layout);
     point_buffer.push_points(points.as_slice());
-
-    // ... or interleaved layout (comment out to try per-attribute)
-    // let layout = MyPointType::layout();
-    // let mut point_buffer = InterleavedVecPointStorage::new(layout);
-    // point_buffer.push_points(points.as_slice());
 
     let custom_color_attrib =
         PointAttributeDefinition::custom("MyColorF32", PointAttributeDataType::Vec3f32);
@@ -199,7 +193,7 @@ async fn run() {
     gpu_point_buffer.upload(&mut point_buffer, 0..3, &buffer_infos, &mut device.wgpu_device, &device.wgpu_queue);
 
     device.set_bind_group(0, gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
-    // device.set_compute_shader_glsl(include_str!("shaders/device.comp"));
+    device.set_compute_shader_glsl(include_str!("shaders/device.comp"));
     device.compute(1, 1, 1);
     println!("\n===== COMPUTE =====\n");
 

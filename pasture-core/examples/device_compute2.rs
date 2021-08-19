@@ -1,6 +1,6 @@
 use pasture_core::gpu;
 use pasture_core::nalgebra::Vector3;
-use pasture_core::containers::{PerAttributeVecPointStorage, InterleavedVecPointStorage, PointBuffer, PointBufferExt};
+use pasture_core::containers::{InterleavedVecPointStorage, PointBuffer, PointBufferExt};
 use pasture_derive::PointType;
 use pasture_core::layout::{attributes, PointAttributeDefinition, PointAttributeDataType};
 use pasture_core::layout::PointType;
@@ -87,12 +87,6 @@ async fn run() {
         },
     ];
 
-    // Can use per-attribute layout...
-    let layout = MyPointType::layout();
-    let mut point_buffer = PerAttributeVecPointStorage::new(layout);
-    point_buffer.push_points(points.as_slice());
-
-    // ... or interleaved layout (comment out to try per-attribute)
     let layout = MyPointType::layout();
     let mut point_buffer = InterleavedVecPointStorage::new(layout);
     point_buffer.push_points(points.as_slice());

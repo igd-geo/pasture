@@ -360,8 +360,13 @@ trait GpuPointBuffer {
     }
 }
 
+/// Manages point buffer data that is to be stored in interleaved format on the GPU.
 pub struct GpuPointBufferInterleaved {
+    /// The [BindGroupLayout](wgpu::BindGroupLayout) that needs to be passed to the [Device](gpu::Device).
+    /// It will be set with a call to [upload()](GpuPointBufferInterleaved::upload).
     pub bind_group_layout: Option<wgpu::BindGroupLayout>,
+    /// The [BindGroup](wgpu::BindGroup) that needs to be passed to the [Device](gpu::Device).
+    /// It will be set with a call to [upload()](GpuPointBufferInterleaved::upload).
     pub bind_group: Option<wgpu::BindGroup>,
 
     buffer: Option<wgpu::Buffer>,
@@ -385,6 +390,8 @@ impl GpuPointBufferInterleaved {
         }
     }
 
+    /// Allocates enough memory on the device to hold `num_points` many points that are structured
+    /// as described in `buffer_info`.
     pub fn malloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
         // Determine struct alignment
         let struct_alignment =  self.struct_alignment(&buffer_info);
@@ -429,6 +436,27 @@ impl GpuPointBufferInterleaved {
     }
 
     // TODO: check if points_range valid etc.
+    /// Queues the points in `points_range` within the `point_buffer` for upload onto the GPU device
+    /// and sets the bind group together with its layout.
+    /// The actual upload will occur once work is submitted to the GPU.
+    ///
+    /// Padding is inserted as necessary, depending on how the point data is structured in `buffer_info`.
+    ///
+    ///
+    ///
+    /// # Arguments
+    /// * `point_buffer` - contains the point data that should be uploaded. While this could be an
+    ///                    per-attribute buffer, you should only use interleaved buffers for now
+    ///                    because currently there's only an option to download data into an
+    ///                    interleaved buffer.
+    /// * `points_range` - which points to upload.
+    /// * `buffer_info`  - tells us how the point structure is defined on the shader side.
+    /// * `wgpu_device`  - can be obtained from [Device](gpu::Device).
+    /// * `wgpu_queue`   - can be obtained from [Device](gpu::Device).
+    ///
+    /// # Panics
+    /// If no memory or not enough memory has been allocated previously via
+    /// [malloc()](GpuPointBufferInterleaved::malloc), this method will panic.
     pub fn upload(
         &mut self,
         point_buffer: &dyn PointBuffer,
@@ -488,6 +516,8 @@ impl GpuPointBufferInterleaved {
         self.create_bind_group(wgpu_device);
     }
 
+    /// Writes the contents of the GPU buffer into `point_buffer`, which is in interleaved format,
+    /// within the `points_range` range.
     pub async fn download_into_interleaved(
         &self,
         point_buffer: &mut InterleavedVecPointStorage,
@@ -771,8 +801,13 @@ impl GpuPointBufferInterleaved {
     }
 }
 
+/// Manages point buffer data that is to be stored in per-attribute format on the GPU.
 pub struct GpuPointBufferPerAttribute<'a> {
+    /// The [BindGroupLayout](wgpu::BindGroupLayout) that needs to be passed to the [Device](gpu::Device).
+    /// It will be set with a call to [upload()](GpuPointBufferPerAttribute::upload).
     pub bind_group_layout: Option<wgpu::BindGroupLayout>,
+    /// The [BindGroup](wgpu::BindGroup) that needs to be passed to the [Device](gpu::Device).
+    /// It will be set with a call to [upload()](GpuPointBufferPerAttribute::upload).
     pub bind_group: Option<wgpu::BindGroup>,
 
     // String: name of the attribute, eg. "POSITION_3D"
@@ -797,6 +832,8 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         }
     }
 
+    /// Allocates enough memory on the device to hold `num_points` many points that are structured
+    /// as described in `buffer_info`.
     pub fn malloc(&mut self, num_points: u64, buffer_infos: &'a Vec<BufferInfoPerAttribute>, wgpu_device: &mut wgpu::Device) {
         for info in buffer_infos {
             let size = (num_points as usize) * self.alignment_per_element(info.attribute.datatype());
@@ -829,6 +866,27 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         }
     }
 
+    /// Queues the points in `points_range` within the `point_buffer` for upload onto the GPU device
+    /// and sets the bind group together with its layout.
+    /// The actual upload will occur once work is submitted to the GPU.
+    ///
+    /// Padding is inserted as necessary. Because pasture only supports the `std430` layout for
+    /// storage buffers, this currently only affects 3 component vectors which require an additional
+    /// element as padding. Scalar values can be tightly packed.
+    ///
+    /// # Arguments
+    /// * `point_buffer` - contains the point data that should be uploaded. While this could be an
+    ///                    interleaved buffer, you should only use per-attribute buffers for now
+    ///                    because currently there's only an option to download data into an
+    ///                    per-attribute buffer.
+    /// * `points_range` - which points to upload.
+    /// * `buffer_infos` - tells us how the point attributes are defined on the shader side.
+    /// * `wgpu_device`  - can be obtained from [Device](gpu::Device).
+    /// * `wgpu_queue`   - can be obtained from [Device](gpu::Device).
+    ///
+    /// # Panics
+    /// If no memory or not enough memory has been allocated previously via
+    /// [malloc()](GpuPointBufferPerAttribute::malloc), this method will panic.
     pub fn upload(
         &mut self,
         point_buffer: &dyn PointBuffer,
@@ -861,6 +919,8 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         self.create_bind_group(wgpu_device);
     }
 
+    /// Writes the contents of the GPU buffer into `point_buffer`, which is in per-attribute format,
+    /// within the `points_range` range.
     pub async fn download_into_per_attribute(
         &self,
         point_buffer: &mut dyn PerAttributePointBufferMut<'_>,

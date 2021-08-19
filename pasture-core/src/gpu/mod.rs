@@ -13,6 +13,7 @@
 //! [GpuPointBufferPerAttribute](gpu_point_buffer::GpuPointBufferPerAttribute) can be used to store
 //! point cloud data in either format on the GPU and retrieve it. They also take care of aligning
 //! the data so that your shaders work with correct values.
+//! It is important to note that for storage buffers only the `std430` layout is supported.
 
 mod device;
 pub use self::device::*;
