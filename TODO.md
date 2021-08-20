@@ -109,7 +109,7 @@
         - [ ] Write from custom PointLayout
 - [ ] ASCII
     - [x] Reader
-    - [ ] Writer
+    - [x] Writer
 - [ ] Documentation
     - [ ] Crate-documentation
     - [ ] Module-level documentation
