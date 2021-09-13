@@ -18,6 +18,7 @@ pasture-derive = { version = "=0.1.0", path = "../pasture-derive" }
 rand = "0.8.3"
 rayon = "1.5"
 typenum = "1.13.0"
+proj-sys = "0.18.2"
 
 [dev-dependencies]
 criterion = "0.3"
