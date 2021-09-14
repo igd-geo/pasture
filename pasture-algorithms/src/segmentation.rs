@@ -251,8 +251,7 @@ pub fn ransac_plane_serial<T: PointBuffer>(
         .into_iter()
         .map(|_x| 
             // generate one model for the current iteration
-            generate_plane_model(buffer, distance_threshold)
-        )
+            generate_plane_model(buffer, distance_threshold))
         // get the best plane-model from all iterations (highest ranking)
         .max_by(|(x, _y), (a, _b)| x.ranking.cmp(&a.ranking))
         .unwrap()
@@ -379,18 +378,13 @@ pub fn ransac_line_serial<T: PointBuffer>(
         .unwrap()
 }
 
-
 #[cfg(test)]
 mod tests {
 
-    use pasture_derive::PointType;
     use pasture_core::{
-    containers::PerAttributeVecPointStorage,
-    layout::{
-        PointType,
-    },
-    nalgebra::Vector3,
-};
+        containers::PerAttributeVecPointStorage, layout::PointType, nalgebra::Vector3,
+    };
+    use pasture_derive::PointType;
 
     use super::*;
 
@@ -412,7 +406,7 @@ mod tests {
                 // generate plane points (along x- and y-axis)
                 let mut point = SimplePoint {
                     // position: Vector3::new(rng.gen_range(0.0..100.0), rng.gen_range(0.0..100.0), 1.0),
-                    position: Vector3::new(p as f64, (p*p) as f64, 1.0),
+                    position: Vector3::new(p as f64, (p * p) as f64, 1.0),
                 };
                 // generate z-axis points for the line
                 if p % 5 == 0 {
@@ -420,7 +414,7 @@ mod tests {
                 }
                 // generate outliers
                 if p % 50 == 0 {
-                    point.position.z = (p*p) as f64;
+                    point.position.z = (p * p) as f64;
                 }
                 point
             })
@@ -430,51 +424,50 @@ mod tests {
     }
 
     #[test]
-    fn test_ransac_plane_par(){
+    fn test_ransac_plane_par() {
         let buffer = setup_point_cloud();
         let (_plane, indices) = ransac_plane_par(&buffer, 0.1, 300);
         assert!(indices.len() == 1600);
         for i in 0..2000 {
-            if !(i % 5 == 3){
+            if !(i % 5 == 3) {
                 assert!(indices.contains(&i));
             }
         }
     }
 
     #[test]
-    fn test_ransac_plane_serial(){
+    fn test_ransac_plane_serial() {
         let buffer = setup_point_cloud();
         let (_plane, indices) = ransac_plane_serial(&buffer, 0.1, 300);
         assert!(indices.len() == 1600);
         for i in 0..2000 {
-            if !(i % 5 == 3){
+            if !(i % 5 == 3) {
                 assert!(indices.contains(&i));
             }
         }
     }
 
     #[test]
-    fn test_ransac_line_par(){
+    fn test_ransac_line_par() {
         let buffer = setup_point_cloud();
         let (_plane, indices) = ransac_line_par(&buffer, 0.1, 300);
         assert!(indices.len() == 400);
         for i in 0..2000 {
-            if i % 5 == 3{
+            if i % 5 == 3 {
                 assert!(indices.contains(&i));
             }
         }
     }
 
     #[test]
-    fn test_ransac_line_serial(){
+    fn test_ransac_line_serial() {
         let buffer = setup_point_cloud();
         let (_plane, indices) = ransac_line_serial(&buffer, 0.1, 300);
         assert!(indices.len() == 400);
         for i in 0..2000 {
-            if i % 5 == 3{
+            if i % 5 == 3 {
                 assert!(indices.contains(&i));
             }
         }
     }
-
 }
