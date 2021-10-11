@@ -267,6 +267,7 @@ pub fn reproject_point_cloud_between<
 
 #[cfg(test)]
 mod tests {
+    use assert_approx_eq::assert_approx_eq;
     use pasture_core::{
         containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage},
         layout::PointType,
@@ -323,7 +324,9 @@ mod tests {
             .iter_attribute::<Vector3<f64>>(&POSITION_3D)
             .enumerate()
         {
-            assert_eq!(coord, results[index]);
+            assert_approx_eq!(coord[0], results[index][0], 0.0001);
+            assert_approx_eq!(coord[1], results[index][1], 0.0001);
+            assert_approx_eq!(coord[2], results[index][2], 0.0001);
         }
     }
     #[test]
@@ -369,7 +372,9 @@ mod tests {
             .iter_attribute::<Vector3<f64>>(&POSITION_3D)
             .enumerate()
         {
-            assert_eq!(coord, results[index]);
+            assert_approx_eq!(coord[0], results[index][0], 0.0001);
+            assert_approx_eq!(coord[1], results[index][1], 0.0001);
+            assert_approx_eq!(coord[2], results[index][2], 0.0001);
         }
     }
     #[test]

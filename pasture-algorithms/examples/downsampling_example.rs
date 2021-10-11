@@ -55,7 +55,7 @@ pub struct SimplePoint {
     // pub waveform_parameters: Vector3<f32>,
 }
 
-fn generate_vec3f32(rng: &mut ThreadRng) -> Vector3<f32> {
+fn _generate_vec3f32(rng: &mut ThreadRng) -> Vector3<f32> {
     Vector3::new(rng.gen_range(-30.0..10.0), rng.gen_range(-11.1..10.0), 31.0)
 }
 fn generate_vec3f64(rng: &mut ThreadRng) -> Vector3<f64> {
