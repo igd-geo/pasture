@@ -1,12 +1,73 @@
+use pasture_core::{
+    containers::{PerAttributeVecPointStorage, PointBuffer},
+    layout::{attributes, PointLayout},
+    nalgebra::Vector3,
+};
+use anyhow::Result;
 use std::path::PathBuf;
-
-use pasture_core::nalgebra::Vector3;
 
 /// Returns the resource/test/folder
 pub(crate) fn get_test_file_path(filename: &str) -> PathBuf {
     let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     test_file_path.push(format!("resources/test/{}", filename));
     test_file_path
+}
+
+pub(crate) fn test_data_buffer() -> Result<Box<dyn PointBuffer>> {
+    let layout = PointLayout::from_attributes(&[
+        attributes::POSITION_3D,
+        attributes::INTENSITY,
+        attributes::RETURN_NUMBER,
+        attributes::NUMBER_OF_RETURNS,
+        attributes::SCAN_DIRECTION_FLAG,
+        attributes::EDGE_OF_FLIGHT_LINE,
+        attributes::USER_DATA,
+        attributes::CLASSIFICATION,
+        attributes::SCAN_ANGLE_RANK,
+        attributes::POINT_SOURCE_ID,
+        attributes::GPS_TIME,
+        attributes::COLOR_RGB,
+        attributes::NIR,
+    ]);
+    let mut buffer = PerAttributeVecPointStorage::with_capacity(10, layout);
+    let mut pusher = buffer.begin_push_attributes();
+    pusher.push_attribute_range(&attributes::POSITION_3D, test_data_positions().as_slice());
+    pusher.push_attribute_range(&attributes::INTENSITY, test_data_intensities().as_slice());
+    pusher.push_attribute_range(
+        &attributes::RETURN_NUMBER,
+        test_data_return_numbers().as_slice(),
+    );
+    pusher.push_attribute_range(
+        &attributes::NUMBER_OF_RETURNS,
+        &test_data_number_of_returns().as_slice(),
+    );
+    pusher.push_attribute_range(
+        &attributes::SCAN_DIRECTION_FLAG,
+        test_data_scan_direction_flags().as_slice(),
+    );
+    pusher.push_attribute_range(
+        &attributes::EDGE_OF_FLIGHT_LINE,
+        test_data_edge_of_flight_lines().as_slice(),
+    );
+    pusher.push_attribute_range(
+        &attributes::CLASSIFICATION,
+        test_data_classifications().as_slice(),
+    );
+    pusher.push_attribute_range(
+        &attributes::SCAN_ANGLE_RANK,
+        test_data_scan_angle_ranks().as_slice(),
+    );
+    pusher.push_attribute_range(
+        &attributes::POINT_SOURCE_ID,
+        test_data_point_source_ids().as_slice(),
+    );
+    pusher.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
+    pusher.push_attribute_range(&attributes::GPS_TIME, test_data_gps_times().as_slice());
+    pusher.push_attribute_range(&attributes::COLOR_RGB, test_data_colors().as_slice());
+    pusher.push_attribute_range(&attributes::NIR, test_data_nirs().as_slice());
+    pusher.done();
+
+    Ok(Box::new(buffer))
 }
 
 pub(crate) fn test_data_positions() -> Vec<Vector3<f64>> {

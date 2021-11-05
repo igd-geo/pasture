@@ -1,6 +1,6 @@
 [package]
 name = "pasture-algorithms"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
 license-file = "LICENSE"
@@ -12,8 +12,23 @@ categories = ["data-structures", "algorithms"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = { version = "=0.1.0", path = "../pasture-core" }
+pasture-core = { version = "=0.2.0", path = "../pasture-core" }
 anyhow = "1.0.34"
-pasture-derive = { version = "=0.1.0", path = "../pasture-derive" }
+pasture-derive = { version = "=0.2.0", path = "../pasture-derive" }
 rand = "0.8.3"
 rayon = "1.5"
+typenum = "1.13.0"
+proj-sys = "0.18.2"
+kd-tree = "0.3.0"
+num-traits = "0.2.14"
+
+[dev-dependencies]
+criterion = "0.3"
+assert_approx_eq = "1.1.0"
+
+[[bench]]
+name = "convexhull_bench"
+harness = false
+
+[profile.bench]
+debug = true

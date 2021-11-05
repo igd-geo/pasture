@@ -1,4 +1,6 @@
-use pasture_algorithms::segmentation::{ransac_line_par, ransac_plane_par, ransac_plane_serial, ransac_line_serial};
+use pasture_algorithms::segmentation::{
+    ransac_line_par, ransac_line_serial, ransac_plane_par, ransac_plane_serial,
+};
 use pasture_core::{
     attributes_mut,
     containers::PerAttributeVecPointStorage,
@@ -51,7 +53,8 @@ fn main() -> () {
     let plane_and_points = ransac_plane_par::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
     println!("done ransac_plane");
     println!("{:?}", plane_and_points.0);
-    let plane_and_points_ser = ransac_plane_serial::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
+    let plane_and_points_ser =
+        ransac_plane_serial::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
     println!("done ransac_plane_ser");
     println!("{:?}", plane_and_points_ser.0);
     let line_and_points = ransac_line_par::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
