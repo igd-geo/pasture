@@ -24,4 +24,4 @@ pasture-io = "0.1.0"
 
 # License
 
-`pasture` is distributed under the terms of the Apacke License (Version 2.0). See [LICENSE](LICENSE) for details. 
+`pasture` is distributed under the terms of the Apache License (Version 2.0). See [LICENSE](LICENSE) for details. 

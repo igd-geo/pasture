@@ -1,0 +1,65 @@
+#version 430
+
+layout (local_size_x = 8) in;
+
+struct PointBuffer {
+    uvec4 icolor;
+    dvec4 position;
+    vec4 fcolor;
+    uvec4 byte_val;
+    uint classification;
+    uint intensity;
+    int scan_angle;
+    bool scan_dir_flag;
+    int integer;
+    uint packet_size;
+    float return_location;
+    double gps_time;
+};
+
+layout(std430, set=0, binding=0) buffer PointBufferSsbo {
+    PointBuffer pointBuffer[];
+};
+
+void main() {
+    uint n = 3; // TODO: set this as uniform or sth
+
+    uint idx = gl_GlobalInvocationID.x;
+    if(idx < n) {
+        pointBuffer[idx].position.x += 1.0;
+        pointBuffer[idx].position.y += 3.0;
+        pointBuffer[idx].position.z += 5.0;
+        pointBuffer[idx].position.w += -6.0;
+
+        pointBuffer[idx].icolor.r /= 2;
+        pointBuffer[idx].icolor.g /= 2;
+        pointBuffer[idx].icolor.b /= 2;
+        pointBuffer[idx].icolor.a *= 1;
+
+        pointBuffer[idx].fcolor.r *= 0.5;
+        pointBuffer[idx].fcolor.g *= 0.4;
+        pointBuffer[idx].fcolor.b *= 0.3;
+        pointBuffer[idx].fcolor.a *= 0.1;
+
+        pointBuffer[idx].byte_val.x += 1;
+        pointBuffer[idx].byte_val.y += 1;
+        pointBuffer[idx].byte_val.z += 1;
+        pointBuffer[idx].byte_val.w = 10;
+
+        pointBuffer[idx].classification += 10;
+
+        pointBuffer[idx].intensity += 10;
+
+        pointBuffer[idx].scan_angle -= 10;
+
+        pointBuffer[idx].scan_dir_flag = !pointBuffer[idx].scan_dir_flag;
+
+        pointBuffer[idx].integer -= 100000;
+
+        pointBuffer[idx].packet_size += 100;
+
+        pointBuffer[idx].gps_time *= 10.25;
+
+        pointBuffer[idx].return_location *= 7.5;
+    }
+}
