@@ -10,7 +10,7 @@ mod ex {
     use pasture_io::las::{LASReader, LASWriter};
     use std::path::Path;
 
-    // To run this example you have to enable a feature flag: --features="io_gpu_example"
+    // To run this example you have to enable a feature flag: --features="io_gpu_examples"
 
     // log + env_logging give improved wgpu error messages.
     // See https://crates.io/crates/env_logger
@@ -35,7 +35,7 @@ mod ex {
     // of the additional padding, even with std430. This also leads to longer computation time.
     //
     // For these reasons you're probably better off sticking to the per-attribute format for now.
-    fn main() {
+    pub fn main() {
         env_logger::init();
 
         futures::executor::block_on(run());

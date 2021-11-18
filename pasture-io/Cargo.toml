@@ -46,4 +46,4 @@ name = "las_bench"
 harness = false
 
 [features]
-io_gpu_example = ["pasture-core/gpu", "crevice", "mint", "log", "env_logger", "futures", "bytemuck"]
+io_gpu_examples = ["pasture-core/gpu", "crevice", "mint", "log", "env_logger", "futures", "bytemuck"]

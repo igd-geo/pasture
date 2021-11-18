@@ -38,7 +38,7 @@ mod ex {
         pub gps_time: f64,
     }
 
-    fn main() {
+    pub fn main() {
         futures::executor::block_on(run());
     }
 

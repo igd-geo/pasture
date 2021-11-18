@@ -17,6 +17,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --features gpu,io_gpu_examples
     - name: Run tests
       run: cargo test --verbose
