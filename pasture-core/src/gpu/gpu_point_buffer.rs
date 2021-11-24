@@ -3,7 +3,7 @@ use bytemuck::__core::convert::TryInto;
 use crate::containers::{PointBuffer, PerAttributePointBufferMutExt, PerAttributePointBufferMut, InterleavedPointBufferMut, InterleavedVecPointStorage};
 use crate::gpu::{BufferInfoInterleaved, BufferInfoPerAttribute};
 use std::collections::HashMap;
-use crate::nalgebra::Vector3;
+use crate::nalgebra::{Vector3, Vector4};
 
 trait GpuPointBuffer {
     fn alignment_per_element(&self, datatype: PointAttributeDataType) -> usize {
@@ -29,6 +29,7 @@ trait GpuPointBuffer {
             PointAttributeDataType::Vec3u16 => { 16 }
             PointAttributeDataType::Vec3f32 => { 16 }
             PointAttributeDataType::Vec3f64 => { 32 }
+            PointAttributeDataType::Vec4u8 => { 16 }
         };
 
         alignment
@@ -117,24 +118,25 @@ trait GpuPointBuffer {
                 ret_bytes.extend_from_slice(&slice);
                 *offset += num_bytes;
             }
-            PointAttributeDataType::Vec3u8 => {
+            PointAttributeDataType::Vec3u8 | PointAttributeDataType::Vec4u8 => {
                 // Treating as Vec4u32
                 let one_as_bytes = 1_u32.to_ne_bytes();
 
                 // Each entry is 8 bits, ie. 1 byte -> each Vec3 has 3 bytes
                 let stride = datatype.size() as usize;
                 let num_elements = num_bytes / stride;
+                let num_components = stride;
 
-                // Iteration over each Vec3
+                // Iteration over each Vec3 or Vec4
                 for i in 0..num_elements {
-                    // Alignment is 16 bytes
+                    // Alignment is 16 bytes, need to add padding for Vec3
                     while *offset % 16 != 0 {
                         ret_bytes.push(0);
                         *offset += 1;
                     }
 
                     // Extend each entry to 32 bits
-                    for j in 0..3 {
+                    for j in 0..num_components {
                         let begin = (i * stride) + j;
                         let end = (i * stride) + j + 1;
 
@@ -310,6 +312,19 @@ trait GpuPointBuffer {
                     *offset += 4 * std::mem::size_of::<u32>();
                 }
             }
+            PointAttributeDataType::Vec4u8 => {
+                // Alignment is 16 bytes
+                while *offset % 16 != 0 {
+                    *offset += 1;
+                }
+
+                // Each entry is 8 bits, ie. 1 byte -> each Vec4 has 4 bytes
+                let stride = datatype.size() as usize;
+                let num_elements = num_bytes / stride;
+
+                // Treating a Vec4u32: [x y z w]
+                *offset += 4 * std::mem::size_of::<u32>() * num_elements;
+            }
             PointAttributeDataType::Vec3u16 => {
                 // Each entry is 16 bits, ie. 2 bytes -> each Vec3 has 3*2 = 6 bytes
                 let stride = datatype.size() as usize;   // = 6
@@ -426,11 +441,11 @@ impl GpuPointBufferInterleaved {
             &wgpu::BufferDescriptor {
                 label: Some("storage_buffer"),
                 size,
-                usage: wgpu::BufferUsage::STORAGE |
-                    wgpu::BufferUsage::MAP_READ |
-                    wgpu::BufferUsage::MAP_WRITE |
-                    wgpu::BufferUsage::COPY_SRC |
-                    wgpu::BufferUsage::COPY_DST,
+                usage: wgpu::BufferUsages::STORAGE |
+                    wgpu::BufferUsages::MAP_READ |
+                    wgpu::BufferUsages::MAP_WRITE |
+                    wgpu::BufferUsages::COPY_SRC |
+                    wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false
             }
         ));
@@ -664,6 +679,21 @@ impl GpuPointBufferInterleaved {
                                 point_as_bytes[i] = result[i - attrib_offset];
                             }
                         },
+                        PointAttributeDataType::Vec4u8 => {
+                            let result4d: Vec<u8> = result_as_bytes[offset..(offset + size)]
+                                .chunks_exact(4)
+                                .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
+                                .collect();
+
+                            let mut result: Vec<u8> = vec![];
+                            for i in 0..result4d.len() {
+                                result.push(result4d[i]);
+                            }
+
+                            for i in attrib_offset..(attrib_offset + attrib.size() as usize) {
+                                point_as_bytes[i] = result[i - attrib_offset];
+                            }
+                        },
                         PointAttributeDataType::Vec3u16 => {
                             let result4d: Vec<u16> = result_as_bytes[offset..(offset + size)]
                                 .chunks_exact(4)
@@ -743,7 +773,7 @@ impl GpuPointBufferInterleaved {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: self.buffer_binding.unwrap(),
-                        visibility: wgpu::ShaderStage::COMPUTE,
+                        visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage {
                                 read_only: false
@@ -853,11 +883,11 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
                 &wgpu::BufferDescriptor {
                     label: Some(format!("storage_buffer_{}", key).as_str()),
                     size: size as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsage::STORAGE |
-                        wgpu::BufferUsage::MAP_READ |
-                        wgpu::BufferUsage::MAP_WRITE |
-                        wgpu::BufferUsage::COPY_SRC |
-                        wgpu::BufferUsage::COPY_DST,
+                    usage: wgpu::BufferUsages::STORAGE |
+                        wgpu::BufferUsages::MAP_READ |
+                        wgpu::BufferUsages::MAP_WRITE |
+                        wgpu::BufferUsages::COPY_SRC |
+                        wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 }
             ));
@@ -1053,6 +1083,20 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
                             attrib[i].z = result[i * 4 + 2];
                         }
                     },
+                    PointAttributeDataType::Vec4u8 => {
+                        let result: Vec<u8> = result_as_bytes
+                            .chunks_exact(4)
+                            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()) as u8)
+                            .collect();
+
+                        let attrib = point_buffer.get_attribute_range_mut::<Vector4<u8>>(range, info.attribute);
+                        for i in 0..attrib.len() {
+                            attrib[i].x = result[i * 4 + 0];
+                            attrib[i].y = result[i * 4 + 1];
+                            attrib[i].z = result[i * 4 + 2];
+                            attrib[i].w = result[i * 4 + 3];
+                        }
+                    },
                     PointAttributeDataType::Vec3u16 => {
                         let result: Vec<u16> = result_as_bytes
                             .chunks_exact(4)
@@ -1111,7 +1155,7 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
             group_layout_entries.push(
                 wgpu::BindGroupLayoutEntry {
                     binding,
-                    visibility: wgpu::ShaderStage::COMPUTE,
+                    visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
