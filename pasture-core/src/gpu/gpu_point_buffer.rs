@@ -841,7 +841,7 @@ pub struct GpuPointBufferPerAttribute<'a> {
 
     // String: name of the attribute, eg. "POSITION_3D"
     // Consider (String, PointAttributeDataType)?, eg. ("POSITION_3D", Vec3f64)
-    buffers: HashMap<String, wgpu::Buffer>,
+    pub buffers: HashMap<String, wgpu::Buffer>,
     buffer_sizes: HashMap<String, wgpu::BufferAddress>,
     buffer_bindings: HashMap<String, u32>,
     buffer_keys: Vec<&'a PointAttributeDefinition>,   // For now need order (because download code in device_compute depends on it)
@@ -863,7 +863,7 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
 
     /// Allocates enough memory on the device to hold `num_points` many points that are structured
     /// as described in `buffer_info`.
-    pub fn malloc(&mut self, num_points: u64, buffer_infos: &'a Vec<BufferInfoPerAttribute>, wgpu_device: &mut wgpu::Device) {
+    pub fn malloc(&mut self, num_points: u64, buffer_infos: &'a[BufferInfoPerAttribute], wgpu_device: &mut wgpu::Device) {
         for info in buffer_infos {
             let size = (num_points as usize) * self.alignment_per_element(info.attribute.datatype());
 
@@ -887,7 +887,8 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
                         wgpu::BufferUsages::MAP_READ |
                         wgpu::BufferUsages::MAP_WRITE |
                         wgpu::BufferUsages::COPY_SRC |
-                        wgpu::BufferUsages::COPY_DST,
+                        wgpu::BufferUsages::COPY_DST |
+                        wgpu::BufferUsages::VERTEX,
                     mapped_at_creation: false,
                 }
             ));
@@ -919,7 +920,7 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         &mut self,
         point_buffer: &dyn PointBuffer,
         points_range: std::ops::Range<usize>,
-        buffer_infos: &Vec<BufferInfoPerAttribute>,
+        buffer_infos: &[BufferInfoPerAttribute],
         wgpu_device: &mut wgpu::Device,
         wgpu_queue: &wgpu::Queue)
     {

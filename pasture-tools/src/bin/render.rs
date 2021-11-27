@@ -1,15 +1,30 @@
 // https://github.com/gfx-rs/wgpu/blob/v0.9/wgpu/examples/hello-triangle/main.rs
 
 use pasture_core::gpu as pgpu;
+use pasture_io::base::PointReader;
+use pasture_io::las::LASReader;
+
+use pasture_core::{
+    containers::{
+        PerAttributeVecPointStorage,
+        InterleavedVecPointStorage,
+        PointBufferExt,
+    },
+    layout::{
+        attributes, PointLayout, PointAttributeDefinition, PointAttributeDataType
+    },
+};
+
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
 
-use std::time::Instant;
 use nalgebra::{Vector2, Vector3, Point3, UnitQuaternion};
 use crevice::std140::AsStd140;
+
+use std::time::Instant;
 
 struct Camera {
     pos: Point3<f32>,
@@ -28,6 +43,18 @@ struct Camera {
     pub rotating: bool,
     pub mouse_pos: Option<Vector2::<f32>>,
 }
+
+// TODO: we only need a Vec here because gpu_point_buffer needs it
+const POINT_ATTRIB_3D_F32: PointAttributeDefinition = PointAttributeDefinition::custom(
+    "Position3D", PointAttributeDataType::Vec3f32
+);
+
+const POINT_ATTRIBS: [pgpu::BufferInfoPerAttribute; 1] = [
+    pgpu::BufferInfoPerAttribute {
+        attribute: &POINT_ATTRIB_3D_F32,
+        binding: 0,
+    }
+];
 
 impl Camera {
     pub fn new() -> Camera {
@@ -121,8 +148,11 @@ struct UboData {
 
 // TODO: get rid of lifetime by properly factoring out compute-related
 // stuff from pasture_core::gpu::Device
-struct Renderer<'a> {
-    dev: pgpu::Device<'a>,
+struct Renderer {
+    device: wgpu::Device,
+    #[allow(dead_code)]
+    adapter: wgpu::Adapter,
+    queue: wgpu::Queue,
 
     pipeline: wgpu::RenderPipeline,
 
@@ -138,10 +168,16 @@ struct Renderer<'a> {
 
     cam: Camera,
     last_frame: std::time::Instant,
+
+    // TODO: kinda terrible that this abstraction is designed so
+    // tightly for compute shaders and creates a lot of stuff
+    // we don't need for rendering
+    gpu_point_buffer: pgpu::GpuPointBufferPerAttribute<'static>,
+    point_count: u32,
 }
 
-impl<'a> Renderer<'a> {
-    async fn new(window: &Window) -> Renderer<'a> {
+impl Renderer {
+    async fn new(window: &Window) -> Renderer {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::Backends::all());
@@ -161,7 +197,10 @@ impl<'a> Renderer<'a> {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::empty(),
+                    // TODO: don't enable all features, just what we need:
+                    // - 64-bit floats for the default position_3D attrib
+                    // - point rendering
+                    features: adapter.features(),
                     limits: wgpu::Limits::default(),
                 },
                 None,
@@ -256,6 +295,20 @@ impl<'a> Renderer<'a> {
 
         let mut primitive_state = wgpu::PrimitiveState::default();
         primitive_state.cull_mode = None;
+        primitive_state.topology = wgpu::PrimitiveTopology::PointList;
+        primitive_state.polygon_mode = wgpu::PolygonMode::Point;
+
+        let vertex_attrib_desc = wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x3,
+            offset: 0,
+            shader_location: 0
+        };
+
+        let vertex_buf_desc = wgpu::VertexBufferLayout {
+            array_stride: 4 * 4, // aligned like vec4 f32
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[vertex_attrib_desc],
+        };
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
@@ -263,7 +316,7 @@ impl<'a> Renderer<'a> {
             vertex: wgpu::VertexState {
                 module: &vert_shader,
                 entry_point: "main",
-                buffers: &[],
+                buffers: &[vertex_buf_desc],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &frag_shader,
@@ -285,12 +338,10 @@ impl<'a> Renderer<'a> {
 
         surface.configure(&device, &surface_config);
 
-        // Wrap device and queue into pasture device so we can create
-        // point cloud buffers
-        let pdev = pgpu::Device::new_from_device(adapter, device, queue);
-
         Renderer {
-            dev: pdev,
+            adapter,
+            device,
+            queue,
             surface,
             uniform_bind_group_layout,
             uniform_bind_group,
@@ -300,13 +351,43 @@ impl<'a> Renderer<'a> {
             pipeline_layout,
             cam: Camera::new(),
             last_frame: Instant::now(),
+            gpu_point_buffer: pgpu::GpuPointBufferPerAttribute::new(),
+            point_count: 0,
         }
+    }
+
+    pub fn load_points(&mut self) {
+        let mut reader = LASReader::from_path(
+            // TODO
+            // "/home/jan/loads/points.laz"
+            "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
+            // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
+        ).expect("Failed to open las file");
+
+        let point_count = reader.remaining_points();
+        let layout = PointLayout::from_attributes(&[POINT_ATTRIB_3D_F32]);
+
+        self.point_count = point_count as u32;
+        let mut point_buffer = InterleavedVecPointStorage::with_capacity(point_count, layout);
+        reader.read_into(&mut point_buffer, point_count).unwrap();
+
+        // let position: Vector3<f32> = point_buffer.get_attribute(&POINT_ATTRIB_3D_F32, 0);
+        // println!("pos0: {}", position);
+
+        for position in point_buffer.iter_attribute::<Vector3<f32>>(&POINT_ATTRIB_3D_F32) {
+            // Notice that `iter_attribute<T>` returns `T` by value. It is available for all point buffer types, at the expense of
+            // only receiving a copy of the attribute.
+            println!("Position: {:?}", position);
+        }
+
+        self.gpu_point_buffer.malloc(point_count as u64, &POINT_ATTRIBS, &mut self.device);
+        self.gpu_point_buffer.upload(&mut point_buffer, 0..point_count, &POINT_ATTRIBS, &mut self.device, &self.queue);
     }
 
     pub fn resize(&mut self, size: winit::dpi::PhysicalSize<u32>) {
         self.surface_config.width = size.width;
         self.surface_config.height = size.height;
-        self.surface.configure(&self.dev.wgpu_device, &self.surface_config);
+        self.surface.configure(&self.device, &self.surface_config);
     }
 
     pub fn render(&mut self, window: &Window) {
@@ -317,7 +398,7 @@ impl<'a> Renderer<'a> {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.dev.wgpu_device.
+        let mut encoder = self.device.
             create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
@@ -335,7 +416,11 @@ impl<'a> Renderer<'a> {
             });
             rpass.set_bind_group(0, &self.uniform_bind_group, &[]);
             rpass.set_pipeline(&self.pipeline);
-            rpass.draw(0..3, 0..1);
+
+            let buf = &self.gpu_point_buffer.buffers.get(POINT_ATTRIB_3D_F32.name()).unwrap();
+            rpass.set_vertex_buffer(0, buf.slice(..));
+            // rpass.draw(0..3, 0..1);
+            rpass.draw(0..self.point_count, 0..1);
         }
 
         let now = Instant::now();
@@ -349,22 +434,23 @@ impl<'a> Renderer<'a> {
         let aspect = (win_size.width as f32) / (win_size.height as f32);
         let fovy = 1.5f32; // 90 degrees
         let near = 0.1f32;
-        let far = 100.0f32;
+        let far = 20.0f32;
         let proj_mat = nalgebra::Matrix4::<f32>::new_perspective(aspect, fovy, near, far);
 
         let gpu_data = UboData {
             view_proj_matrix: (proj_mat * view_mat).into(),
         }.as_std140();
 
-        self.dev.wgpu_queue.write_buffer(&self.ubo, 0, bytemuck::bytes_of(&gpu_data));
+        self.queue.write_buffer(&self.ubo, 0, bytemuck::bytes_of(&gpu_data));
 
-        self.dev.wgpu_queue.submit(Some(encoder.finish()));
+        self.queue.submit(Some(encoder.finish()));
         frame.present();
     }
 }
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut renderer = Renderer::new(&window).await;
+    renderer.load_points();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
