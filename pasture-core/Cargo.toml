@@ -38,4 +38,5 @@ name = "point_buffer_iterators_bench"
 harness = false
 
 [features]
+default = ["gpu"]
 gpu = ["wgpu", "shaderc", "futures", "bytemuck"]

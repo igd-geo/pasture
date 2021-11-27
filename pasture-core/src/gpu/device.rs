@@ -29,6 +29,21 @@ impl<'a> Device<'a> {
         Device::new(DeviceOptions::default()).await
     }
 
+    pub fn new_from_device(adapter: wgpu::Adapter, dev: wgpu::Device, queue: wgpu::Queue) -> Device<'a> {
+        let cs_module = Option::None;
+        let compute_pipeline = Option::None;
+        let bind_group_data = BTreeMap::new();
+
+        Device {
+            adapter,
+            wgpu_device: dev,
+            wgpu_queue: queue,
+            cs_module,
+            bind_group_data,
+            compute_pipeline,
+        }
+    }
+
     /// Create and return a device respecting the desired [DeviceOptions].
     ///
     /// # Arguments
@@ -131,20 +146,7 @@ impl<'a> Device<'a> {
         ).await?;
 
         // == Other fields =========================================================================
-
-        let cs_module = Option::None;
-        let compute_pipeline = Option::None;
-
-        let bind_group_data = BTreeMap::new();
-
-        Ok(Device {
-            adapter,
-            wgpu_device,
-            wgpu_queue,
-            cs_module,
-            bind_group_data,
-            compute_pipeline,
-        })
+        Ok(Device::new_from_device(adapter, wgpu_device, wgpu_queue))
     }
 
     /// Displays name, type, backend, PCI id and vendor PCI id of the device.

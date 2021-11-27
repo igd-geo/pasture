@@ -23,6 +23,18 @@ pretty_env_logger = "0.4.0"
 plotters = "^0.3.0"
 rand = {version = "0.8.3", features = ["small_rng"] }
 
+# GPU related
+winit = "0.25"
+wgpu = {version = "0.11.0", features = ["spirv"]}
+async-executor = "1.0"
+pollster = "0.2"
+shaderc = "0.7.2"
+env_logger = "0.8"
+nalgebra = {version = "0.23.1", features = ["serde-serialize", "mint"] }
+crevice = "0.7.1"
+mint = "0.5.6"
+bytemuck = "1.5.1"
+
 [[bin]]
 name = "reorder_laz_chunks"
 
