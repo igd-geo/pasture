@@ -12,7 +12,7 @@ categories = ["data-structures", "command-line-utilities"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = {version = "=0.2.0", path = "../pasture-core" }
+pasture-core = {version = "=0.2.0", path = "../pasture-core", features=["gpu"]}
 pasture-io = {version = "=0.2.0", path = "../pasture-io" }
 pasture-algorithms = {version = "=0.2.0", path = "../pasture-algorithms" }
 pasture-derive = {version = "=0.2.0", path = "../pasture-derive" }
@@ -23,6 +23,12 @@ pretty_env_logger = "0.4.0"
 plotters = "^0.3.0"
 rand = {version = "0.8.3", features = ["small_rng"] }
 
+#gpu related
+wgpu = { version = "0.11.0", features = ["spirv"], optional = true }
+shaderc = { version = "0.7.2", optional = true }
+futures = { version = "0.3", optional = true }
+bytemuck = { version = "1.5.1", optional = true }
+
 [[bin]]
 name = "reorder_laz_chunks"
 
@@ -31,3 +37,6 @@ name = "plotting"
 
 [[bin]]
 name = "info"
+
+[features]
+gpu = ["pasture-core/gpu", "wgpu", "shaderc", "futures", "bytemuck"]
