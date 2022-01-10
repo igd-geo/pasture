@@ -89,15 +89,30 @@ mod ex {
                 gps_time: 3.0,
             },
         ];
-        let a: f64 = 1.0;
-        println!("{:?}", a.to_be_bytes());
+
         let layout = MyPointType::layout();
         let mut point_buffer = InterleavedVecPointStorage::new(layout);
         point_buffer.push_points(points.as_slice());
 
+        let device = gpu::Device::new(gpu::DeviceOptions {
+            device_power: gpu::DevicePower::High,
+            device_backend: gpu::DeviceBackend::Vulkan,
+            use_adapter_features: true,
+            use_adapter_limits: true,
+        })
+        .await;
+
+        let mut device = match device {
+            Ok(d) => d,
+            Err(_) => {
+                println!("Failed to request device. Aborting.");
+                return;
+            }
+        };
+
         let mut octree =
-            pasture_tools::acceleration_structures::GpuOctree::new(&point_buffer).await;
-        octree.construct(MyPointType::layout());
+            pasture_tools::acceleration_structures::GpuOctree::new(&point_buffer, &mut device);
+        octree.construct(MyPointType::layout()).await;
     }
 }
 
@@ -107,4 +122,6 @@ fn main() {
 }
 
 #[cfg(not(feature = "gpu"))]
-fn main() {}
+fn main() {
+    println!("Whoops");
+}
