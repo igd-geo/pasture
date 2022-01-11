@@ -349,7 +349,7 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
                     get_converter_for_attributes(&attribute.into(), &target_attribute.into());
                 if let Some(conversion_fn) = converter {
                     let mut src_buf: Vec<u8> = vec![0; attribute.size() as usize];
-                    let mut dst_buf: Vec<u8> = vec![0; attribute.size() as usize];
+                    let mut dst_buf: Vec<u8> = vec![0; target_attribute.size() as usize];
                     let target_attribute_def: PointAttributeDefinition = target_attribute.into();
                     for point_index in 0..num_to_read {
                         self.reader.read_exact(src_buf.as_mut_slice())?;

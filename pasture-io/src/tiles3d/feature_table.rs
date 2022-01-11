@@ -1,12 +1,12 @@
 use anyhow::{anyhow, Result};
-use pasture_core::math::Alignable;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
     collections::HashMap,
     convert::TryFrom,
     convert::TryInto,
-    io::{BufRead, Seek, SeekFrom, Write},
+    io::{BufRead, Seek, Write},
 };
 
 use super::{read_json_header, write_json_header};
@@ -114,17 +114,20 @@ pub type FeatureTableHeader = HashMap<String, FeatureTableValue>;
 pub fn deser_feature_table_header<R: BufRead + Seek>(
     mut reader: R,
     feature_table_header_size: usize,
-    header_start_position_in_file: usize,
+    _header_start_position_in_file: usize,
 ) -> Result<FeatureTableHeader> {
     let feature_table_header_json = read_json_header(&mut reader, feature_table_header_size)?;
+
+    // TODO Not all files adhere to this 8-byte boundary described here... What to do? Make it configurable?
+
     // Read the potential padding bytes so we end at an 8-byte boundary in the file. since the 'reader' can be a
     // sub-reader that does not refer to the whole file, we need the start position of the header in the file as
     // an extra parameter
-    let current_position_in_file = header_start_position_in_file + feature_table_header_size;
-    let padding_bytes = current_position_in_file.align_to(8) - current_position_in_file;
-    if padding_bytes > 0 {
-        reader.seek(SeekFrom::Current(padding_bytes as i64))?;
-    }
+    // let current_position_in_file = header_start_position_in_file + feature_table_header_size;
+    // let padding_bytes = current_position_in_file.align_to(8) - current_position_in_file;
+    // if padding_bytes > 0 {
+    //     reader.seek(SeekFrom::Current(padding_bytes as i64))?;
+    // }
 
     let feature_table_obj = feature_table_header_json
         .as_object()
