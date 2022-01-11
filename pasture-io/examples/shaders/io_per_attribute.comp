@@ -1,0 +1,26 @@
+#version 450
+
+layout(local_size_x=128) in;
+
+layout(std430, set=0, binding=0) buffer PosBuffer {
+    dvec4 positions[];
+};
+
+layout(std430, set=0, binding=1) buffer IntensityBuffer {
+    uint intensities[];
+};
+
+layout(std140, set=1, binding=0) uniform PointUniformBuffer {
+    uint NUM_POINTS;
+    mat4 model;
+};
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if(idx >= NUM_POINTS) {
+        return;
+    }
+
+    intensities[idx] = 255;
+    positions[idx] = model * positions[idx];
+}

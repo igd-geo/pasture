@@ -1,0 +1,27 @@
+#version 450
+
+layout(local_size_x=128) in;
+
+struct PointBuffer {
+    dvec4 position;
+    uint intensity;
+};
+
+layout(std430, set=0, binding=0) buffer PointBufferSsbo {
+    PointBuffer pointBuffer[];
+};
+
+layout(std140, set=1, binding=0) uniform PointUniformBuffer {
+    uint NUM_POINTS;
+    dmat4 model;
+};
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if(idx >= NUM_POINTS) {
+        return;
+    }
+
+    pointBuffer[idx].intensity = 255;
+    pointBuffer[idx].position = model * pointBuffer[idx].position;
+}

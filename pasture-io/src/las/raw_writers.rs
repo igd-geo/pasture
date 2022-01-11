@@ -645,12 +645,12 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         raw_header.number_of_points_by_return = [0; 5];
         // Pasture always uses the 'large_file' field for keeping track of the number of points
         raw_header.large_file = Some(Default::default());
-        raw_header.min_x = std::f64::MAX;
-        raw_header.min_y = std::f64::MAX;
-        raw_header.min_z = std::f64::MAX;
-        raw_header.max_x = std::f64::MIN;
-        raw_header.max_y = std::f64::MIN;
-        raw_header.max_z = std::f64::MIN;
+        raw_header.min_x = std::f64::INFINITY;
+        raw_header.min_y = std::f64::INFINITY;
+        raw_header.min_z = std::f64::INFINITY;
+        raw_header.max_x = std::f64::NEG_INFINITY;
+        raw_header.max_y = std::f64::NEG_INFINITY;
+        raw_header.max_z = std::f64::NEG_INFINITY;
 
         if raw_header.x_scale_factor == 0.0
             || raw_header.y_scale_factor == 0.0

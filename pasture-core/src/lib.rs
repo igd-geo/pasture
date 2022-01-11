@@ -18,3 +18,5 @@ pub mod math;
 pub mod meta;
 /// Utilities
 pub mod util;
+#[cfg(feature = "gpu")]
+pub mod gpu;

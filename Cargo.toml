@@ -1,2 +1,3 @@
 [workspace]
 members = ["pasture-core", "pasture-io", "pasture-tools", "pasture-derive", "pasture-algorithms"]
+resolver = "2"
