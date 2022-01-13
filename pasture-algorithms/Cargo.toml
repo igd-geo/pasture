@@ -1,6 +1,6 @@
 [package]
 name = "pasture-algorithms"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
 license-file = "LICENSE"
@@ -12,7 +12,7 @@ categories = ["data-structures", "algorithms"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = { version = "=0.2.0", path = "../pasture-core" }
+pasture-core = { version = "=0.3.0", path = "../pasture-core" }
 anyhow = "1.0.34"
 pasture-derive = { version = "=0.2.0", path = "../pasture-derive" }
 rand = "0.8.3"

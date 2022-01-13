@@ -6,10 +6,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use las_rs::{point::Format, Builder, Vlr};
-use laz::{
-    las::laszip::LASZIP_DESCRIPTION, las::laszip::LASZIP_RECORD_ID, las::laszip::LASZIP_USER_ID,
-    LasZipCompressor, LazItemRecordBuilder, LazVlr,
-};
+use laz::{LasZipCompressor, LazItemRecordBuilder, LazVlr};
 use pasture_core::{containers::PointBuffer, layout::PointLayout, nalgebra::Vector3};
 
 use crate::base::PointWriter;
@@ -669,9 +666,9 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         let mut raw_laz_vlr_cursor = Cursor::new(Vec::<u8>::new());
         raw_laz_vlr.write_to(&mut raw_laz_vlr_cursor)?;
         let laz_vlr = Vlr {
-            user_id: LASZIP_USER_ID.to_owned(),
-            record_id: LASZIP_RECORD_ID,
-            description: LASZIP_DESCRIPTION.to_owned(),
+            user_id: laz::LazVlr::USER_ID.to_owned(),
+            record_id: laz::LazVlr::RECORD_ID,
+            description: laz::LazVlr::DESCRIPTION.to_owned(),
             data: raw_laz_vlr_cursor.into_inner(),
         };
 
