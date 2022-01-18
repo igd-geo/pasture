@@ -1,0 +1,195 @@
+#version 450
+
+struct Node {
+  double[3] bounds_min;
+  double[3] bounds_max;
+  uint node_partitioning[8];
+  uint points_per_partition[8];
+  uint points_start;
+  uint points_end;
+};
+
+layout(std430, binding=0) buffer NodeCounter{
+   uint num_nodes;
+ };
+layout(std430, binding=1) buffer LeafCounter{
+  uint num_leaves;
+};
+layout(std430, set=1, binding=0) buffer PointBuffer {
+  double[3] points[];
+};
+layout(std430, set=1, binding=1) buffer Partitioning {
+  uint indeces[];
+};
+layout(std430, set=2, binding=0) buffer ChildNodes{
+  Node children[];
+};
+layout(std430, set=2, binding=1) buffer ParentNodes{
+  Node parents[];
+};
+
+uint[3] partitioning_order(double x, double y, double z){
+  uint[] order = uint[3](0,1,2);
+  double[] axes = double[3](x,y,z);
+  for(uint i = 0; i < 2; ++i){
+    if(axes[i] < axes[i+1]){
+      uint tmp_order = order[i];
+      double tmp_axis = axes[i];
+      order[i] = order[i+1];
+      axes[i] = axes[i+1];
+      order[i+1] = tmp_order;
+      axes[i+1] = tmp_axis;
+    }
+  }
+  if(axes[0] < axes[1]){
+    uint tmp = order[0];
+    order[0] = order[1];
+    order[1] = tmp;
+  }
+  return order;
+}
+
+void swap( uint a,  uint b){
+  uint tmp = indeces[a];
+  indeces[a] = indeces[b];
+  indeces[b] = tmp;
+}
+
+void partitioning(uint axis, double threshold, uint iteration, inout uint[7] partition_borders, Node parent){
+  uint start = parent.points_start;
+  uint end = parent.points_end;
+  uint iteration_end = 1;
+  if(iteration > 0) {
+    end = partition_borders[iteration - 1];
+    iteration_end = iteration == 1 ? 2 : 4;
+  }
+  for(uint k = 0; k < iteration_end; ++k){
+    while(start < end){
+      if(points[indeces[start]][axis] <= threshold){
+        ++start;
+        if(points[indeces[end]][axis] > threshold){
+          --end;
+        }
+      } else {
+        if(points[indeces[end]][axis] <= threshold){
+          swap(start, end);
+          ++start;
+          --end;
+        } else {
+          --end;
+        }
+      }
+    }
+    //num_nodes = start;
+    start = end - 1;
+    if(iteration_end - k <= 2){
+      end = parent.points_end;
+    } else {
+      end = partition_borders[k * 2];
+    }
+    partition_borders[iteration_end - 1 + k] = start;
+    num_nodes = start;
+    if(iteration == 1) {
+      start = partition_borders[0];
+    }
+    else {
+      if(k == 0) start = partition_borders[1];
+      else if(k == 1) start = partition_borders[0];
+      else if(k == 2) start = partition_borders[2];
+    }
+  }
+}
+
+bool[3] partitioned_to_right(uint[3] partition_order, uint index){
+  bool[3] on_right_side = bool[3](false, false, false);
+  if(index % 2 != 0){
+    on_right_side[partition_order[2]] = true;
+  }
+  else if( index % 4 != 0){
+    on_right_side[partition_order[1]] = true;
+  }
+  if(index >= 4){
+    on_right_side[partition_order[0]] = true;
+  }
+  return on_right_side;
+}
+
+double[2][3] get_childs_bounds(uint[3] partition_order, double[3] partition_axes, uint child_index, Node parent){
+  double[3] bounds_min;
+  double[3] bounds_max;
+  if(child_index == 0) {
+    bounds_min = parent.bounds_min;
+    bounds_max = partition_axes;
+  }
+  else {
+    bool[3] on_right_side = partitioned_to_right(partition_order, child_index);
+    for(uint k = 0; k < 3; ++k){
+      bounds_min[k] = on_right_side[k] ? partition_axes[k] : parent.bounds_min[k];
+      bounds_max[k] = on_right_side[k] ? parent.bounds_max[k] : partition_axes[k];
+
+    }
+  }
+  return double[2][3](bounds_min, bounds_max);
+}
+
+void main() {
+  uint idx = gl_GlobalInvocationID.x;
+
+  Node parent = parents[idx];
+
+  double x_diff = parent.bounds_max[0] - parent.bounds_min[0];
+  double y_diff = parent.bounds_max[1] - parent.bounds_min[1];
+  double z_diff = parent.bounds_max[2] - parent.bounds_min[2];
+  double x_partition = parent.bounds_min[0] + 0.5 * abs(x_diff);
+  double y_partition = parent.bounds_min[1] + 0.5 * abs(y_diff);
+  double z_partition = parent.bounds_min[2] + 0.5 * abs(z_diff);
+  uint[3] partition_order = partitioning_order(abs(x_diff), abs(y_diff), abs(z_diff));
+  uint[7] partition_borders;
+  for(uint i = 0; i < 3; ++i){
+    uint partition_axis = partition_order[i];
+    switch(partition_axis){
+      case 0:
+        partitioning(partition_axis, x_partition, i, partition_borders, parent);
+        break;
+      case 1:
+        partitioning(partition_axis, y_partition, i, partition_borders, parent);
+        break;
+      case 2:
+        partitioning(partition_axis, z_partition, i, partition_borders, parent);
+    }
+  }
+  parents[idx].node_partitioning[0] = partition_borders[3];
+  parents[idx].node_partitioning[1] = partition_borders[1];
+  parents[idx].node_partitioning[2] = partition_borders[4];
+  parents[idx].node_partitioning[3] = partition_borders[0];
+  parents[idx].node_partitioning[4] = partition_borders[5];
+  parents[idx].node_partitioning[5] = partition_borders[2];
+  parents[idx].node_partitioning[6] = partition_borders[6];
+  parents[idx].node_partitioning[7] = parents[idx].points_end;
+
+  for(uint i = 0; i < 8; ++i){
+    if(i == 0) {
+      parents[idx].points_per_partition[i] = parents[idx].node_partitioning[i];
+    } else {
+    parents[idx].points_per_partition[i] = parents[idx].node_partitioning[i] - parents[idx].node_partitioning[i-1];
+    }
+  }
+  for(uint i = 0; i < 8; ++i){
+    if(i == 0) {
+      children[idx + i].points_start = 0;
+    } else {
+      children[idx + i].points_start = parents[idx].node_partitioning[i - 1];
+    }
+    children[idx + i].points_end = parents[idx].node_partitioning[i];
+    double[2][3] child_bounds = get_childs_bounds(
+      partition_order,
+      double[3](x_partition, y_partition, z_partition),
+      i,
+      parent
+    );
+    children[idx + i].bounds_min = child_bounds[0];
+    children[idx + i].bounds_max = child_bounds[1];
+  }
+
+
+}

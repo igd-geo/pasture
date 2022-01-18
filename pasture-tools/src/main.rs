@@ -6,9 +6,15 @@ mod ex {
     use pasture_core::gpu::GpuPointBufferInterleaved;
     use pasture_core::layout::PointType;
     use pasture_core::layout::{attributes, PointAttributeDataType, PointAttributeDefinition};
+    use pasture_core::meta::Metadata;
     use pasture_core::nalgebra::Vector3;
     use pasture_derive::PointType;
+    use pasture_io::base::PointReader;
+    use pasture_io::las::las_bounds_to_pasture_bounds;
+    use pasture_io::las::LASReader;
+    use pasture_io::las::LasPointFormat0;
 
+    use anyhow::Result;
     #[repr(C)]
     #[derive(PointType, Debug)]
     struct MyPointType {
@@ -42,7 +48,7 @@ mod ex {
         futures::executor::block_on(run());
     }
 
-    async fn run() {
+    async fn run() -> Result<()> {
         // == Init point buffer ======================================================================
 
         let points = vec![
@@ -94,6 +100,21 @@ mod ex {
         let mut point_buffer = InterleavedVecPointStorage::new(layout);
         point_buffer.push_points(points.as_slice());
 
+        let mut reader = LASReader::from_path(
+            //"/home/jnoice/dev/pasture/pasture-io/examples/in/10_points_format_1.las",
+            "/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz",
+            //"/home/jnoice/Downloads/interesting.las",
+        )?;
+        let count = reader.remaining_points();
+        let mut buffer =
+            InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
+        reader.read_into(&mut buffer, count)?;
+
+        for point in buffer.iter_point::<LasPointFormat0>().take(5) {
+            println!("{:?}", point);
+        }
+        let bounds = reader.get_metadata().bounds().unwrap();
+
         let device = gpu::Device::new(gpu::DeviceOptions {
             device_power: gpu::DevicePower::High,
             device_backend: gpu::DeviceBackend::Vulkan,
@@ -106,13 +127,13 @@ mod ex {
             Ok(d) => d,
             Err(_) => {
                 println!("Failed to request device. Aborting.");
-                return;
+                return Ok(());
             }
         };
 
-        let mut octree =
-            pasture_tools::acceleration_structures::GpuOctree::new(&point_buffer, &mut device);
+        let mut octree = pasture_tools::acceleration_structures::GpuOctree::new(&buffer, bounds, 2);
         octree.construct(MyPointType::layout()).await;
+        Ok(())
     }
 }
 
