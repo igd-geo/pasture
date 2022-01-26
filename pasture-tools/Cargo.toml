@@ -29,6 +29,9 @@ shaderc = { version = "0.7.2", optional = true }
 futures = { version = "0.3", optional = true }
 bytemuck = { version = "1.5.1", optional = true }
 
+[features]
+gpu = ["wgpu", "shaderc", "futures", "bytemuck"]
+
 [[bin]]
 name = "reorder_laz_chunks"
 
@@ -37,6 +40,3 @@ name = "plotting"
 
 [[bin]]
 name = "info"
-
-[features]
-gpu = ["pasture-core/gpu", "wgpu", "shaderc", "futures", "bytemuck"]
