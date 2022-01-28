@@ -24,8 +24,8 @@ itertools = "0.10.0"
 byteorder = "1.4.2"
 
 # GPU related
-wgpu = { version = "0.11.0", features = ["spirv"], optional = true }
-shaderc = { version = "0.7.2", optional = true }
+wgpu = { version = "0.12.0", features = ["spirv"], optional = true }
+# shaderc = { version = "0.7.2", optional = true }
 futures = { version = "0.3", optional = true }
 bytemuck = { version = "1.5.1", optional = true }
 
@@ -39,4 +39,4 @@ harness = false
 
 [features]
 default = ["gpu"]
-gpu = ["wgpu", "shaderc", "futures", "bytemuck"]
+gpu = ["wgpu", "futures", "bytemuck"]

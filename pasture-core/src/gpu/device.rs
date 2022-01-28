@@ -263,39 +263,14 @@ impl<'a> Device<'a> {
         self.compute_pipeline = Some(pipeline);
     }
 
-    /// Compiles the passed in GLSL shader source code into Spir-V and sets up a compute pipeline.
-    pub fn set_compute_shader_glsl(&mut self, compute_shader_src: &str) {
-        self.cs_module = self.compile_glsl_and_create_compute_module(compute_shader_src);
-
+    /// Sets up a compute pipeline for the given shader module descriptor.
+    /// The ShaderModuleDescriptor can for example be created with
+    /// include_spirv!
+    pub fn set_compute_shader_spirv(&mut self, desc: &wgpu::ShaderModuleDescriptor) {
+        self.cs_module = Some(self.wgpu_device.create_shader_module(desc));
         let pipeline = self.create_compute_pipeline(self.cs_module.as_ref().unwrap());
 
         self.compute_pipeline = Some(pipeline);
-    }
-
-    fn compile_glsl_and_create_compute_module(&self, compute_shader_src: &str) -> Option<wgpu::ShaderModule> {
-        // WebGPU wants its shaders pre-compiled in binary SPIR-V format.
-        // So we'll take the source code of our compute shader and compile it
-        // with the help of the shaderc crate.
-        let mut compiler = shaderc::Compiler::new().unwrap();
-        let cs_spirv = compiler
-            .compile_into_spirv(
-                compute_shader_src,
-                shaderc::ShaderKind::Compute,
-                "Compute shader",
-                "main",
-                None,
-            )
-            .unwrap();
-        let cs_data = wgpu::util::make_spirv(cs_spirv.as_binary_u8());
-
-        // Now with the binary data we can create and return our ShaderModule,
-        // which will be executed on the GPU within our compute pipeline.
-        Some(
-            self.wgpu_device.create_shader_module(&wgpu::ShaderModuleDescriptor {
-                label: Some("glsl_compute_shader_module"),
-                source: cs_data,
-            })
-        )
     }
 
     fn create_compute_pipeline(&self, cs_module: &wgpu::ShaderModule) -> wgpu::ComputePipeline {
@@ -312,16 +287,14 @@ impl<'a> Device<'a> {
             }
         );
 
-        let compute_pipeline = self.wgpu_device.create_compute_pipeline(
+        self.wgpu_device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
                 label: Some("compute_pipeline"),
                 layout: Some(&compute_pipeline_layout),
-                module: &cs_module,
+                module: cs_module,
                 entry_point: "main",
             }
-        );
-
-        compute_pipeline
+        )
     }
 
     /// Launches compute work groups; `x`, `y`, `z` many in their respective dimensions.

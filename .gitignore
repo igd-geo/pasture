@@ -8,3 +8,4 @@ Cargo.lock
 .DS_Store
 
 /pasture-io/examples/out/test_output.las
+wasm-example

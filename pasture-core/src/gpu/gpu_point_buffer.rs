@@ -442,8 +442,8 @@ impl GpuPointBufferInterleaved {
                 label: Some("storage_buffer"),
                 size,
                 usage: wgpu::BufferUsages::STORAGE |
-                    wgpu::BufferUsages::MAP_READ |
-                    wgpu::BufferUsages::MAP_WRITE |
+                    // wgpu::BufferUsages::MAP_READ |
+                    // wgpu::BufferUsages::MAP_WRITE |
                     wgpu::BufferUsages::COPY_SRC |
                     wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false
@@ -525,7 +525,7 @@ impl GpuPointBufferInterleaved {
         let gpu_buffer = self.buffer.as_ref().unwrap();
         wgpu_queue.write_buffer(&gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
 
-        self.create_bind_group(wgpu_device);
+        // self.create_bind_group(wgpu_device);
     }
 
     /// Writes the contents of the GPU buffer into `point_buffer`, which is in interleaved format,
@@ -884,8 +884,8 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
                     label: Some(format!("storage_buffer_{}", key).as_str()),
                     size: size as wgpu::BufferAddress,
                     usage: wgpu::BufferUsages::STORAGE |
-                        wgpu::BufferUsages::MAP_READ |
-                        wgpu::BufferUsages::MAP_WRITE |
+                        // wgpu::BufferUsages::MAP_READ |
+                        // wgpu::BufferUsages::MAP_WRITE |
                         wgpu::BufferUsages::COPY_SRC |
                         wgpu::BufferUsages::COPY_DST |
                         wgpu::BufferUsages::VERTEX,
@@ -945,7 +945,7 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
             wgpu_queue.write_buffer(gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
         }
 
-        self.create_bind_group(wgpu_device);
+        // self.create_bind_group(wgpu_device);
     }
 
     /// Writes the contents of the GPU buffer into `point_buffer`, which is in per-attribute format,

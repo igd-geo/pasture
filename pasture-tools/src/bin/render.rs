@@ -27,9 +27,46 @@ use crevice::std140::AsStd140;
 use std::time::Instant;
 
 struct Camera {
+    // camera position and orientation in world space
     pos: Point3<f32>,
     rot: UnitQuaternion<f32>,
 
+    // perspective projection parameters
+    aspect: f32,
+    fovy: f32,
+}
+
+impl Camera {
+    pub fn new() -> Camera {
+        Camera {
+            pos: Point3::new(0.0, 0.0, 0.0),
+            rot: UnitQuaternion::identity(),
+            aspect: 1.0,
+            fovy: 1.5f32, // 90 degrees
+        }
+    }
+
+    pub fn view_dir(&self) -> Vector3::<f32> {
+        self.rot * Vector3::new(0.0f32, 0.0f32, -1.0f32)
+    }
+
+    pub fn view_mat(&self) -> nalgebra::Matrix4::<f32> {
+        let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
+        let target = self.pos + self.view_dir();
+
+        nalgebra::Matrix4::look_at_rh(&self.pos, &target, &up)
+    }
+}
+
+trait CameraController {
+    fn update(&mut self, cam: &mut Camera, dt: f32) {}
+    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2::<f32>) {}
+    fn process_keyboard_input(&mut self, key: winit::event::VirtualKeyCode, pressed: bool) {}
+    fn process_mouse_button(&mut self, key: winit::event::MouseButton, pressed: bool) {}
+    fn process_mouse_wheel(&mut self, cam: &mut Camera, delta: f32) {}
+}
+
+struct FPSCameraController {
     pitch: f32,
     yaw: f32,
 
@@ -44,6 +81,15 @@ struct Camera {
     pub mouse_pos: Option<Vector2::<f32>>,
 }
 
+struct ArcballCameraController {
+	// Describes how far the rotation center is in front of the camera.
+	offset: f32,
+
+	rotating: bool,
+	panning: bool,
+    mouse_pos: Option<Vector2::<f32>>,
+}
+
 // TODO: we only need a Vec here because gpu_point_buffer needs it
 const POINT_ATTRIB_3D_F32: PointAttributeDefinition = PointAttributeDefinition::custom(
     "Position3D", PointAttributeDataType::Vec3f32
@@ -56,11 +102,9 @@ const POINT_ATTRIBS: [pgpu::BufferInfoPerAttribute; 1] = [
     }
 ];
 
-impl Camera {
-    pub fn new() -> Camera {
-        Camera {
-            pos: Point3::new(0.0, 0.0, 0.0),
-            rot: UnitQuaternion::identity(),
+impl FPSCameraController {
+    pub fn new() -> FPSCameraController {
+        FPSCameraController {
             pitch: 0.0,
             yaw: 0.0,
             w_down: false,
@@ -73,46 +117,37 @@ impl Camera {
             mouse_pos: None,
         }
     }
+}
 
-    pub fn view_dir(&self) -> Vector3::<f32> {
-        self.rot * Vector3::new(0.0f32, 0.0f32, -1.0f32)
-    }
-
-    pub fn view_mat(&self) -> nalgebra::Matrix4::<f32> {
-        let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
-        let target = self.pos + self.view_dir();
-
-        nalgebra::Matrix4::look_at_rh(&self.pos, &target, &up)
-    }
-
-    pub fn update(&mut self, dt: f32) {
-        let dir = self.view_dir();
-        let right = self.rot * Vector3::new(1.0f32, 0.0f32, 0.0f32);
+impl CameraController for FPSCameraController {
+    fn update(&mut self, cam: &mut Camera, dt: f32) {
+        let dir = cam.view_dir();
+        let right = cam.rot * Vector3::new(1.0f32, 0.0f32, 0.0f32);
 
         let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
-        let real_up = self.rot * up;
+        let real_up = cam.rot * up;
 
         if self.w_down {
-            self.pos += dt * dir;
+            cam.pos += dt * dir;
         }
         if self.s_down {
-            self.pos -= dt * dir;
+            cam.pos -= dt * dir;
         }
         if self.a_down {
-            self.pos -= dt * right;
+            cam.pos -= dt * right;
         }
         if self.d_down {
-            self.pos += dt * right;
+            cam.pos += dt * right;
         }
         if self.q_down {
-            self.pos += dt * real_up;
+            cam.pos += dt * real_up;
         }
         if self.e_down {
-            self.pos -= dt * real_up;
+            cam.pos -= dt * real_up;
         }
     }
 
-    pub fn process_mouse_move(&mut self, pos: Vector2::<f32>) {
+    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2::<f32>) {
         if self.rotating {
             if let Some(mpos) = self.mouse_pos {
                 let delta : Vector2::<f32> = pos - mpos;
@@ -132,11 +167,114 @@ impl Camera {
                 // NOTE: pitch, yaw, roll order seems to be switched
                 // but nalgebra seems to just assume a different coordinate
                 // system. For us - and most rendering software - y is up.
-                self.rot = UnitQuaternion::from_euler_angles(self.pitch, self.yaw, 0.0f32);
+                cam.rot = UnitQuaternion::from_euler_angles(self.pitch, self.yaw, 0.0f32);
             }
         }
 
         self.mouse_pos = Some(pos)
+    }
+
+    fn process_keyboard_input(&mut self, key: winit::event::VirtualKeyCode, pressed: bool) {
+        match key {
+            winit::event::VirtualKeyCode::W => {
+                self.w_down = pressed
+            }
+            winit::event::VirtualKeyCode::S => {
+                self.s_down = pressed
+            }
+            winit::event::VirtualKeyCode::A => {
+                self.a_down = pressed
+            }
+            winit::event::VirtualKeyCode::D => {
+                self.d_down = pressed
+            }
+            winit::event::VirtualKeyCode::Q => {
+                self.q_down = pressed
+            }
+            winit::event::VirtualKeyCode::E => {
+                self.e_down = pressed
+            }
+            _ => {}
+        }
+    }
+
+    fn process_mouse_button(&mut self, button: winit::event::MouseButton, pressed: bool) {
+        if button == winit::event::MouseButton::Left {
+            self.rotating = pressed
+        }
+    }
+}
+
+// TODO
+impl ArcballCameraController {
+    pub fn new() -> ArcballCameraController {
+        ArcballCameraController {
+            offset: 1.0,
+            rotating: false,
+            panning: false,
+            mouse_pos: None,
+        }
+    }
+
+    pub fn center(&self, cam: &Camera) -> Point3::<f32> {
+        cam.pos + self.offset * cam.view_dir()
+    }
+}
+
+impl CameraController for ArcballCameraController {
+    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2::<f32>) {
+        if let Some(mpos) = self.mouse_pos {
+            let delta : Vector2::<f32> = pos - mpos;
+
+            let right = cam.rot * Vector3::new(1.0f32, 0.0f32, 0.0f32);
+            // let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
+            let up = cam.rot * Vector3::new(0.0f32, 1.0f32, 0.0f32);
+
+            if self.panning {
+                // reversed in y direction to account for different orientations
+                // of rendering and input coords
+                // TODO: make pan fac dependent on offset and used projection
+                const PAN_FAC : f32 = 0.01;
+                let x = -PAN_FAC * delta.x * right;
+                let y = PAN_FAC * delta.y * up;
+                cam.pos += x + y;
+            }
+
+            if self.rotating {
+                const ROT_FAC : f32 = 0.005;
+                let c = self.center(cam);
+
+                let yaw = ROT_FAC * delta.x;
+                let pitch = ROT_FAC * delta.y;
+
+                let pitch_rot = UnitQuaternion::from_euler_angles(-pitch, 0.0, 0.0);
+                let yaw_rot = UnitQuaternion::from_euler_angles(0.0, -yaw, 0.0);
+                let rot = cam.rot * pitch_rot;
+                let rot = yaw_rot * rot;
+
+                // let rot = cam.rot * UnitQuaternion::from_euler_angles(-pitch, -yaw, 0.0);
+
+                cam.rot = rot;
+                cam.pos = c - self.offset * cam.view_dir();
+            }
+        }
+
+        self.mouse_pos = Some(pos)
+    }
+
+    fn process_mouse_button(&mut self, button: winit::event::MouseButton, pressed: bool) {
+        if button == winit::event::MouseButton::Middle {
+            self.panning = pressed
+        } else if button == winit::event::MouseButton::Right {
+            self.rotating = pressed
+        }
+    }
+
+    fn process_mouse_wheel(&mut self, cam: &mut Camera, delta: f32) {
+        const ZOOM_FAC : f32 = 1.1;
+        let c = self.center(cam); // old center
+        self.offset *= f32::powf(ZOOM_FAC, -delta);
+        cam.pos = c - self.offset * cam.view_dir();
     }
 }
 
@@ -167,7 +305,8 @@ struct Renderer {
     surface_config: wgpu::SurfaceConfiguration,
 
     cam: Camera,
-    last_frame: std::time::Instant,
+    cam_controller: Box<dyn CameraController>,
+    // last_frame: std::time::Instant,
 
     // TODO: kinda terrible that this abstraction is designed so
     // tightly for compute shaders and creates a lot of stuff
@@ -193,6 +332,10 @@ impl Renderer {
             .expect("Failed to find an appropriate adapter");
 
         // Create the logical device and command queue
+        let limits = wgpu::Limits {
+            ..wgpu::Limits::downlevel_webgl2_defaults()
+        };
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -201,7 +344,9 @@ impl Renderer {
                     // - 64-bit floats for the default position_3D attrib
                     // - point rendering
                     features: adapter.features(),
-                    limits: wgpu::Limits::default(),
+                    // TODO: wasm workaround
+                    // limits: wgpu::Limits::default(),
+                    limits
                 },
                 None,
             )
@@ -209,6 +354,7 @@ impl Renderer {
             .expect("Failed to create device");
 
         // compile glsl shader
+        /*
         let mut compiler = shaderc::Compiler::new().unwrap();
 
         let vert_spirv = compiler
@@ -220,11 +366,14 @@ impl Renderer {
                 None,
             )
             .unwrap();
+        */
+        let vert_spirv = include_bytes!("tri.vert.spv");
         let vert_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
-            source: wgpu::util::make_spirv(vert_spirv.as_binary_u8()),
+            source: wgpu::util::make_spirv(vert_spirv),
         });
 
+        /*
         let frag_spirv = compiler
             .compile_into_spirv(
                 include_str!("tri.frag"),
@@ -234,9 +383,11 @@ impl Renderer {
                 None,
             )
             .unwrap();
+        */
+        let frag_spirv = include_bytes!("tri.frag.spv");
         let frag_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
-            source: wgpu::util::make_spirv(frag_spirv.as_binary_u8()),
+            source: wgpu::util::make_spirv(frag_spirv),
         });
 
         let swapchain_format = surface.get_preferred_format(&adapter).unwrap();
@@ -295,11 +446,11 @@ impl Renderer {
 
         let mut primitive_state = wgpu::PrimitiveState::default();
         primitive_state.cull_mode = None;
-        primitive_state.topology = wgpu::PrimitiveTopology::PointList;
-        primitive_state.polygon_mode = wgpu::PolygonMode::Point;
+        primitive_state.topology = wgpu::PrimitiveTopology::LineList;
+        primitive_state.polygon_mode = wgpu::PolygonMode::Fill;
 
         let vertex_attrib_desc = wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Float32x3,
+            format: wgpu::VertexFormat::Float32x4,
             offset: 0,
             shader_location: 0
         };
@@ -325,6 +476,7 @@ impl Renderer {
             }),
             primitive: primitive_state,
             depth_stencil: None,
+            multiview: None,
             multisample: wgpu::MultisampleState::default(),
         });
 
@@ -350,19 +502,25 @@ impl Renderer {
             pipeline: render_pipeline,
             pipeline_layout,
             cam: Camera::new(),
-            last_frame: Instant::now(),
+            cam_controller: Box::new(FPSCameraController::new()),
+            // cam_controller: Box::new(ArcballCameraController::new()),
+            // last_frame: Instant::now(),
             gpu_point_buffer: pgpu::GpuPointBufferPerAttribute::new(),
             point_count: 0,
         }
     }
 
     pub fn load_points(&mut self) {
-        let mut reader = LASReader::from_path(
-            // TODO
-            // "/home/jan/loads/points.laz"
-            "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
-            // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
-        ).expect("Failed to open las file");
+        let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
+        let c = std::io::Cursor::new(buf);
+        let mut reader = LASReader::from_read(c, false).expect("Failed to create LASReader");
+
+        // let mut reader = LASReader::from_path(
+        //     // TODO
+        //     // "/home/jan/loads/points.laz"
+        //     "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
+        //     // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
+        // ).expect("Failed to open las file");
 
         let point_count = reader.remaining_points();
         let layout = PointLayout::from_attributes(&[POINT_ATTRIB_3D_F32]);
@@ -400,6 +558,7 @@ impl Renderer {
 
         let mut encoder = self.device.
             create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let buf = &self.gpu_point_buffer.buffers.get(POINT_ATTRIB_3D_F32.name()).unwrap();
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -417,17 +576,17 @@ impl Renderer {
             rpass.set_bind_group(0, &self.uniform_bind_group, &[]);
             rpass.set_pipeline(&self.pipeline);
 
-            let buf = &self.gpu_point_buffer.buffers.get(POINT_ATTRIB_3D_F32.name()).unwrap();
             rpass.set_vertex_buffer(0, buf.slice(..));
             // rpass.draw(0..3, 0..1);
             rpass.draw(0..self.point_count, 0..1);
         }
 
-        let now = Instant::now();
-        let dt = (now - self.last_frame).as_secs_f32();
-        self.last_frame = now;
+        // let now = Instant::now();
+        // let dt = (now - self.last_frame).as_secs_f32();
+        // self.last_frame = now;
+        let dt = 1.0f32 / 60.0f32;
 
-        self.cam.update(dt);
+        self.cam_controller.update(&mut self.cam, dt);
         let view_mat = self.cam.view_mat();
 
         let win_size = window.inner_size();
@@ -466,38 +625,22 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     }
                     WindowEvent::KeyboardInput{input, ..} => {
                         let pressed = input.state == winit::event::ElementState::Pressed;
-                        match input.virtual_keycode {
-                            Some(winit::event::VirtualKeyCode::W) => {
-                                renderer.cam.w_down = pressed
-                            }
-                            Some(winit::event::VirtualKeyCode::S) => {
-                                renderer.cam.s_down = pressed
-                            }
-                            Some(winit::event::VirtualKeyCode::A) => {
-                                renderer.cam.a_down = pressed
-                            }
-                            Some(winit::event::VirtualKeyCode::D) => {
-                                renderer.cam.d_down = pressed
-                            }
-                            Some(winit::event::VirtualKeyCode::Q) => {
-                                renderer.cam.q_down = pressed
-                            }
-                            Some(winit::event::VirtualKeyCode::E) => {
-                                renderer.cam.e_down = pressed
-                            }
-                            _ => {}
+                        if let Some(key) = input.virtual_keycode {
+                            renderer.cam_controller.process_keyboard_input(key, pressed)
                         }
                     }
                     WindowEvent::CursorMoved{position, ..} => {
                         let posvec = Vector2::<f32>::new(position.x as f32, position.y as f32);
-                        renderer.cam.process_mouse_move(posvec);
+                        renderer.cam_controller.process_mouse_move(&mut renderer.cam, posvec);
                     }
-                    WindowEvent::MouseInput{
-                        state,
-                        button: winit::event::MouseButton::Left,
-                        ..
-                    } => {
-                        renderer.cam.rotating = state == winit::event::ElementState::Pressed;
+                    WindowEvent::MouseInput{state, button, ..} => {
+                        let pressed = state == winit::event::ElementState::Pressed;
+                        renderer.cam_controller.process_mouse_button(button, pressed)
+                    }
+                    WindowEvent::MouseWheel{delta, ..} => {
+                        if let winit::event::MouseScrollDelta::LineDelta(_, dy) = delta {
+                            renderer.cam_controller.process_mouse_wheel(&mut renderer.cam, dy);
+                        }
                     }
                     _ => {}
                 }
@@ -517,6 +660,27 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = winit::window::Window::new(&event_loop).unwrap();
 
-    env_logger::init();
-    pollster::block_on(run(event_loop, window));
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env_logger::init();
+        pollster::block_on(run(event_loop, window));
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+        console_log::init().expect("could not initialize logger");
+        use winit::platform::web::WindowExtWebSys;
+        // On wasm, append the canvas to the document body
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| doc.body())
+            .and_then(|body| {
+                body.append_child(&web_sys::Element::from(window.canvas()))
+                    .ok()
+            })
+            .expect("couldn't append canvas to document body");
+        wasm_bindgen_futures::spawn_local(run(event_loop, window));
+    }
 }
