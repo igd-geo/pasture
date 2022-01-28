@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 mod ex {
 
     use pasture_core::containers::{InterleavedVecPointStorage, PointBuffer, PointBufferExt};
@@ -49,7 +52,8 @@ mod ex {
 
     async fn run() -> Result<()> {
         // == Init point buffer ======================================================================
-
+        env_logger::init();
+        info!("starting up");
         let points = vec![
             MyPointType {
                 position: Vector3::new(1.0, 0.0, 0.0),
@@ -103,9 +107,9 @@ mod ex {
             //"/home/jnoice/dev/pasture/pasture-io/examples/in/10_points_format_1.las",
             //"/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz",
             //"/home/jnoice/Downloads/interesting.las",
-            "/home/jnoice/Downloads/20150930_matsch_flight2_rgb_densified_point_cloud_part_1 - Cloud.las",
+            //"/home/jnoice/Downloads/20150930_matsch_flight2_rgb_densified_point_cloud_part_1 - Cloud.las",
             //"/home/jnoice/Downloads/45123H3316.laz",
-            //"/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz",
+            "/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz",
         )?;
         let count = reader.remaining_points();
         let mut buffer =

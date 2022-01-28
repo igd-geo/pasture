@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::prelude::*;
+use wgpu::util::DeviceExt;
 
 #[repr(C)]
 #[derive(PointType, Debug)]
@@ -203,39 +204,24 @@ impl<'a> GpuOctree<'a> {
             points.push(point);
         }
 
-        let mut construction_shader = File::open(
-            "/home/jnoice/dev/pasture/pasture-tools/src/acceleration_structures/shaders/comp.spv",
-        )
-        .unwrap();
-        let mut shader_bytes: Vec<u8> = Vec::new();
-        for byte in construction_shader.bytes() {
-            shader_bytes.push(byte.unwrap());
-        }
-        let shader_words: Vec<u32> = shader_bytes
-            .chunks_exact(4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
-            .collect();
         let mut compiler = shaderc::Compiler::new().unwrap();
-        // let shader = self
-        //     .gpu_device
-        //     .create_shader_module(&wgpu::ShaderModuleDescriptor {
-        //         label: Some("NodeGenerationShader"),
-        //         source: wgpu::ShaderSource::SpirV(Cow::from(shader_words.as_slice())),
-        //     });
         let comp_shader = include_str!("shaders/generate_nodes.comp");
-        let comp_spirv = compiler.compile_into_spirv(
-            comp_shader,
-            shaderc::ShaderKind::Compute,
-            "ComputeShader",
-            "main",
-            None
-        )
-        .unwrap();
+        let comp_spirv = compiler
+            .compile_into_spirv(
+                comp_shader,
+                shaderc::ShaderKind::Compute,
+                "ComputeShader",
+                "main",
+                None,
+            )
+            .unwrap();
         let comp_data = wgpu::util::make_spirv(comp_spirv.as_binary_u8());
-        let shader = self.gpu_device.create_shader_module(&wgpu::ShaderModuleDescriptor{
-            label: Some("ModeGenerationShader"),
-            source: comp_data,
-        });
+        let shader = self
+            .gpu_device
+            .create_shader_module(&wgpu::ShaderModuleDescriptor {
+                label: Some("ModeGenerationShader"),
+                source: comp_data,
+            });
         let points_bind_group_layout =
             self.gpu_device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -317,18 +303,15 @@ impl<'a> GpuOctree<'a> {
                     entry_point: "main",
                 });
 
-        let gpu_point_buffer = wgpu::util::DeviceExt::create_buffer_init(
-            &self.gpu_device,
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("PointBuffer"),
-                contents: raw_points.as_slice(),
-                usage: wgpu::BufferUsages::MAP_READ
-                    | wgpu::BufferUsages::MAP_WRITE
-                    | wgpu::BufferUsages::COPY_SRC
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::STORAGE,
-            },
-        );
+        let gpu_point_buffer = self.gpu_device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("PointBuffer"),
+            contents: &raw_points.as_slice(),
+            usage: wgpu::BufferUsages::MAP_READ
+                | wgpu::BufferUsages::MAP_WRITE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::STORAGE,
+        });
 
         let mut root_node = OctreeNode {
             bounds: self.bounds,
@@ -365,83 +348,87 @@ impl<'a> GpuOctree<'a> {
             .flat_map(|x| x.to_le_bytes().to_vec())
             .collect();
 
-        while !current_nodes.is_empty() {
-            //for i in 0..2 {
-            //let num_new_nodes = 8u64.pow(tree_depth) - num_leaves as u64;
+        let point_index_buffer = self.gpu_device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("IndexBuffer"),
+            contents: &raw_indeces.as_slice(),
+            usage: wgpu::BufferUsages::MAP_READ
+                | wgpu::BufferUsages::MAP_WRITE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::STORAGE,
+        });
 
-            let point_index_buffer = wgpu::util::DeviceExt::create_buffer_init(
-                &self.gpu_device,
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("IndexBuffer"),
-                    contents: raw_indeces.as_slice(),
-                    usage: wgpu::BufferUsages::MAP_READ
-                        | wgpu::BufferUsages::MAP_WRITE
-                        | wgpu::BufferUsages::COPY_SRC
-                        | wgpu::BufferUsages::COPY_DST
-                        | wgpu::BufferUsages::STORAGE,
-                },
-            );
-            let debug_buffer = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("DebugBuffer"),
-                size: (3 * 4 + 8 * 4 + 4 + 2 * 4) * current_nodes.len() as u64,
-                usage: wgpu::BufferUsages::MAP_READ
-                    | wgpu::BufferUsages::MAP_WRITE
-                    | wgpu::BufferUsages::COPY_SRC
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::STORAGE,
+        let debug_buffer = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("DebugBuffer"),
+            size: (3 * 4 + 8 * 4 + 4 + 2 * 4) as u64,
+            usage: wgpu::BufferUsages::MAP_READ
+                | wgpu::BufferUsages::MAP_WRITE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
+        let points_bind_group = self
+            .gpu_device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("PointBufferBindGroup"),
+                layout: &points_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: gpu_point_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: point_index_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: debug_buffer.as_entire_binding(),
+                    },
+                ],
+            });
+        let mut iterations = current_nodes.len();
+        //while !current_nodes.is_empty() {
+        for i in 0..iterations {
+            //let num_new_nodes = 8u64.pow(tree_depth) - num_leaves as u64;
+            let child_buffer_size = 120 * current_nodes.len() as u64 * 8 as u64;
+            let child_nodes_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: child_buffer_size,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-
             let new_nodes_buffer = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("NewNodesBuffer"),
                 size: //(mem::size_of::<OctreeNode>() - mem::size_of::<Box<[OctreeNode]>>()) as u64
-                    128
-                    * current_nodes.len() as u64 * 8 as u64,
-                usage: wgpu::BufferUsages::MAP_READ
-                    | wgpu::BufferUsages::MAP_WRITE
-                    | wgpu::BufferUsages::COPY_SRC
+                    child_buffer_size,
+                usage: wgpu::BufferUsages::COPY_SRC
                     | wgpu::BufferUsages::COPY_DST
                     | wgpu::BufferUsages::STORAGE,
                 mapped_at_creation: false,
             });
-            let points_bind_group = self
-                .gpu_device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("PointBufferBindGroup"),
-                    layout: &points_bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: gpu_point_buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: point_index_buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: debug_buffer.as_entire_binding(),
-                        },
-                    ],
-                });
+
             let mut parent_nodes_raw = Vec::new();
             for node in &current_nodes {
                 parent_nodes_raw.append(&mut node.into_raw());
             }
-
-            let parent_nodes_buffer = wgpu::util::DeviceExt::create_buffer_init(
-                &self.gpu_device,
+            let parent_nodes_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: parent_nodes_raw.len() as u64,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let parent_nodes_buffer = self.gpu_device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
                     label: Some("ParentNodesBuffer"),
                     contents: parent_nodes_raw.as_slice(),
-                    usage: wgpu::BufferUsages::MAP_READ
-                        | wgpu::BufferUsages::MAP_WRITE
-                        | wgpu::BufferUsages::COPY_SRC
+                    usage: wgpu::BufferUsages::COPY_SRC
                         | wgpu::BufferUsages::COPY_DST
                         | wgpu::BufferUsages::STORAGE,
                 },
             );
-
             let nodes_bind_group = self
                 .gpu_device
                 .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -477,104 +464,95 @@ impl<'a> GpuOctree<'a> {
                 compute_pass.insert_debug_marker("Pasture Compute Debug");
                 compute_pass.dispatch(current_nodes.len() as u32, 1, 1);
             }
+            encoder.copy_buffer_to_buffer(&new_nodes_buffer, 0, &child_nodes_buffer_staging, 0, child_buffer_size);
+            encoder.copy_buffer_to_buffer(&parent_nodes_buffer, 0, &parent_nodes_buffer_staging, 0, parent_nodes_raw.len() as u64);
             self.gpu_queue.submit(Some(encoder.finish()));
 
-            let mapped_future = point_index_buffer.slice(..).map_async(wgpu::MapMode::Read);
+            let index_slice = point_index_buffer.slice(..);
+            let mapped_future = index_slice.map_async(wgpu::MapMode::Read);
             self.gpu_device.poll(wgpu::Maintain::Wait);
             if let Ok(()) = mapped_future.await {
-                let mapped_index_buffer = point_index_buffer.slice(..).get_mapped_range().to_vec();
-                let indices: Vec<u32> = mapped_index_buffer
+                let mapped_index_buffer = index_slice.get_mapped_range();
+                let index_vec = mapped_index_buffer.to_vec();
+                let indices: Vec<u32> = index_vec
                     .chunks_exact(4)
                     .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
                     .collect();
 
-                // self.point_partitioning = indices.clone();
-                // indices.iter().for_each(|x| {
-                //     println!("{}", x);
-                // });
-                raw_indeces = mapped_index_buffer.clone();
+
+                raw_indeces = index_vec.clone();
+                drop(mapped_index_buffer);
+                point_index_buffer.unmap();
             }
-            point_index_buffer.unmap();
-            let mapped_debug = debug_buffer.slice(..).map_async(wgpu::MapMode::Read);
+
+            let debug_slice = debug_buffer.slice(..);
+            let mapped_debug = debug_slice.map_async(wgpu::MapMode::Read);
             self.gpu_device.poll(wgpu::Maintain::Wait);
             if let Ok(()) = mapped_debug.await {
-                let mut debug: Vec<u32> = debug_buffer
-                    .slice(..)
-                    .get_mapped_range()
+                let debug_data = debug_slice.get_mapped_range();
+                let mut debug: Vec<u32> = debug_data
                     .to_vec()
                     .chunks_exact(4)
                     .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
                     .collect();
-                for k in 0..current_nodes.len() {
-                    let partition_order: Vec<u32> = debug.drain(..3).collect();
-                    let borders: Vec<u32> = debug.drain(..8).collect();
-                    let thread_id: Vec<u32> = debug.drain(..1).collect();
-                    let start_end: Vec<u32> = debug.drain(..2).collect();
-                    println!(
-                        " Node {} | Partition Order: {:?} \n Partition borders: {:?}\n thread index: {}\n start/end: {:?}",
-                         k, partition_order, borders, thread_id.first().unwrap(), start_end,
+                let partition_order: Vec<u32> = debug.drain(..3).collect();
+                let borders: Vec<u32> = debug.drain(..8).collect();
+                let thread_id: Vec<u32> = debug.drain(..1).collect();
+                let start_end: Vec<u32> = debug.drain(..2).collect();
+                println!(
+                        " Partition Order: {:?} \n Partition borders: {:?}\n thread index: {}\n start/end: {:?}",
+                         partition_order, borders, thread_id.first().unwrap(), start_end,
                     );
-                }
+                drop(debug_data);
+                debug_buffer.unmap();
             }
 
-            let mapped_children = new_nodes_buffer.slice(..).map_async(wgpu::MapMode::Read);
+
+            let parents_slice = parent_nodes_buffer_staging.slice(..);
+            let parents_future = parents_slice.map_async(wgpu::MapMode::Read);
             self.gpu_device.poll(wgpu::Maintain::Wait);
 
-            let mapped_parents = parent_nodes_buffer.slice(..).map_async(wgpu::MapMode::Read);
-            self.gpu_device.poll(wgpu::Maintain::Wait);
-
-            if matches!(mapped_parents.await, Ok(())) && matches!(mapped_children.await, Ok(())) {
-                let mapped_node_buffer = parent_nodes_buffer.slice(..).get_mapped_range().to_vec();
+            //if matches!(mapped_parents.await, Ok(())) && matches!(mapped_children.await, Ok(())) {
+            if let Ok(()) =parents_future.await {
+                let mapped_nodes_data = parents_slice.get_mapped_range();
+                let mapped_node_buffer = mapped_nodes_data.to_vec();
                 let nodes: Vec<OctreeNode> = mapped_node_buffer
                     .chunks_exact(120)
                     .map(|b| OctreeNode::from_raw(b.to_vec()))
                     .collect();
-                let mapped_children = new_nodes_buffer.slice(..).get_mapped_range().to_vec();
-                let mut children: Vec<OctreeNode> = mapped_children
+
+                let children_slice = child_nodes_buffer_staging.slice(..);
+                let children_future = children_slice.map_async(wgpu::MapMode::Read);
+                self.gpu_device.poll(wgpu::Maintain::Wait);
+
+                if let Ok(()) = children_future.await {
+
+                let mapped_children_data = children_slice.get_mapped_range();
+                let mapped_children_buffer = mapped_children_data.to_vec();
+                let mut children: Vec<OctreeNode> = mapped_children_buffer
                     .chunks_exact(120)
                     .map(|b| OctreeNode::from_raw(b.to_vec()))
                     .collect();
                 let mut generated_children: Vec<&mut OctreeNode> = Vec::new();
                 for mut node in nodes {
                     let children_sizes = node.points_per_partition.clone();
-                    // println!("=========== Node ===========");
-                    // println!("{:?}", node);
+
                     let mut local_children: Vec<OctreeNode> = children.drain(..8).collect();
 
                     node.children = Some(local_children.into_boxed_slice());
                     let mut node_ref = current_nodes.swap_remove(0);
-                    // println!("Number of parents left: {}", current_nodes.len());
                     *node_ref = node;
-                    // println!(
-                    //     "Parent node point start: {}, point end: {}",
-                    //     &node_ref.point_start, &node_ref.point_end
-                    // );
-                    // println!(
-                    //     "Points per partition in parent : {:?}",
-                    //     &node_ref.points_per_partition
-                    // );
-                    // println!("Parent node bounds: {:?}", &node_ref.bounds);
                     let mut children: &mut Box<[OctreeNode]> = node_ref.children.as_mut().unwrap();
                     let iter = (*children).iter_mut();
 
                     let mut child_index = 0;
                     for child in iter {
-                        // println!("========== Child ===========");
-                        // println!("{:?}", child);
-                        // println!(
-                        //     "{}, {}",
-                        //     children_sizes[child_index] != 0,
-                        //     !child.is_leaf(self.points_per_node)
-                        // );
+
                         if children_sizes[child_index] != 0 && !child.is_leaf(self.points_per_node)
                         {
                             generated_children.push(child);
                         } else {
                             num_leaves += 1;
-                            // println!(
-                            //     "Child {} is LEAF. Point Count: {}",
-                            //     child_index, children_sizes[child_index]
-                            // );
                         }
 
                         num_nodes += 1;
@@ -582,24 +560,22 @@ impl<'a> GpuOctree<'a> {
                     }
                 }
                 current_nodes.append(&mut generated_children);
+                drop(mapped_nodes_data);
+                parent_nodes_buffer_staging.unmap();
+                drop(mapped_children_data);
+                child_nodes_buffer_staging.unmap();
+                // parent_nodes_buffer.destroy();
+                // new_nodes_buffer.destroy();
             }
-            parent_nodes_buffer.unmap();
-            new_nodes_buffer.unmap();
-            // println!(
-            //     "Num Nodes: {}, Num New Parents: {}, Num Leaves: {}",
-            //     num_nodes,
-            //     current_nodes.len(),
-            //     num_leaves
-            // );
-
+            }
+            let work_done = self.gpu_queue.on_submitted_work_done();
+            work_done.await;
             tree_depth += 1;
+            iterations = current_nodes.len();
 
-            // println!("{}", tree_depth);
-            // println!("{:?}", current_nodes);
         }
 
         self.root_node = Some(root_node);
-        println!("{:?}", self.root_node);
-        // println!("Tree depth = {}", tree_depth);
+        //println!("{:?}", self.root_node);
     }
 }
