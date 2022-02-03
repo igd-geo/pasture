@@ -14,6 +14,7 @@ pub mod convexhull;
 // to get the best line-/plane-model and the corresponding inlier indices.
 pub mod segmentation;
 // Contains an algorithm to reproject coordinate systems
+#[cfg(not(target_arch = "wasm32"))]
 pub mod reprojection;
 // Contains voxel-grid-filter function to downsample a given point buffer.
 pub mod voxel_grid;

@@ -7,8 +7,6 @@ fn main() {
     let mut compiler = shaderc::Compiler::new().unwrap();
 
     for shader in shaders {
-        // panic!("eeeh");
-
         let path = std::path::Path::new(shader);
         let source = std::fs::read_to_string(path).unwrap();
 

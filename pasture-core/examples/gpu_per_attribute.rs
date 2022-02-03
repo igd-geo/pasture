@@ -1,4 +1,4 @@
-#[cfg(feature = "gpu")]
+#[cfg(feature = "core_gpu_examples")]
 mod ex {
 
     use pasture_core::containers::{PerAttributeVecPointStorage, PointBufferExt};
@@ -205,7 +205,18 @@ mod ex {
             gpu_point_buffer.bind_group_layout.as_ref().unwrap(),
             gpu_point_buffer.bind_group.as_ref().unwrap(),
         );
-        device.set_compute_shader_glsl(include_str!("shaders/per_attribute.comp"));
+
+        let mut compiler = shaderc::Compiler::new().unwrap();
+        let comp_spirv = compiler
+            .compile_into_spirv(
+                include_str!("shaders/per_attribute.comp"),
+                shaderc::ShaderKind::Compute,
+                "interleaved.comp",
+                "main",
+                None,
+            )
+            .unwrap();
+        device.set_compute_shader_spirv(&comp_spirv.as_binary());
         device.compute(1, 1, 1);
         println!("\n===== COMPUTE =====\n");
 
@@ -231,10 +242,10 @@ mod ex {
     }
 }
 
-#[cfg(feature = "io_gpu_examples")]
+#[cfg(feature = "core_gpu_examples")]
 fn main() {
     ex::main();
 }
 
-#[cfg(not(feature = "io_gpu_examples"))]
+#[cfg(not(feature = "core_gpu_examples"))]
 fn main() {}

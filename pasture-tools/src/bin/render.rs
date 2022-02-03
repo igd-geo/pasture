@@ -24,7 +24,7 @@ use winit::{
 use nalgebra::{Vector2, Vector3, Point3, UnitQuaternion};
 use crevice::std140::AsStd140;
 
-use std::time::Instant;
+use instant::Instant;
 
 struct Camera {
     // camera position and orientation in world space
@@ -306,7 +306,7 @@ struct Renderer {
 
     cam: Camera,
     cam_controller: Box<dyn CameraController>,
-    // last_frame: std::time::Instant,
+    last_frame: Instant,
 
     // TODO: kinda terrible that this abstraction is designed so
     // tightly for compute shaders and creates a lot of stuff
@@ -504,24 +504,13 @@ impl Renderer {
             cam: Camera::new(),
             cam_controller: Box::new(FPSCameraController::new()),
             // cam_controller: Box::new(ArcballCameraController::new()),
-            // last_frame: Instant::now(),
+            last_frame: Instant::now(),
             gpu_point_buffer: pgpu::GpuPointBufferPerAttribute::new(),
             point_count: 0,
         }
     }
 
-    pub fn load_points(&mut self) {
-        let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
-        let c = std::io::Cursor::new(buf);
-        let mut reader = LASReader::from_read(c, false).expect("Failed to create LASReader");
-
-        // let mut reader = LASReader::from_path(
-        //     // TODO
-        //     // "/home/jan/loads/points.laz"
-        //     "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
-        //     // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
-        // ).expect("Failed to open las file");
-
+    pub fn load_points(&mut self, reader: &mut LASReader) {
         let point_count = reader.remaining_points();
         let layout = PointLayout::from_attributes(&[POINT_ATTRIB_3D_F32]);
 
@@ -581,17 +570,16 @@ impl Renderer {
             rpass.draw(0..self.point_count, 0..1);
         }
 
-        // let now = Instant::now();
-        // let dt = (now - self.last_frame).as_secs_f32();
-        // self.last_frame = now;
-        let dt = 1.0f32 / 60.0f32;
+        let now = Instant::now();
+        let dt = (now - self.last_frame).as_secs_f32();
+        self.last_frame = now;
 
         self.cam_controller.update(&mut self.cam, dt);
         let view_mat = self.cam.view_mat();
 
         let win_size = window.inner_size();
         let aspect = (win_size.width as f32) / (win_size.height as f32);
-        let fovy = 1.5f32; // 90 degrees
+        let fovy = 1.2f32;
         let near = 0.1f32;
         let far = 20.0f32;
         let proj_mat = nalgebra::Matrix4::<f32>::new_perspective(aspect, fovy, near, far);
@@ -609,7 +597,20 @@ impl Renderer {
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut renderer = Renderer::new(&window).await;
-    renderer.load_points();
+
+    let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
+    let c = std::io::Cursor::new(buf);
+    let mut reader = LASReader::from_read(c, false).expect("Failed to create LASReader");
+
+    // let mut reader = LASReader::from_path(
+    //     // TODO
+    //     // "/home/jan/loads/points.laz"
+    //     "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
+    //     // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
+    // ).expect("Failed to open las file");
+
+    renderer.load_points(&mut reader);
+    drop(reader);
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;

@@ -251,26 +251,31 @@ impl<'a> Device<'a> {
 
     /// Sets up a compute pipeline with the passed in WGSL shader source code.
     pub fn set_compute_shader_wgsl(&mut self, wgsl_compute_shader_src: &str) {
-        self.cs_module = Some(self.wgpu_device.create_shader_module(
+        self.set_compute_shader(
             &wgpu::ShaderModuleDescriptor {
-                label: Some("wgsl_computer_shader_module"),
+                label: Some("compute shader module"),
                 source: wgpu::ShaderSource::Wgsl(wgsl_compute_shader_src.into()),
             }
-        ));
-
-        let pipeline = self.create_compute_pipeline(self.cs_module.as_ref().unwrap());
-
-        self.compute_pipeline = Some(pipeline);
+        )
     }
 
     /// Sets up a compute pipeline for the given shader module descriptor.
     /// The ShaderModuleDescriptor can for example be created with
     /// include_spirv!
-    pub fn set_compute_shader_spirv(&mut self, desc: &wgpu::ShaderModuleDescriptor) {
+    pub fn set_compute_shader(&mut self, desc: &wgpu::ShaderModuleDescriptor) {
         self.cs_module = Some(self.wgpu_device.create_shader_module(desc));
         let pipeline = self.create_compute_pipeline(self.cs_module.as_ref().unwrap());
 
         self.compute_pipeline = Some(pipeline);
+    }
+
+    pub fn set_compute_shader_spirv(&mut self, spirv: &[u32]) {
+        let comp_mod = wgpu::ShaderModuleDescriptor {
+            label: Some("pasture compute shader"),
+            source: wgpu::ShaderSource::SpirV(spirv.into()),
+        };
+
+        self.set_compute_shader(&comp_mod)
     }
 
     fn create_compute_pipeline(&self, cs_module: &wgpu::ShaderModule) -> wgpu::ComputePipeline {
