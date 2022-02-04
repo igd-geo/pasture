@@ -353,38 +353,13 @@ impl Renderer {
             .await
             .expect("Failed to create device");
 
-        // compile glsl shader
-        /*
-        let mut compiler = shaderc::Compiler::new().unwrap();
-
-        let vert_spirv = compiler
-            .compile_into_spirv(
-                include_str!("tri.vert"),
-                shaderc::ShaderKind::Vertex,
-                "Vertex shader",
-                "main",
-                None,
-            )
-            .unwrap();
-        */
         let vert_spirv = include_bytes!("tri.vert.spv");
         let vert_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::util::make_spirv(vert_spirv),
         });
 
-        /*
-        let frag_spirv = compiler
-            .compile_into_spirv(
-                include_str!("tri.frag"),
-                shaderc::ShaderKind::Fragment,
-                "Fragment shader",
-                "main",
-                None,
-            )
-            .unwrap();
-        */
-        let frag_spirv = include_bytes!("tri.frag.spv");
+       let frag_spirv = include_bytes!("tri.frag.spv");
         let frag_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::util::make_spirv(frag_spirv),
@@ -446,7 +421,7 @@ impl Renderer {
 
         let mut primitive_state = wgpu::PrimitiveState::default();
         primitive_state.cull_mode = None;
-        primitive_state.topology = wgpu::PrimitiveTopology::LineList;
+        primitive_state.topology = wgpu::PrimitiveTopology::TriangleList;
         primitive_state.polygon_mode = wgpu::PolygonMode::Fill;
 
         let vertex_attrib_desc = wgpu::VertexAttribute {
@@ -457,7 +432,7 @@ impl Renderer {
 
         let vertex_buf_desc = wgpu::VertexBufferLayout {
             array_stride: 4 * 4, // aligned like vec4 f32
-            step_mode: wgpu::VertexStepMode::Vertex,
+            step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[vertex_attrib_desc],
         };
 
@@ -567,7 +542,7 @@ impl Renderer {
 
             rpass.set_vertex_buffer(0, buf.slice(..));
             // rpass.draw(0..3, 0..1);
-            rpass.draw(0..self.point_count, 0..1);
+            rpass.draw(0..6, 0..self.point_count);
         }
 
         let now = Instant::now();
