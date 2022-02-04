@@ -3,16 +3,11 @@ extern crate log;
 
 mod ex {
 
-    use pasture_core::containers::{InterleavedVecPointStorage, PointBuffer, PointBufferExt};
-    use pasture_core::gpu;
-    use pasture_core::gpu::GpuPointBufferInterleaved;
+    use pasture_core::containers::InterleavedVecPointStorage;
     use pasture_core::layout::PointType;
-    use pasture_core::layout::{attributes, PointAttributeDataType, PointAttributeDefinition};
-    use pasture_core::meta::Metadata;
     use pasture_core::nalgebra::Vector3;
     use pasture_derive::PointType;
     use pasture_io::base::PointReader;
-    use pasture_io::las::las_bounds_to_pasture_bounds;
     use pasture_io::las::LASReader;
     use pasture_io::las::LasPointFormat0;
 
@@ -105,11 +100,12 @@ mod ex {
 
         let mut reader = LASReader::from_path(
             //"/home/jnoice/dev/pasture/pasture-io/examples/in/10_points_format_1.las",
-            //"/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz",
+            "/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz",
             //"/home/jnoice/Downloads/interesting.las",
             //"/home/jnoice/Downloads/20150930_matsch_flight2_rgb_densified_point_cloud_part_1 - Cloud.las",
             //"/home/jnoice/Downloads/45123H3316.laz",
-            "/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz",
+            //"/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz",
+            //"/home/jnoice/Downloads/tirol.las",
         )?;
         let count = reader.remaining_points();
         let mut buffer =
@@ -202,7 +198,7 @@ mod ex {
             }
         };
 
-        octree.construct(MyPointType::layout()).await;
+        octree.construct().await;
         Ok(())
     }
 }

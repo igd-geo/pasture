@@ -42,7 +42,7 @@ struct MyPointType {
     pub gps_time: f64,
 }
 #[derive(Debug, Clone)]
-struct OctreeNode {
+pub struct OctreeNode {
     bounds: AABB<f64>,
     children: Option<Box<[OctreeNode]>>,
     node_partitioning: [u32; 8],
@@ -156,7 +156,7 @@ impl<'a> GpuOctree<'a> {
         max_bounds: AABB<f64>,
         points_per_node: u32,
     ) -> Result<GpuOctree<'a>, wgpu::RequestDeviceError> {
-        let instance = wgpu::Instance::new(wgpu::Backends::all());
+        let instance = wgpu::Instance::new(wgpu::Backends::VULKAN);
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -189,7 +189,7 @@ impl<'a> GpuOctree<'a> {
     pub fn print_tree(&self) {
         println!("{:?}", self.root_node);
     }
-    pub async fn construct(&mut self, layout: PointLayout) {
+    pub async fn construct(&mut self) {
         let point_count = self.point_buffer.len();
         let mut points: Vec<Vector3<f64>> = Vec::new();
         let point_iterator: AttributeIteratorByValue<Vector3<f64>, dyn PointBuffer> =
@@ -291,7 +291,7 @@ impl<'a> GpuOctree<'a> {
             self.gpu_device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("ConstructionPipelineLayout"),
-                    bind_group_layouts: &[&points_bind_group_layout, &nodes_bind_group_layout],
+                    bind_group_layouts: &[&nodes_bind_group_layout, &points_bind_group_layout],
                     push_constant_ranges: &[],
                 });
         let compute_pipeline =
@@ -390,8 +390,8 @@ impl<'a> GpuOctree<'a> {
                 ],
             });
         let mut iterations = current_nodes.len();
-        //while !current_nodes.is_empty() {
-        for i in 0..iterations {
+        while !current_nodes.is_empty() {
+        //for i in 0..iterations {
             //let num_new_nodes = 8u64.pow(tree_depth) - num_leaves as u64;
             let child_buffer_size = 120 * current_nodes.len() as u64 * 8 as u64;
             let child_nodes_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
@@ -455,8 +455,9 @@ impl<'a> GpuOctree<'a> {
                     label: Some("ConstructionComputePass"),
                 });
                 compute_pass.set_pipeline(&compute_pipeline);
-                compute_pass.set_bind_group(0, &points_bind_group, &[]);
-                compute_pass.set_bind_group(1, &nodes_bind_group, &[]);
+
+                compute_pass.set_bind_group(0, &nodes_bind_group, &[]);
+                compute_pass.set_bind_group(1, &points_bind_group, &[]);
                 println!(
                     "Starting gpu computation with {} threads",
                     current_nodes.len()
@@ -466,6 +467,7 @@ impl<'a> GpuOctree<'a> {
             }
             encoder.copy_buffer_to_buffer(&new_nodes_buffer, 0, &child_nodes_buffer_staging, 0, child_buffer_size);
             encoder.copy_buffer_to_buffer(&parent_nodes_buffer, 0, &parent_nodes_buffer_staging, 0, parent_nodes_raw.len() as u64);
+
             self.gpu_queue.submit(Some(encoder.finish()));
 
             let index_slice = point_index_buffer.slice(..);
@@ -479,7 +481,7 @@ impl<'a> GpuOctree<'a> {
                     .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
                     .collect();
 
-
+                self.point_partitioning = indices.clone();
                 raw_indeces = index_vec.clone();
                 drop(mapped_index_buffer);
                 point_index_buffer.unmap();
@@ -577,5 +579,76 @@ impl<'a> GpuOctree<'a> {
 
         self.root_node = Some(root_node);
         //println!("{:?}", self.root_node);
+    }
+
+    fn get_points(&self, node: &OctreeNode) -> Vec<u32> {
+        let indices = self.point_partitioning[node.point_start as usize..node.point_end as usize].to_vec();
+        return indices;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pasture_core::containers::InterleavedVecPointStorage;
+    use pasture_core::containers::PointBufferExt;
+    use pasture_io::base::PointReader;
+    use pasture_io::las::LasPointFormat0;
+    use pasture_io::las::LASReader;
+    use pasture_core::layout::PointType;
+    use crate::acceleration_structures::GpuOctree;
+    use crate::acceleration_structures::OctreeNode;
+    use pasture_core::nalgebra::Vector3;
+    use pasture_core::layout::attributes;
+    use std::convert::TryInto;
+    use std::error::Error;
+
+    use tokio;
+
+    #[tokio::test]
+    async fn check_correct_bounds() {
+        let mut reader = LASReader::from_path("/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz");
+        let mut reader = match reader {
+            Ok(a) => a,
+            Err(b) => panic!("Could not create LAS Reader"),
+        };
+        let count = reader.remaining_points();
+        let mut buffer = InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
+        let data_read = match reader.read_into(&mut buffer, count) {
+            Ok(a) => a,
+            Err(b) => panic!("Could not write Point Buffer"),
+        };
+        let bounds = reader.get_metadata().bounds().unwrap();
+
+        let mut octree = GpuOctree::new(&buffer, bounds, 500).await;
+        let mut octree = match octree {
+            Ok(a) => a,
+            Err(b) => {
+                println!("{:?}", b);
+                panic!("Could not create GPU Device for Octree")
+            }
+        };
+        octree.construct().await;
+        let mut node = octree.root_node.as_ref().unwrap();
+        let mut nodes_to_visit: Vec<&OctreeNode> = vec![node];
+        while !nodes_to_visit.is_empty() {
+            let current_node = nodes_to_visit.pop().unwrap();
+            let current_bounds = current_node.bounds;
+            let point_ids = octree.get_points(&current_node).into_iter();
+            for id in point_ids {
+                let point = buffer.get_point::<LasPointFormat0>(id as usize);
+                let pos: Vector3<f64> = Vector3::from(point.position);
+                println!("Bounds: {:?}", current_bounds);
+                println!("Point: {:?}, id: {}", pos, id);
+                assert!(current_bounds.min().x <= pos.x
+                    && current_bounds.max().x >= pos.x
+                    && current_bounds.min().y <= pos.y
+                    && current_bounds.max().y >= pos.y
+                    && current_bounds.min().z <= pos.z
+                    && current_bounds.max().z >= pos.z);
+            }
+            let children = current_node.children.as_ref().unwrap();
+            (*children).iter().for_each(|x| nodes_to_visit.push(x));
+
+        }
     }
 }
