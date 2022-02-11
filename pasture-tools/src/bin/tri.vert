@@ -31,7 +31,7 @@ void main() {
 	}
 
 	gl_Position = ubo.matrix * vec4(pos, 1);
-	gl_Position.xy += 0.005 * rectPos;
+	gl_Position.xy += 0.01 * rectPos;
 
 	outColor = inColor / 255.f;
 }
