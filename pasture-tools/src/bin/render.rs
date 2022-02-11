@@ -21,7 +21,7 @@ use winit::{
     window::Window,
 };
 
-use nalgebra::{Vector2, Vector3, Point3, UnitQuaternion};
+use nalgebra::{Vector2, Vector3, Vector4, Point3, UnitQuaternion, Matrix4};
 use crevice::std140::AsStd140;
 
 use instant::Instant;
@@ -95,11 +95,15 @@ const POINT_ATTRIB_3D_F32: PointAttributeDefinition = PointAttributeDefinition::
     "Position3D", PointAttributeDataType::Vec3f32
 );
 
-const POINT_ATTRIBS: [pgpu::BufferInfoPerAttribute; 1] = [
+const POINT_ATTRIBS: [pgpu::BufferInfoPerAttribute; 2] = [
     pgpu::BufferInfoPerAttribute {
         attribute: &POINT_ATTRIB_3D_F32,
         binding: 0,
-    }
+    },
+    pgpu::BufferInfoPerAttribute {
+        attribute: &attributes::COLOR_RGB,
+        binding: 1,
+    },
 ];
 
 impl FPSCameraController {
@@ -126,24 +130,25 @@ impl CameraController for FPSCameraController {
 
         let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
         let real_up = cam.rot * up;
+        let fac = dt;
 
         if self.w_down {
-            cam.pos += dt * dir;
+            cam.pos += fac * dir;
         }
         if self.s_down {
-            cam.pos -= dt * dir;
+            cam.pos -= fac * dir;
         }
         if self.a_down {
-            cam.pos -= dt * right;
+            cam.pos -= fac * right;
         }
         if self.d_down {
-            cam.pos += dt * right;
+            cam.pos += fac * right;
         }
         if self.q_down {
-            cam.pos += dt * real_up;
+            cam.pos += fac * real_up;
         }
         if self.e_down {
-            cam.pos -= dt * real_up;
+            cam.pos -= fac * real_up;
         }
     }
 
@@ -308,6 +313,9 @@ struct Renderer {
     cam_controller: Box<dyn CameraController>,
     last_frame: Instant,
 
+    model_mat: Matrix4<f32>,
+    depth_view: wgpu::TextureView,
+
     // TODO: kinda terrible that this abstraction is designed so
     // tightly for compute shaders and creates a lot of stuff
     // we don't need for rendering
@@ -316,6 +324,8 @@ struct Renderer {
 }
 
 impl Renderer {
+    const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+
     async fn new(window: &Window) -> Renderer {
         let size = window.inner_size();
 
@@ -424,16 +434,32 @@ impl Renderer {
         primitive_state.topology = wgpu::PrimitiveTopology::TriangleList;
         primitive_state.polygon_mode = wgpu::PolygonMode::Fill;
 
-        let vertex_attrib_desc = wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Float32x4,
-            offset: 0,
-            shader_location: 0
+        let pos_vertex_attrib_desc = [
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 0
+            },
+        ];
+
+        let color_vertex_attrib_desc = [
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Uint32x4,
+                offset: 0,
+                shader_location: 1
+            },
+        ];
+
+        let pos_vertex_buf_desc = wgpu::VertexBufferLayout {
+            array_stride: 4 * 4, // vec3 but aligned as vec4 by pasture/gpu
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &pos_vertex_attrib_desc,
         };
 
-        let vertex_buf_desc = wgpu::VertexBufferLayout {
-            array_stride: 4 * 4, // aligned like vec4 f32
+        let color_vertex_buf_desc = wgpu::VertexBufferLayout {
+            array_stride: 4 * 4, // unorm vec4 but treated as uvec4 by pasture/gpu
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[vertex_attrib_desc],
+            attributes: &color_vertex_attrib_desc,
         };
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -442,7 +468,7 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &vert_shader,
                 entry_point: "main",
-                buffers: &[vertex_buf_desc],
+                buffers: &[pos_vertex_buf_desc, color_vertex_buf_desc],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &frag_shader,
@@ -450,7 +476,13 @@ impl Renderer {
                 targets: &[swapchain_format.into()],
             }),
             primitive: primitive_state,
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: Self::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multiview: None,
             multisample: wgpu::MultisampleState::default(),
         });
@@ -464,6 +496,7 @@ impl Renderer {
         };
 
         surface.configure(&device, &surface_config);
+        let depth_view = Self::create_depth_texture(&surface_config, &device);
 
         Renderer {
             adapter,
@@ -478,6 +511,8 @@ impl Renderer {
             pipeline_layout,
             cam: Camera::new(),
             cam_controller: Box::new(FPSCameraController::new()),
+            model_mat: Matrix4::identity(),
+            depth_view,
             // cam_controller: Box::new(ArcballCameraController::new()),
             last_frame: Instant::now(),
             gpu_point_buffer: pgpu::GpuPointBufferPerAttribute::new(),
@@ -485,9 +520,36 @@ impl Renderer {
         }
     }
 
+    fn create_depth_texture(
+        config: &wgpu::SurfaceConfiguration,
+        device: &wgpu::Device,
+    ) -> wgpu::TextureView {
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            label: None,
+        });
+
+        depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
     pub fn load_points(&mut self, reader: &mut LASReader) {
+        let default_layout = reader.get_default_point_layout();
+        println!("layout: {}", default_layout);
+
         let point_count = reader.remaining_points();
-        let layout = PointLayout::from_attributes(&[POINT_ATTRIB_3D_F32]);
+        let layout = PointLayout::from_attributes(&[
+            POINT_ATTRIB_3D_F32,
+            attributes::COLOR_RGB,
+        ]);
 
         self.point_count = point_count as u32;
         let mut point_buffer = InterleavedVecPointStorage::with_capacity(point_count, layout);
@@ -496,11 +558,47 @@ impl Renderer {
         // let position: Vector3<f32> = point_buffer.get_attribute(&POINT_ATTRIB_3D_F32, 0);
         // println!("pos0: {}", position);
 
+        let inf = f32::INFINITY;
+        let mut aabb_min = Vector3::new(inf, inf, inf);
+        let mut aabb_max = Vector3::new(-inf, -inf, -inf);
+
+        println!("computing aabb...");
+
         for position in point_buffer.iter_attribute::<Vector3<f32>>(&POINT_ATTRIB_3D_F32) {
-            // Notice that `iter_attribute<T>` returns `T` by value. It is available for all point buffer types, at the expense of
-            // only receiving a copy of the attribute.
-            println!("Position: {:?}", position);
+            let mut pos = position;
+            let swizzle_yz = true;
+            if swizzle_yz {
+                pos = Vector3::new(pos.x, pos.z, pos.y);
+            }
+
+            aabb_min = nalgebra::Matrix::inf(&pos, &aabb_min);
+            aabb_max = nalgebra::Matrix::sup(&pos, &aabb_max);
         }
+
+        println!("aabb min: {:?}", aabb_min);
+        println!("aabb max: {:?}", aabb_max);
+
+        println!("computing color bounds...");
+
+        let mut color_min = Vector3::<u16>::new(65535, 65535, 65535);
+        let mut color_max = Vector3::<u16>::new(0, 0, 0);
+
+        for color in point_buffer.iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB) {
+            color_min = nalgebra::Matrix::inf(&color, &color_min);
+            color_max = nalgebra::Matrix::sup(&color, &color_max);
+        }
+
+        println!("color min: {:?}", color_min);
+        println!("color max: {:?}", color_max);
+
+        let center = 0.5f32 * (aabb_min + aabb_max);
+        println!("center: {:?}", self.cam.pos);
+
+        let extent = aabb_max - aabb_min;
+        let max_ext = f32::max(extent.x, f32::max(extent.y, extent.z));
+
+        self.model_mat = self.model_mat * Matrix4::new_scaling(10.0 / max_ext);
+        self.model_mat = self.model_mat * Matrix4::new_translation(&(-center));
 
         self.gpu_point_buffer.malloc(point_count as u64, &POINT_ATTRIBS, &mut self.device);
         self.gpu_point_buffer.upload(&mut point_buffer, 0..point_count, &POINT_ATTRIBS, &mut self.device, &self.queue);
@@ -509,6 +607,7 @@ impl Renderer {
     pub fn resize(&mut self, size: winit::dpi::PhysicalSize<u32>) {
         self.surface_config.width = size.width;
         self.surface_config.height = size.height;
+        self.depth_view = Self::create_depth_texture(&self.surface_config, &self.device);
         self.surface.configure(&self.device, &self.surface_config);
     }
 
@@ -522,7 +621,6 @@ impl Renderer {
 
         let mut encoder = self.device.
             create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        let buf = &self.gpu_point_buffer.buffers.get(POINT_ATTRIB_3D_F32.name()).unwrap();
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -531,16 +629,28 @@ impl Renderer {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                         store: true,
                     },
                 }],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: false,
+                    }),
+                    stencil_ops: None,
+                }),
             });
             rpass.set_bind_group(0, &self.uniform_bind_group, &[]);
             rpass.set_pipeline(&self.pipeline);
 
-            rpass.set_vertex_buffer(0, buf.slice(..));
+            let pos_buf = &self.gpu_point_buffer.buffers.get(POINT_ATTRIB_3D_F32.name()).unwrap();
+            let color_buf = &self.gpu_point_buffer.buffers.get(attributes::COLOR_RGB.name()).unwrap();
+
+            rpass.set_vertex_buffer(0, pos_buf.slice(..));
+            rpass.set_vertex_buffer(1, color_buf.slice(..));
+
             // rpass.draw(0..3, 0..1);
             rpass.draw(0..6, 0..self.point_count);
         }
@@ -560,7 +670,7 @@ impl Renderer {
         let proj_mat = nalgebra::Matrix4::<f32>::new_perspective(aspect, fovy, near, far);
 
         let gpu_data = UboData {
-            view_proj_matrix: (proj_mat * view_mat).into(),
+            view_proj_matrix: (proj_mat * view_mat * self.model_mat).into(),
         }.as_std140();
 
         self.queue.write_buffer(&self.ubo, 0, bytemuck::bytes_of(&gpu_data));
@@ -573,16 +683,16 @@ impl Renderer {
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut renderer = Renderer::new(&window).await;
 
-    let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
-    let c = std::io::Cursor::new(buf);
-    let mut reader = LASReader::from_read(c, false).expect("Failed to create LASReader");
+    // let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
+    // let c = std::io::Cursor::new(buf);
+    // let mut reader = LASReader::from_read(c, false).expect("Failed to create LASReader");
 
-    // let mut reader = LASReader::from_path(
-    //     // TODO
-    //     // "/home/jan/loads/points.laz"
-    //     "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
-    //     // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
-    // ).expect("Failed to open las file");
+    let mut reader = LASReader::from_path(
+        // "/home/jan/loads/points.laz"
+        "/home/jan/loads/red-rocks.laz"
+        // "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
+        // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
+    ).expect("Failed to open las file");
 
     renderer.load_points(&mut reader);
     drop(reader);
