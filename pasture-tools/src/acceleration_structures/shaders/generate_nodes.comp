@@ -60,82 +60,103 @@ void swap( uint a,  uint b){
   indeces[a] = indeces[b];
   indeces[b] = tmp;
 }
+uint partition_run(uint start, uint end, double pivot, uint axis) {
+  uint i = start;
+  uint j = start;
 
-void partitioning(uint axis, double threshold, uint iteration, uint id){
-  // uint start = parent.points_start;
-  // uint end = parent.points_end;
-  // uint iteration_end = 1;
-  // if(iteration > 0) {
-  //   end = partition_borders[iteration - 1];
-  //   iteration_end = iteration == 1 ? 2 : 4;
-  // }
-  // for(uint k = 0; k < iteration_end; ++k){
-  //   while(start < end){
-  //     if(points[indeces[start]][axis] <= threshold){
-  //       ++start;
-  //       if(points[indeces[end]][axis] > threshold){
-  //         --end;
-  //       }
-  //     } else {
-  //       if(points[indeces[end]][axis] <= threshold){
-  //         swap(start, end);
+  while(i < end) {
+    if(points[indeces[i]][axis] > pivot){
+      ++i;
+    }
+    else if(points[indeces[i]][axis] <= pivot){
+      swap(i, j);
+      ++i;
+      ++j;
+    }
+  }
+
+  return j;
+}
+
+void partitioning(uint[3] axes, double[3] pivots, uint id){
+  uint start = parents[id].points_start;
+  uint end = parents[id].node_partitioning[0];
+  // for(uint k = 0; k < 8; ++k) {
+  //   if(parents[id].node_partitioning[k] != 0 && k < 4 && start < parents[id].points_end){
+  //     uint end = parents[id].node_partitioning[k];
+  //     end = end > parents[id].points_start ? end - 1 : end;
+  //     while(start <= end) {
+  //
+  //       debug[id].points_start = start;
+  //       debug[id].points_end = end;
+  //       if(points[indeces[start]][axis] <= threshold){
   //         ++start;
-  //         --end;
-  //       } else {
+  //       }
+  //       else if(points[indeces[end]][axis] <= threshold){
+  //         swap(start, end);
+  //
+  //       }
+  //       else {
   //         --end;
   //       }
   //     }
+  //
+  //
+  //     local_partitioning[k * 2] = points[indeces[start]][axis] <= threshold ? start : start;
+  //     local_partitioning[k * 2 + 1] = parents[id].node_partitioning[k];
+  //     start = parents[id].node_partitioning[k];
   //   }
-  //   //num_nodes = start;
-  //   if(iteration_end - k <= 2){
-  //     end = parent.points_end;
-  //   } else {
-  //     end = partition_borders[k * 2];
-  //   }
-  //   partition_borders[iteration_end - 1 + k] = start;
-  //   if(iteration == 1) {
-  //     start = partition_borders[0] + 1;
-  //   }
-  //   else {
-  //     if(k == 0) start = partition_borders[1] + 1;
-  //     else if(k == 1) start = partition_borders[0] + 1;
-  //     else if(k == 2) start = partition_borders[2] + 1;
+  //   // else if(start >= parents[id].points_end && k < 4){
+  //   //   local_partitioning[k * 2] = parents[id].points_end;
+  //   //   local_partitioning[k * 2 + 1] = parents[id].points_end;
+  //   //   start = parents[id].points_end;
+  //   // }
+  //   parents[id].node_partitioning[k] = local_partitioning[k];
+  //}
+  // for(uint k = 0; k < 4; ++k) {
+  //   uint end = parents[id].node_partitioning[k];
+  //   if(end > 0){
+  //     start = partition_run(start, end, threshold, axis);
+  //     local_partitioning[k * 2] = start;
+  //     local_partitioning[k * 2 + 1] = parents[id].node_partitioning[k];
   //   }
   // }
-  uint start = parents[id].points_start;
-  debug[id].thread_id = 9999;
-  uint[8] local_partitioning;
-  for(uint k = 0; k < 8; ++k) {
-    if(parents[id].node_partitioning[k] != 0 && k < 7 && start < parents[id].points_end){
-      uint end = parents[id].node_partitioning[k];
-      while(start < end) {
-        debug[id].thread_id = 8888;
-        debug[id].points_start = start;
-        debug[id].points_end = end;
-        if(points[indeces[start]][axis] <= threshold){
-          ++start;
-        }
-        else if(points[indeces[end]][axis] <= threshold){
-          swap(start, end);
-          ++start;
-          --end;
-        }
-        if(points[indeces[end]][axis] > threshold){
-          --end;
-        }
-      }
-
-      local_partitioning[k * 2] = start;
-      local_partitioning[k * 2 + 1] = parents[id].node_partitioning[k];
-      start = parents[id].node_partitioning[k] ;
-    }
-    else if(start >= parents[id].points_end){
-      local_partitioning[k * 2] = parents[id].points_end;
-      local_partitioning[k * 2 + 1] = parents[id].points_end;
-      start = parents[id].points_end;
-    }
-    parents[id].node_partitioning[k] = local_partitioning[k];
-  }
+  // for(uint i = 0; i < 8; ++i) {
+  //   parents[id].node_partitioning[i] = local_partitioning[i];
+  // }
+  parents[id].node_partitioning[3] = partition_run(start, end, pivots[axes[0]], axes[0]);
+  // if(parents[id].node_partitioning[3] > start){
+  //   parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivots[axes[1]], axes[1]);
+  //   if(parents[id].node_partitioning[1] > start) {
+  //     parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivots[axes[2]], axes[2]);
+  //   }
+  //   else {
+  //     parents[id].node_partitioning[0] = start;
+  //   }
+  //   if(parents[id].node_partitioning[1] == parents[id].node_partitioning[3]) {
+  //     parents[id].node_partitioning[2] = parents[id].node_partitioning[1];
+  //   }
+  //   parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivots[axes[2]], axes[2]);
+  // }
+  // else {
+  //   parents[id].node_partitioning[0] = start;
+  //   parents[id].node_partitioning[1] = start;
+  //   parents[id].node_partitioning[2] = start;
+  // }
+  parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivots[axes[1]], axes[1]);
+  parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivots[axes[2]], axes[2]);
+  parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivots[axes[2]], axes[2]);
+  parents[id].node_partitioning[5] = partition_run(parents[id].node_partitioning[3], end, pivots[axes[1]], axes[1]);
+  // if(parents[id].node_partitioning[5] == parents[id].node_partitioning[3]) {
+  //   parents[id].node_partitioning[4] = parents[id].node_partitioning[3];
+  // }
+  // else {
+  //   parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivots[axes[2]], axes[2]);
+  //
+  // }
+  parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivots[axes[2]], axes[2]);
+  parents[id].node_partitioning[6] = partition_run(parents[id].node_partitioning[5], end, pivots[axes[2]], axes[2]);
+  parents[id].node_partitioning[7] = end;
 }
 
 bool[3] partitioned_to_right(uint[3] partition_order, uint index){
@@ -143,7 +164,7 @@ bool[3] partitioned_to_right(uint[3] partition_order, uint index){
   if(index % 2 != 0){
     on_right_side[partition_order[2]] = true;
   }
-  else if( index % 4 != 0){
+  if(index >= 2 && index <= 3 || index >= 6){
     on_right_side[partition_order[1]] = true;
   }
   if(index >= 4){
@@ -172,7 +193,6 @@ double[2][3] get_childs_bounds(uint[3] partition_order, double[3] partition_axes
 
 void main() {
   uint idx = gl_WorkGroupID.x;
-  debug[idx].thread_id = 1111;
   Node parent = parents[idx];
 
   double x_diff = parent.bounds_max[0] - parent.bounds_min[0];
@@ -181,22 +201,22 @@ void main() {
   double x_partition = parent.bounds_min[0] + 0.5 * abs(x_diff);
   double y_partition = parent.bounds_min[1] + 0.5 * abs(y_diff);
   double z_partition = parent.bounds_min[2] + 0.5 * abs(z_diff);
-  debug[idx].thread_id = 2222;
+  double[3] partition_pivots = double[3](x_partition, y_partition, z_partition);
   uint[3] partition_order = partitioning_order(abs(x_diff), abs(y_diff), abs(z_diff));
-  for(uint i = 0; i < 3; ++i){
-    uint partition_axis = partition_order[i];
-    switch(partition_axis){
-      case 0:
-        partitioning(partition_axis, x_partition, i, idx);
-        break;
-      case 1:
-        partitioning(partition_axis, y_partition, i, idx);
-        break;
-      case 2:
-        partitioning(partition_axis, z_partition, i, idx);
-    }
-  }
-  debug[idx].thread_id = 3333;
+  // for(uint i = 0; i < 3; ++i){
+  //   uint partition_axis = partition_order[i];
+  //   switch(partition_axis){
+  //     case 0:
+  //       partitioning(partition_axis, x_partition, i, idx);
+  //       break;
+  //     case 1:
+  //       partitioning(partition_axis, y_partition, i, idx);
+  //       break;
+  //     case 2:
+  //       partitioning(partition_axis, z_partition, i, idx);
+  //   }
+  // }
+  partitioning(partition_order, partition_pivots, idx);
   // parents[idx].node_partitioning[0] = partition_borders[3];
   // parents[idx].node_partitioning[1] = partition_borders[1];
   // parents[idx].node_partitioning[2] = partition_borders[4];
@@ -213,16 +233,21 @@ void main() {
     parents[idx].points_per_partition[i] = parents[idx].node_partitioning[i] - parents[idx].node_partitioning[i-1];
     }
   }
-  debug[idx].thread_id = 4444;
   for(uint i = 0; i < 8; ++i){
     if(i == 0) {
       children[idx * 8 + i].points_start = parents[idx].points_start;
     } else {
       children[idx * 8 + i].points_start = parents[idx].node_partitioning[i - 1];
     }
+    // if(parents[idx].points_per_partition[i] == 0 || i == 7) {
+    //   children[idx * 8 + i].points_end = parents[idx].node_partitioning[i];
+    // }
+    // else {
+    //   children[idx * 8 + i].points_end = parents[idx].node_partitioning[i] - 1;
+    // }
+    children[idx * 8 + i].points_per_partition[0] = parents[idx].points_per_partition[i];
     children[idx * 8 + i].points_end = parents[idx].node_partitioning[i];
     children[idx * 8 + i].node_partitioning[0] = children[idx * 8 + i].points_end;
-    children[idx * 8 + i].points_per_partition[0] = parents[idx].points_per_partition[i];
     double[2][3] child_bounds = get_childs_bounds(
       partition_order,
       double[3](x_partition, y_partition, z_partition),
@@ -232,12 +257,11 @@ void main() {
     children[idx * 8 + i].bounds_min = child_bounds[0];
     children[idx* 8 + i].bounds_max = child_bounds[1];
   }
-  debug[idx].thread_id = 55555;
   debug[idx].debug_order = partition_order;
   for(uint i = 0; i < 8; ++i){
     debug[idx].debug_borders[i] = parents[idx].node_partitioning[i];
   }
 
-  debug[idx].points_start = parents[idx].points_start;
-  debug[idx].points_end = parents[idx].points_end;
+  //debug[idx].points_start = parents[idx].points_start;
+  //debug[idx].points_end = parents[idx].points_end;
 }
