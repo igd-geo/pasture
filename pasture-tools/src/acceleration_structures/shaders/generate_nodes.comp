@@ -8,13 +8,13 @@ struct Node {
   uint points_start;
   uint points_end;
 };
-struct Debug {
-  uint debug_order[3];
-  uint debug_borders[8];
-  uint thread_id;
-  uint points_start;
-  uint points_end;
-};
+// struct Debug {
+//   uint debug_order[3];
+//   uint debug_borders[8];
+//   uint thread_id;
+//   uint points_start;
+//   uint points_end;
+// };
 
 layout(std430, set=0, binding=0) buffer ParentNodes{
   Node parents[];
@@ -28,9 +28,9 @@ layout(std430, set=1, binding=0) buffer PointBuffer {
 layout(std430, set=1, binding=1) buffer Partitioning {
   uint indeces[];
 };
-layout(std430, set=1, binding=2) buffer DebugBuffer {
-  Debug debug[];
-};
+// layout(std430, set=1, binding=2) buffer DebugBuffer {
+//   Debug debug[];
+// };
 
 layout (local_size_x=1, local_size_y=1, local_size_z=1) in;
 
@@ -257,10 +257,10 @@ void main() {
     children[idx * 8 + i].bounds_min = child_bounds[0];
     children[idx* 8 + i].bounds_max = child_bounds[1];
   }
-  debug[idx].debug_order = partition_order;
-  for(uint i = 0; i < 8; ++i){
-    debug[idx].debug_borders[i] = parents[idx].node_partitioning[i];
-  }
+  // debug[idx].debug_order = partition_order;
+  // for(uint i = 0; i < 8; ++i){
+  //   debug[idx].debug_borders[i] = parents[idx].node_partitioning[i];
+  // }
 
   //debug[idx].points_start = parents[idx].points_start;
   //debug[idx].points_end = parents[idx].points_end;

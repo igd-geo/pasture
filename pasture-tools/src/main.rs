@@ -101,10 +101,10 @@ mod ex {
         let mut reader = LASReader::from_path(
             //"/home/jnoice/dev/pasture/pasture-io/examples/in/10_points_format_1.las",
             //"/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz",
-            "/home/jnoice/Downloads/interesting.las",
+            //"/home/jnoice/Downloads/interesting.las",
             //"/home/jnoice/Downloads/20150930_matsch_flight2_rgb_densified_point_cloud_part_1 - Cloud.las",
             //"/home/jnoice/Downloads/45123H3316.laz",
-            //"/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz",
+            "/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz",
             //"/home/jnoice/Downloads/tirol.las",
         )?;
         let count = reader.remaining_points();
@@ -189,7 +189,7 @@ mod ex {
         // }
 
         let mut octree =
-            pasture_tools::acceleration_structures::GpuOctree::new(&buffer, bounds, 50).await;
+            pasture_tools::acceleration_structures::GpuOctree::new(&buffer, bounds, 500).await;
         let mut octree = match octree {
             Ok(a) => a,
             Err(b) => {
