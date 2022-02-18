@@ -18,7 +18,7 @@ pasture-derive = { version = "=0.2.0", path = "../pasture-derive" }
 rand = "0.8.3"
 rayon = "1.5"
 typenum = "1.13.0"
-proj-sys = "0.18.2"
+proj-sys = "0.22.0"
 kd-tree = "0.3.0"
 num-traits = "0.2.14"
 
