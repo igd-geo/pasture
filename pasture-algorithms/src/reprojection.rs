@@ -9,7 +9,7 @@ use pasture_core::containers::{PointBuffer, PointBufferExt};
 use pasture_core::layout::attributes::POSITION_3D;
 /// Wrapper around the proj types from the proj_sys crate. Supports transformations (the Rust proj bindings don't support this)
 pub struct Projection {
-    proj_context: *mut proj_sys::projCtx_t,
+    proj_context: *mut proj_sys::pj_ctx,
     projection: *mut proj_sys::PJconsts,
 }
 
