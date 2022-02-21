@@ -662,7 +662,7 @@ mod tests {
                         && current_bounds.min().z <= pos.z
                         && current_bounds.max().z >= pos.z
                 );
-                i += 1;
+                
             }
             if let Some(children) = current_node.children.as_ref() {
                 (*children).iter().for_each(|x| nodes_to_visit.push(x));
