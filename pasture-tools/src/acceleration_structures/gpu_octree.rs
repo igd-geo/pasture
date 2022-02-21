@@ -1,20 +1,14 @@
-use pasture_core::containers::attr1::AttributeIteratorByValue;
-use pasture_core::math::AABB;
-use pasture_core::nalgebra::Point3;
 use pasture_core::{
-    containers::{PointBuffer, PointBufferExt},
-    layout::{attributes, PointLayout},
-    nalgebra::Vector3,
+    containers::{attr1::AttributeIteratorByValue, PointBuffer, PointBufferExt, PerAttributePointBufferExt},
+    layout::attributes,
+    math::AABB,
+    nalgebra::{Point3, Vector3},
 };
-use pasture_derive::PointType;
-use std::borrow::Cow;
+
 use std::convert::TryInto;
-use std::fs::File;
-use wgpu::util::DeviceExt;
 use std::fmt;
-use std::sync::Arc;
-use std::thread;
 use std::mem;
+use wgpu::util::DeviceExt;
 
 #[derive(Debug, Clone)]
 pub struct OctreeNode {
@@ -32,24 +26,28 @@ pub struct GpuOctree<'a> {
     point_buffer: &'a dyn PointBuffer,
     point_partitioning: Vec<u32>,
     root_node: Option<OctreeNode>,
+    depth: u32,
     bounds: AABB<f64>,
     points_per_node: u32,
 }
 
 impl OctreeNode {
+    /// Get the number of bytes, a node allocates on the gpu.
+    /// Because the `children` pointer is not required for GPU node creation,
+    /// it's size is neglected.
     fn size() -> usize {
         let mut size = mem::size_of::<OctreeNode>();
         size -= mem::size_of::<Option<Box<[OctreeNode; 8]>>>();
         size
     }
+    /// Checks if the given node has less than or equal to `points_per_node` points.
+    /// If yes, the node is a leaf.
     fn is_leaf(&self, points_per_node: u32) -> bool {
         let diff: i64 = self.point_end as i64 - self.point_start as i64;
         return diff <= points_per_node as i64;
     }
-    fn is_empty(&self) -> bool {
-        let diff: i64 = self.point_end as i64 - self.point_start as i64;
-        diff < 0
-    }
+    /// Returns a vector of the nodes raw data. As with `size(), the field
+    /// `children`is not included, as it is not necessary for GPU computation.
     fn into_raw(&self) -> Vec<u8> {
         let mut raw_node: Vec<u8> = Vec::new();
         for coord in self.bounds.min().iter() {
@@ -81,6 +79,8 @@ impl OctreeNode {
 
         raw_node
     }
+    /// Converts a vector of raw data back into `OctreeNode`.
+    /// Panics, if the vector has not enough data.
     fn from_raw(mut data: Vec<u8>) -> Self {
         let raw_bounds: Vec<u8> = data.drain(..24).collect();
         let bounds_iter = raw_bounds.chunks_exact(8);
@@ -116,7 +116,7 @@ impl OctreeNode {
             points_per_partition[i] = *rest_iter.next().unwrap();
         }
         let points_start = *rest_iter.next().unwrap();
-        //rest_iter.next();
+
         let points_end = *rest_iter.next().unwrap();
 
         OctreeNode {
@@ -128,20 +128,26 @@ impl OctreeNode {
             point_end: points_end,
         }
     }
+    /// Checks if `pos` is within the bounds of the node.
+    fn contains(&self, pos: Vector3<f64>) -> bool {
+        let point: Point3<f64> = Point3::new(pos.x, pos.y, pos.z);
+        self.bounds.contains(&point)
+    }
 }
 
 impl fmt::Display for OctreeNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f,"####### Octree Node #######\n");
+        write!(f, "####### Octree Node #######\n");
         write!(f, "Bounds: {:?}\n", self.bounds);
         write!(f, "Start: {}, End: {}\n", self.point_start, self.point_end);
         write!(f, "Node Partitioning: {:?}\n", self.node_partitioning);
         write!(f, "Points per partition: {:?}\n", self.points_per_partition);
         write!(f, "Chilren: ");
         if let Some(c) = &self.children {
-            c.iter().for_each(|x| {write!(f, "  {}", x);});
-        }
-        else {
+            c.iter().for_each(|x| {
+                write!(f, "  {}", x);
+            });
+        } else {
             write!(f, "None\n");
         }
         write!(f, "##########\n")
@@ -149,11 +155,24 @@ impl fmt::Display for OctreeNode {
 }
 
 impl<'a> GpuOctree<'a> {
+    /// Creates an empty Octree accelerated by the GPU.
+    /// 
+    /// `point_buffer`: pasture buffer containing the point cloud data
+    /// 
+    /// `max_bounds`: boundary of the point cloud
+    /// 
+    /// `points_per_node`: threshold for a node becoming a leaf
+    /// 
+    /// The generated instance has no constructed octree. To get the octree,
+    /// run `construct()`.
     pub async fn new(
         point_buffer: &'a dyn PointBuffer,
         max_bounds: AABB<f64>,
         points_per_node: u32,
     ) -> Result<GpuOctree<'a>, wgpu::RequestDeviceError> {
+        if points_per_node < 1 {
+            panic!("Cannot build octree with less than 1 point per node!")
+        }
         let instance = wgpu::Instance::new(wgpu::Backends::VULKAN);
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -173,13 +192,14 @@ impl<'a> GpuOctree<'a> {
                 None,
             )
             .await?;
-        println!("GPU Adapter limits: {:?}", adapter.limits());
+            
         Ok(GpuOctree {
             gpu_device: device,
             gpu_queue: queue,
             point_buffer,
             point_partitioning: (0..point_buffer.len() as u32).collect(),
             root_node: None,
+            depth: 0,
             bounds: max_bounds,
             points_per_node,
         })
@@ -188,14 +208,14 @@ impl<'a> GpuOctree<'a> {
     pub fn print_tree(&self) {
         println!("{}", self.root_node.as_ref().unwrap());
     }
-
+    /// Run top-down construction of the octree.
+    /// 
+    /// Starting from the root, on each level the children of all current leaves
+    /// are computed and put into the next compute stage, if these children are big enough.
     pub async fn construct(&mut self) {
         let point_count = self.point_buffer.len();
-        let mut points: Vec<Vector3<f64>> = Vec::new();
-
-        let point_iterator: AttributeIteratorByValue<Vector3<f64>, dyn PointBuffer> =
-            self.point_buffer.iter_attribute(&attributes::POSITION_3D);
-
+        
+        // point cloud data, later uploaded to GPU
         let mut raw_points = vec![0u8; 24 * point_count];
 
         self.point_buffer.get_raw_attribute_range(
@@ -203,10 +223,6 @@ impl<'a> GpuOctree<'a> {
             &attributes::POSITION_3D,
             raw_points.as_mut_slice(),
         );
-
-        for point in point_iterator {
-            points.push(point);
-        }
 
         let mut compiler = shaderc::Compiler::new().unwrap();
         let comp_shader = include_str!("shaders/generate_nodes.comp");
@@ -224,10 +240,13 @@ impl<'a> GpuOctree<'a> {
         let shader = self
             .gpu_device
             .create_shader_module(&wgpu::ShaderModuleDescriptor {
-                label: Some("ModeGenerationShader"),
+                label: Some("NodeGenerationShader"),
                 source: comp_data,
             });
 
+        // 2 Bind groups are used
+        // - points_bind_group for point cloud data and point indices
+        // - nodes_bind_group for parent nodes and children nodes computed by GPU
         let points_bind_group_layout =
             self.gpu_device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -252,21 +271,11 @@ impl<'a> GpuOctree<'a> {
                             },
                             count: None,
                         },
-                        // wgpu::BindGroupLayoutEntry {
-                        //     binding: 2,
-                        //     visibility: wgpu::ShaderStages::COMPUTE,
-                        //     ty: wgpu::BindingType::Buffer {
-                        //         ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        //         has_dynamic_offset: false,
-                        //         min_binding_size: None,
-                        //     },
-                        //     count: None,
-                        // },
                     ],
                     label: Some("PointBufferBindGroupLayout"),
                 });
 
-        let mut nodes_bind_group_layout =
+        let nodes_bind_group_layout =
             self.gpu_device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("NodesBindGroupLayout"),
@@ -311,12 +320,13 @@ impl<'a> GpuOctree<'a> {
                     entry_point: "main",
                 });
 
-        let gpu_point_buffer = self.gpu_device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("PointBuffer"),
-            contents: &raw_points.as_slice(),
-            usage: wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::STORAGE,
-        });
+        let gpu_point_buffer =
+            self.gpu_device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("PointBuffer"),
+                    contents: &raw_points.as_slice(),
+                    usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
+                });
 
         let mut root_node = OctreeNode {
             bounds: self.bounds,
@@ -328,52 +338,31 @@ impl<'a> GpuOctree<'a> {
         };
         root_node.node_partitioning[0] = point_count as u32;
         root_node.points_per_partition[0] = point_count as u32;
-        let xdiff = &root_node.bounds.max().x - &root_node.bounds.min().x;
-        let ydiff = &root_node.bounds.max().y - &root_node.bounds.min().y;
-        let zdiff = &root_node.bounds.max().z - &root_node.bounds.min().z;
-        println!("Point count: {}", point_count);
-        println!("xdiff {}", xdiff);
-        println!("ydiff {}", ydiff);
-        println!("zdiff {}", zdiff);
-        let xpartition = &root_node.bounds.min().x + 0.5 * xdiff;
-        let ypartition = &root_node.bounds.min().y + 0.5 * ydiff;
-        let zpartition = &root_node.bounds.min().z + 0.5 * zdiff;
-        println!("x_partition {}", xpartition);
-        println!("y_partition {}", ypartition);
-        println!("z_partition {}", zpartition);
 
         let mut tree_depth = 1;
         let mut num_leaves: u32 = 0;
         let mut num_nodes: u32 = 1;
 
         let mut current_nodes = vec![&mut root_node];
-        let mut children_nodes: Vec<Box<[OctreeNode]>> = Vec::new();
 
-        let mut raw_indeces: Vec<u8> = (0u32..point_count as u32)
+        let raw_indeces: Vec<u8> = (0u32..point_count as u32)
             .flat_map(|x| x.to_le_bytes().to_vec())
             .collect();
 
-        // let debug_buffer = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
-        //     label: Some("DebugBuffer"),
-        //     size: (3 * 4 + 8 * 4 + 4 + 2 * 4) as u64,
-        //     usage: wgpu::BufferUsages::MAP_READ
-        //         | wgpu::BufferUsages::STORAGE,
-        //     mapped_at_creation: false,
-        // });
-
-        let point_index_buffer = self.gpu_device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("IndexBuffer"),
-            contents: &raw_indeces.as_slice(),
-            usage: wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::STORAGE,
-        });
+        let point_index_buffer =
+            self.gpu_device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("IndexBuffer"),
+                    contents: &raw_indeces.as_slice(),
+                    usage: wgpu::BufferUsages::COPY_SRC
+                        | wgpu::BufferUsages::COPY_DST
+                        | wgpu::BufferUsages::STORAGE,
+                });
         let index_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CPU_IndexBuffer"),
             size: raw_indeces.len() as u64,
-            usage: wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
         });
         let points_bind_group = self
             .gpu_device
@@ -389,27 +378,22 @@ impl<'a> GpuOctree<'a> {
                         binding: 1,
                         resource: point_index_buffer.as_entire_binding(),
                     },
-                    // wgpu::BindGroupEntry {
-                    //     binding: 2,
-                    //     resource: debug_buffer.as_entire_binding(),
-                    // },
                 ],
             });
 
-        let mut iterations = current_nodes.len();
-
         while !current_nodes.is_empty() {
-
-            let child_buffer_size =  8 * (OctreeNode::size() * current_nodes.len()) as u64; //8 * 120 * current_nodes.len() as u64;
-            let child_nodes_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("CPU_NewNodesBuffer"),
-                size: child_buffer_size,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
+            // Nodes buffers are created inside the loop, as their size changes per iteration
+            let child_buffer_size = 8 * (OctreeNode::size() * current_nodes.len()) as u64; 
+            let child_nodes_buffer_staging =
+                self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("CPU_NewNodesBuffer"),
+                    size: child_buffer_size,
+                    usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
             let child_nodes_buffer = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("NewNodesBuffer"),
-                size: //(mem::size_of::<OctreeNode>() - mem::size_of::<Box<[OctreeNode]>>()) as u64
+                size: 
                     child_buffer_size,
                 usage: wgpu::BufferUsages::COPY_SRC
                     | wgpu::BufferUsages::COPY_DST
@@ -421,22 +405,22 @@ impl<'a> GpuOctree<'a> {
             for node in &current_nodes {
                 parent_nodes_raw.append(&mut node.into_raw());
             }
-            let parent_nodes_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("CPU_ParentNodesBuffer"),
-                size: parent_nodes_raw.len() as u64,
-                usage: wgpu::BufferUsages::MAP_READ
-                    | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            let parent_nodes_buffer = self.gpu_device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("ParentNodesBuffer"),
-                    contents: parent_nodes_raw.as_slice(),
-                    usage: wgpu::BufferUsages::COPY_SRC
-                        | wgpu::BufferUsages::COPY_DST
-                        | wgpu::BufferUsages::STORAGE,
-                },
-            );
+            let parent_nodes_buffer_staging =
+                self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("CPU_ParentNodesBuffer"),
+                    size: parent_nodes_raw.len() as u64,
+                    usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+            let parent_nodes_buffer =
+                self.gpu_device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("ParentNodesBuffer"),
+                        contents: parent_nodes_raw.as_slice(),
+                        usage: wgpu::BufferUsages::COPY_SRC
+                            | wgpu::BufferUsages::COPY_DST
+                            | wgpu::BufferUsages::STORAGE,
+                    });
             let nodes_bind_group = self
                 .gpu_device
                 .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -470,9 +454,27 @@ impl<'a> GpuOctree<'a> {
                 compute_pass.insert_debug_marker("Pasture Compute Debug");
                 compute_pass.dispatch(current_nodes.len() as u32, 1, 1);
             }
-            encoder.copy_buffer_to_buffer(&child_nodes_buffer, 0, &child_nodes_buffer_staging, 0, child_buffer_size);
-            encoder.copy_buffer_to_buffer(&parent_nodes_buffer, 0, &parent_nodes_buffer_staging, 0, parent_nodes_raw.len() as u64);
-            encoder.copy_buffer_to_buffer(&point_index_buffer, 0, &index_buffer_staging, 0, raw_indeces.len() as u64);
+            encoder.copy_buffer_to_buffer(
+                &child_nodes_buffer,
+                0,
+                &child_nodes_buffer_staging,
+                0,
+                child_buffer_size,
+            );
+            encoder.copy_buffer_to_buffer(
+                &parent_nodes_buffer,
+                0,
+                &parent_nodes_buffer_staging,
+                0,
+                parent_nodes_raw.len() as u64,
+            );
+            encoder.copy_buffer_to_buffer(
+                &point_index_buffer,
+                0,
+                &index_buffer_staging,
+                0,
+                raw_indeces.len() as u64,
+            );
 
             self.gpu_queue.submit(Some(encoder.finish()));
 
@@ -480,43 +482,20 @@ impl<'a> GpuOctree<'a> {
             let mapped_future = index_slice.map_async(wgpu::MapMode::Read);
 
             self.gpu_device.poll(wgpu::Maintain::Wait);
-
+            // Read in the changes of the global point partitioning
             if let Ok(()) = mapped_future.await {
                 let mapped_index_buffer = index_slice.get_mapped_range();
                 let index_vec = mapped_index_buffer.to_vec();
-                let mut indices: Vec<u32> = index_vec
+                let indices: Vec<u32> = index_vec
                     .chunks_exact(4)
                     .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
                     .collect();
 
                 self.point_partitioning = indices.clone();
 
-                raw_indeces = index_vec.clone();
                 drop(mapped_index_buffer);
                 index_buffer_staging.unmap();
             }
-
-            // let debug_slice = debug_buffer.slice(..);
-            // let mapped_debug = debug_slice.map_async(wgpu::MapMode::Read);
-            // self.gpu_device.poll(wgpu::Maintain::Wait);
-            // if let Ok(()) = mapped_debug.await {
-            //     let debug_data = debug_slice.get_mapped_range();
-            //     let mut debug: Vec<u32> = debug_data
-            //         .to_vec()
-            //         .chunks_exact(4)
-            //         .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
-            //         .collect();
-            //     let partition_order: Vec<u32> = debug.drain(..3).collect();
-            //     let borders: Vec<u32> = debug.drain(..8).collect();
-            //     let thread_id: Vec<u32> = debug.drain(..1).collect();
-            //     let start_end: Vec<u32> = debug.drain(..2).collect();
-            //     println!(
-            //             " Partition Order: {:?} \n Partition borders: {:?}\n thread index: {}\n start/end: {:?}",
-            //              partition_order, borders, thread_id.first().unwrap(), start_end,
-            //         );
-            //     drop(debug_data);
-            //     debug_buffer.unmap();
-            // }
 
             let parents_slice = parent_nodes_buffer_staging.slice(..);
             let parents_future = parents_slice.map_async(wgpu::MapMode::Read);
@@ -535,116 +514,123 @@ impl<'a> GpuOctree<'a> {
                 self.gpu_device.poll(wgpu::Maintain::Wait);
 
                 if let Ok(()) = children_future.await {
+                    let mapped_children_data = children_slice.get_mapped_range();
+                    let mapped_children_buffer = mapped_children_data.to_vec();
+                    let mut children: Vec<OctreeNode> = mapped_children_buffer
+                        .chunks_exact(OctreeNode::size())
+                        .map(|b| OctreeNode::from_raw(b.to_vec()))
+                        .collect();
+                    let mut generated_children: Vec<&mut OctreeNode> = Vec::new();
+                    for mut node in nodes {
+                        let children_sizes = node.points_per_partition.clone();
 
-                let mapped_children_data = children_slice.get_mapped_range();
-                let mapped_children_buffer = mapped_children_data.to_vec();
-                let mut children: Vec<OctreeNode> = mapped_children_buffer
-                    .chunks_exact(OctreeNode::size())
-                    .map(|b| OctreeNode::from_raw(b.to_vec()))
-                    .collect();
-                let mut generated_children: Vec<&mut OctreeNode> = Vec::new();
-                for mut node in nodes {
-                    let children_sizes = node.points_per_partition.clone();
+                        let local_children: Vec<OctreeNode> = children.drain(..8).collect();
 
-                    let mut local_children: Vec<OctreeNode> = children.drain(..8).collect();
+                        let child_array: [OctreeNode; 8] = local_children.try_into().unwrap();
+                        node.children = Some(Box::new(child_array));
 
-                    let child_array: [OctreeNode; 8] = local_children.try_into().unwrap();
-                    node.children = Some(Box::new(child_array));
+                        let node_ref = current_nodes.remove(0);
+                        *node_ref = node;
 
-                    let mut node_ref = current_nodes.remove(0);
-                    *node_ref = node;
+                        let children: &mut Box<[OctreeNode; 8]> =
+                            node_ref.children.as_mut().unwrap();
 
-                    let mut children: &mut Box<[OctreeNode; 8]> = node_ref.children.as_mut().unwrap();
+                        let iter = children.iter_mut();
 
-                    let iter = children.iter_mut();
+                        let mut child_index = 0;
 
-                    let mut child_index = 0;
+                        for child in iter {
+                            if children_sizes[child_index] != 0
+                                && !child.is_leaf(self.points_per_node)
+                            {
+                                generated_children.push(child);
+                            } else {
+                                num_leaves += 1;
+                            }
 
-                    for child in iter {
-                        if children_sizes[child_index] != 0 && !child.is_leaf(self.points_per_node) {
-                            generated_children.push(child);
+                            num_nodes += 1;
+                            child_index += 1;
                         }
-                        else {
-                            num_leaves += 1;
-                        }
-
-                        num_nodes += 1;
-                        child_index += 1;
                     }
+                    current_nodes.append(&mut generated_children);
+                    drop(mapped_nodes_data);
+                    parent_nodes_buffer_staging.unmap();
+                    drop(mapped_children_data);
+                    child_nodes_buffer_staging.unmap();
+                    parent_nodes_buffer.destroy();
+                    child_nodes_buffer.destroy();
+                    parent_nodes_buffer_staging.destroy();
+                    child_nodes_buffer_staging.destroy();
                 }
-                current_nodes.append(&mut generated_children);
-                drop(mapped_nodes_data);
-                parent_nodes_buffer_staging.unmap();
-                drop(mapped_children_data);
-                child_nodes_buffer_staging.unmap();
-                parent_nodes_buffer.destroy();
-                child_nodes_buffer.destroy();
-                parent_nodes_buffer_staging.destroy();
-                child_nodes_buffer_staging.destroy();
-            }
             }
             let work_done = self.gpu_queue.on_submitted_work_done();
             work_done.await;
-            //println!("====== PASS FINISHED ======", );
-            tree_depth += 1;
-            iterations = current_nodes.len();
 
+            tree_depth += 1;
         }
+        
         gpu_point_buffer.destroy();
         point_index_buffer.destroy();
         index_buffer_staging.destroy();
         self.root_node = Some(root_node);
-        //println!("Root Bounds {:?}", self.root_node.as_ref().unwrap().bounds);
-        //println!("{}", self.root_node.as_ref().unwrap());
-
-        //println!("{:?}", self.point_partitioning.len());
-        //println!("{:?}",a);
+        self.depth = tree_depth;
     }
 
     fn get_points(&self, node: &OctreeNode) -> Vec<u32> {
-        let indices = self.point_partitioning[node.point_start as usize..node.point_end as usize].to_vec();
+        let indices =
+            self.point_partitioning[node.point_start as usize..node.point_end as usize].to_vec();
         return indices;
     }
+
+    fn deepest_octant(&self, node: &'a OctreeNode, pos: Vector3<f64>) -> &'a OctreeNode {
+        if let Some(children) = node.children.as_ref() {
+            for child in children.iter() {
+                if !child.is_leaf(self.points_per_node) && child.contains(pos) {
+                    return self.deepest_octant(child, pos);
+                }
+            }
+        }
+        node
+    }
+
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::acceleration_structures::GpuOctree;
+    use crate::acceleration_structures::gpu_octree::OctreeNode;
     use pasture_core::containers::InterleavedVecPointStorage;
     use pasture_core::containers::PointBufferExt;
-    use pasture_io::base::PointReader;
-    use pasture_io::las::LasPointFormat0;
-    use pasture_io::las::LASReader;
     use pasture_core::layout::PointType;
-    use crate::acceleration_structures::GpuOctree;
-    use crate::acceleration_structures::OctreeNode;
     use pasture_core::nalgebra::Vector3;
-    use pasture_core::layout::attributes;
-    use std::convert::TryInto;
-    use std::error::Error;
+    use pasture_io::base::PointReader;
+    use pasture_io::las::LASReader;
+    use pasture_io::las::LasPointFormat0;
 
     use tokio;
 
     static FILE: &'static str = //"/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz"
-                                //"/home/jnoice/Downloads/interesting.las"
+                                "/home/jnoice/Downloads/interesting.las"
                                 //"/home/jnoice/Downloads/45123H3316.laz"
-                                "/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz"
+                                //"/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz"
                                 ;
     #[tokio::test]
     async fn check_correct_bounds() {
-        let mut reader = LASReader::from_path(FILE);
+        let reader = LASReader::from_path(FILE);
         let mut reader = match reader {
             Ok(a) => a,
-            Err(b) => panic!("Could not create LAS Reader"),
+            Err(_) => panic!("Could not create LAS Reader"),
         };
         let count = reader.remaining_points();
-        let mut buffer = InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
-        let data_read = match reader.read_into(&mut buffer, count) {
+        let mut buffer =
+            InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
+        let _data_read = match reader.read_into(&mut buffer, count) {
             Ok(a) => a,
-            Err(b) => panic!("Could not write Point Buffer"),
+            Err(_) => panic!("Could not write Point Buffer"),
         };
         let bounds = reader.get_metadata().bounds().unwrap();
 
-        let mut octree = GpuOctree::new(&buffer, bounds, 12341).await;
+        let octree = GpuOctree::new(&buffer, bounds, 75).await;
         let mut octree = match octree {
             Ok(a) => a,
             Err(b) => {
@@ -653,59 +639,54 @@ mod tests {
             }
         };
         octree.construct().await;
-        let mut node = octree.root_node.as_ref().unwrap();
+        let node = octree.root_node.as_ref().unwrap();
         let mut nodes_to_visit: Vec<&OctreeNode> = vec![node];
         while !nodes_to_visit.is_empty() {
             let current_node = nodes_to_visit.remove(0);
-            //if let None = current_node.children{
-                assert_ne!(current_node.node_partitioning, [0; 8]);
-                let current_bounds = current_node.bounds;
-                let point_ids = octree.get_points(&current_node).into_iter();
-                let mut i = 0;
-                let current_start = current_node.point_start;
-                for id in point_ids {
-                    let point = buffer.get_point::<LasPointFormat0>(id as usize);
-                    let pos: Vector3<f64> = Vector3::from(point.position);
-                    println!("Bounds: {:?}", current_bounds);
-                    // println!("Start: {}, End  {}", current_node.point_start, current_node.point_end);
-                    // println!("Node Partitioning {:?}", current_node.node_partitioning);
-                    println!("Point: {:?}, id: {} in [{}, {}]", pos,current_start + i, current_node.point_start, current_node.point_end-1);
-                    //println!("{:?}", current_node);
-                    // current_node.children.as_ref().unwrap().iter().for_each(|x| println!("{:?}", x));
-                    assert!(current_bounds.min().x <= pos.x
+            println!("Partition {:?}", current_node.node_partitioning);
+            assert!((current_node.point_start == 0 &&
+                current_node.point_end == 0 &&
+                current_node.node_partitioning == [0; 8]) || 
+                current_node.node_partitioning != [0; 8]);
+            let current_bounds = current_node.bounds;
+            let point_ids = octree.get_points(&current_node).into_iter();
+            for id in point_ids {
+                let point = buffer.get_point::<LasPointFormat0>(id as usize);
+                let pos: Vector3<f64> = Vector3::from(point.position);
+                
+                assert!(
+                    current_bounds.min().x <= pos.x
                         && current_bounds.max().x >= pos.x
                         && current_bounds.min().y <= pos.y
                         && current_bounds.max().y >= pos.y
                         && current_bounds.min().z <= pos.z
-                        && current_bounds.max().z >= pos.z);
-                    i+=1;
-                }
-            //}
-            //else {
-               if let Some(children) = current_node.children.as_ref() {
-                //let children = current_node.children.as_ref().unwrap();
+                        && current_bounds.max().z >= pos.z
+                );
+                i += 1;
+            }
+            if let Some(children) = current_node.children.as_ref() {
                 (*children).iter().for_each(|x| nodes_to_visit.push(x));
-                }
-            //}
+            }
         }
     }
 
     #[tokio::test]
     async fn check_point_count() {
-        let mut reader = LASReader::from_path(FILE);
+        let reader = LASReader::from_path(FILE);
         let mut reader = match reader {
             Ok(a) => a,
-            Err(b) => panic!("Could not create LAS Reader"),
+            Err(_) => panic!("Could not create LAS Reader"),
         };
         let count = reader.remaining_points();
-        let mut buffer = InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
-        let data_read = match reader.read_into(&mut buffer, count) {
+        let mut buffer =
+            InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
+        let _data_read = match reader.read_into(&mut buffer, count) {
             Ok(a) => a,
-            Err(b) => panic!("Could not write Point Buffer"),
+            Err(_) => panic!("Could not write Point Buffer"),
         };
         let bounds = reader.get_metadata().bounds().unwrap();
 
-        let mut octree = GpuOctree::new(&buffer, bounds, 50).await;
+        let octree = GpuOctree::new(&buffer, bounds, 50).await;
         let mut octree = match octree {
             Ok(a) => a,
             Err(b) => {
@@ -714,40 +695,42 @@ mod tests {
             }
         };
         octree.construct().await;
-        let mut node = octree.root_node.as_ref().unwrap();
+        let node = octree.root_node.as_ref().unwrap();
         let mut nodes_to_visit: Vec<&OctreeNode> = vec![node];
         let mut point_count: usize = 0;
         while !nodes_to_visit.is_empty() {
             let current_node = nodes_to_visit.pop().unwrap();
             if let None = current_node.children {
                 println!("{}", current_node);
-                //println!("{:?}", current_node.points_per_partition);
                 point_count += current_node.points_per_partition[0] as usize;
-            }
-            else {
+            } else {
                 let children = current_node.children.as_ref().unwrap();
                 (*children).iter().for_each(|x| nodes_to_visit.push(x));
             }
         }
-        println!("Point count of octree: {}, Point Count of Buffer {}", point_count, count);
+        println!(
+            "Point count of octree: {}, Point Count of Buffer {}",
+            point_count, count
+        );
         assert!(point_count == count);
     }
     #[tokio::test]
     async fn check_point_partitioning_duplicates() {
-        let mut reader = LASReader::from_path(FILE);
+        let reader = LASReader::from_path(FILE);
         let mut reader = match reader {
             Ok(a) => a,
-            Err(b) => panic!("Could not create LAS Reader"),
+            Err(_) => panic!("Could not create LAS Reader"),
         };
         let count = reader.remaining_points();
-        let mut buffer = InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
-        let data_read = match reader.read_into(&mut buffer, count) {
+        let mut buffer =
+            InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
+        let _data_read = match reader.read_into(&mut buffer, count) {
             Ok(a) => a,
-            Err(b) => panic!("Could not write Point Buffer"),
+            Err(_) => panic!("Could not write Point Buffer"),
         };
         let bounds = reader.get_metadata().bounds().unwrap();
 
-        let mut octree = GpuOctree::new(&buffer, bounds, 50).await;
+        let octree = GpuOctree::new(&buffer, bounds, 50).await;
         let mut octree = match octree {
             Ok(a) => a,
             Err(b) => {
@@ -763,20 +746,21 @@ mod tests {
     }
     #[tokio::test]
     async fn check_node_overflows() {
-        let mut reader = LASReader::from_path(FILE);
+        let reader = LASReader::from_path(FILE);
         let mut reader = match reader {
             Ok(a) => a,
-            Err(b) => panic!("Could not create LAS Reader"),
+            Err(_) => panic!("Could not create LAS Reader"),
         };
         let count = reader.remaining_points();
-        let mut buffer = InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
-        let data_read = match reader.read_into(&mut buffer, count) {
+        let mut buffer =
+            InterleavedVecPointStorage::with_capacity(count, LasPointFormat0::layout());
+        let _data_read = match reader.read_into(&mut buffer, count) {
             Ok(a) => a,
-            Err(b) => panic!("Could not write Point Buffer"),
+            Err(_) => panic!("Could not write Point Buffer"),
         };
         let bounds = reader.get_metadata().bounds().unwrap();
 
-        let mut octree = GpuOctree::new(&buffer, bounds, 50).await;
+        let octree = GpuOctree::new(&buffer, bounds, 50).await;
         let mut octree = match octree {
             Ok(a) => a,
             Err(b) => {
@@ -785,7 +769,7 @@ mod tests {
             }
         };
         octree.construct().await;
-        let mut node = octree.root_node.as_ref().unwrap();
+        let node = octree.root_node.as_ref().unwrap();
         let mut nodes_to_visit: Vec<&OctreeNode> = vec![node];
         while !nodes_to_visit.is_empty() {
             let current_node = nodes_to_visit.pop().unwrap();
@@ -795,4 +779,5 @@ mod tests {
             }
         }
     }
+    
 }

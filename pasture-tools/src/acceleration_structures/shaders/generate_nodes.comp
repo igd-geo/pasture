@@ -8,13 +8,6 @@ struct Node {
   uint points_start;
   uint points_end;
 };
-// struct Debug {
-//   uint debug_order[3];
-//   uint debug_borders[8];
-//   uint thread_id;
-//   uint points_start;
-//   uint points_end;
-// };
 
 layout(std430, set=0, binding=0) buffer ParentNodes{
   Node parents[];
