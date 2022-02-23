@@ -8,7 +8,9 @@ use pasture_core::{
 use std::convert::TryInto;
 use std::fmt;
 use std::mem;
+use std::time;
 use wgpu::util::DeviceExt;
+use bitvec::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct OctreeNode {
@@ -45,6 +47,9 @@ impl OctreeNode {
     fn is_leaf(&self, points_per_node: u32) -> bool {
         let diff: i64 = self.point_end as i64 - self.point_start as i64;
         return diff <= points_per_node as i64;
+    }
+    fn is_empty(&self) -> bool {
+        self.point_start == self.point_end && self.points_per_partition[0] == 0
     }
     /// Returns a vector of the nodes raw data. As with `size(), the field
     /// `children`is not included, as it is not necessary for GPU computation.
@@ -129,9 +134,14 @@ impl OctreeNode {
         }
     }
     /// Checks if `pos` is within the bounds of the node.
-    fn contains(&self, pos: Vector3<f64>) -> bool {
-        let point: Point3<f64> = Point3::new(pos.x, pos.y, pos.z);
-        self.bounds.contains(&point)
+    fn contains(&self, pos: Point3<f64>) -> bool {
+        self.bounds.contains(&pos)
+    }
+
+    fn get_closest_child(pos: Point3<f64>) -> u32 {
+        let child_id = 0;
+
+        child_id
     }
 }
 
@@ -206,6 +216,8 @@ impl<'a> GpuOctree<'a> {
     }
 
     pub fn print_tree(&self) {
+        println!("Num Points: {}", self.point_buffer.len());
+        println!("Tree Depth: {}", self.depth);
         println!("{}", self.root_node.as_ref().unwrap());
     }
     /// Run top-down construction of the octree.
@@ -217,13 +229,16 @@ impl<'a> GpuOctree<'a> {
         
         // point cloud data, later uploaded to GPU
         let mut raw_points = vec![0u8; 24 * point_count];
-
+        let now = time::Instant::now();
         self.point_buffer.get_raw_attribute_range(
             0..point_count,
             &attributes::POSITION_3D,
             raw_points.as_mut_slice(),
         );
+        let elapsed = now.elapsed();
+        println!("Octree - Getting raw point data took {} ms", elapsed.as_millis());
 
+        let now = time::Instant::now();
         let mut compiler = shaderc::Compiler::new().unwrap();
         let comp_shader = include_str!("shaders/generate_nodes.comp");
         let comp_spirv = compiler
@@ -380,8 +395,11 @@ impl<'a> GpuOctree<'a> {
                     },
                 ],
             });
-
+            let elapsed = now.elapsed();
+            println!("Octree - GPU prep took {} ms", elapsed.as_millis());
+        let now_compute = time::Instant::now();
         while !current_nodes.is_empty() {
+            let now = time::Instant::now();
             // Nodes buffers are created inside the loop, as their size changes per iteration
             let child_buffer_size = 8 * (OctreeNode::size() * current_nodes.len()) as u64; 
             let child_nodes_buffer_staging =
@@ -567,8 +585,11 @@ impl<'a> GpuOctree<'a> {
             work_done.await;
 
             tree_depth += 1;
+            let elapsed = now.elapsed();
+            println!("Octree - Compute Pass took {} ms", elapsed.as_millis());
         }
-        
+        let elapsed = now_compute.elapsed();
+        println!("Octree - Whole Computation loop took {} ms", elapsed.as_millis());
         gpu_point_buffer.destroy();
         point_index_buffer.destroy();
         index_buffer_staging.destroy();
@@ -582,15 +603,87 @@ impl<'a> GpuOctree<'a> {
         return indices;
     }
 
-    fn deepest_octant(&self, node: &'a OctreeNode, pos: Vector3<f64>) -> &'a OctreeNode {
+    fn deepest_octant(&self, node: &'a OctreeNode, pos: Point3<f64>, max_distance: f64) -> &'a OctreeNode {
         if let Some(children) = node.children.as_ref() {
             for child in children.iter() {
-                if !child.is_leaf(self.points_per_node) && child.contains(pos) {
-                    return self.deepest_octant(child, pos);
+                let bounds_extent = child.bounds.extent();
+                if !child.is_leaf(self.points_per_node)
+                    && child.contains(pos)
+                    && bounds_extent.x >= max_distance * 2.0
+                    && bounds_extent.y >= max_distance * 2.0
+                    && bounds_extent.z >= max_distance * 2.0
+                    {
+                    return self.deepest_octant(child, pos, max_distance);
                 }
             }
         }
         node
+    }
+    fn nearest_neighbor_helper(&self, pos: &Point3<f64>, dist: f64, node: &OctreeNode) -> Option<u32> {
+        let mut axes: Vector3<f64> = 0.5 * (node.bounds.max() - node.bounds.min());
+        axes += Vector3::new(node.bounds.min().x, node.bounds.min().y, node.bounds.min().z);
+        let pos_vector = Vector3::new(pos.x, pos.y, pos.z);
+        let mut nearest_index: Option<u32> = None;
+        let mut shortest_distance = f64::MAX;
+        if let Some(children) = node.children.as_ref() {
+            // Sort children according to proximity to pos
+            let mut sorted_children: Vec<&OctreeNode> = Vec::new();
+            for i in 0..8 {
+                let mut k = 0;
+                let mut center = 0.5 * (children[i].bounds.max() - children[i].bounds.min());
+                center += Vector3::new(children[i].bounds.min().x, children[i].bounds.min().y, children[i].bounds.min().z);
+                let curr_dist = center.metric_distance(&pos_vector);
+                for c in sorted_children.iter(){
+                    let sorted_center = 0.5 * (c.bounds.max() - c.bounds.min()) + Vector3::new(c.bounds.min().x, c.bounds.min().y, c.bounds.min().z);
+                    let sorted_dist = sorted_center.metric_distance(&pos_vector);
+                    if sorted_dist < curr_dist {
+                        k += 1;
+                    }
+                }
+                sorted_children.insert(k, &children[i]);
+                
+            }
+            for c in sorted_children.iter(){
+                if let None = nearest_index {
+                    nearest_index = self.nearest_neighbor_helper(pos, dist, c);
+                    if let Some(index) = nearest_index {
+                        let point = self.point_buffer.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D, index as usize);
+                        shortest_distance = point.metric_distance(&pos_vector);
+                    }
+                }
+                else {
+                    let current_nearest = self.nearest_neighbor_helper(pos, dist, c);
+                    if let Some(index) = current_nearest {
+                        let point = self.point_buffer.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D, current_nearest.unwrap() as usize);
+                        let curr_dist = point.metric_distance(&pos_vector);
+                        if curr_dist < shortest_distance {
+                            nearest_index = current_nearest;
+                            shortest_distance = curr_dist;
+                        }
+                    }
+                }
+            }
+            
+        }
+        else if !node.is_empty(){
+            let point_indices = self.get_points(node);
+            for i in point_indices.iter() {
+                let point = self.point_buffer.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D, *i as usize);
+                let curr_dist = point.metric_distance(&pos_vector);
+                
+                if  curr_dist <= dist && curr_dist < shortest_distance {
+                    shortest_distance = curr_dist;
+                    nearest_index = Some(i.clone())
+                }
+            }
+        }
+        nearest_index
+    }
+
+    pub fn nearest_neighbor(&self, pos: Point3<f64>, max_distance: f64) -> Option<u32> {
+        let node = self.deepest_octant(self.root_node.as_ref().unwrap(), pos, max_distance);
+        let neighbor = self.nearest_neighbor_helper(&pos, max_distance, &node);
+        neighbor
     }
 
 }
