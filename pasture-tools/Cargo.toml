@@ -64,3 +64,7 @@ name = "plotting"
 
 [[bin]]
 name = "info"
+
+[[bin]]
+name = "render"
+path = "src/bin/render/render.rs"

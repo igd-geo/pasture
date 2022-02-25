@@ -1,0 +1,119 @@
+use pasture_core::gpu as pgpu;
+use pasture_io::base::PointReader;
+use pasture_io::las::LASReader;
+
+use pasture_core::{
+    containers::{
+        PerAttributeVecPointStorage,
+        InterleavedVecPointStorage,
+        PointBufferExt,
+    },
+    layout::{
+        attributes, PointLayout, PointAttributeDefinition, PointAttributeDataType
+    },
+};
+
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::Window,
+};
+
+use nalgebra::{Vector2, Vector3, Vector4, Point3, UnitQuaternion, Matrix4};
+use crevice::std140::AsStd140;
+
+use instant::Instant;
+
+mod renderer;
+
+async fn run(event_loop: EventLoop<()>, window: Window) {
+    let mut renderer = renderer::Renderer::new(&window).await;
+
+    // For wasm: cannot load from file
+    let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
+    let c = std::io::Cursor::new(buf);
+    let mut reader = LASReader::from_read(c, false).expect("Failed to create LASReader");
+
+    // let mut reader = LASReader::from_path(
+    //     // "/home/jan/loads/points.laz"
+    //     "/home/jan/loads/red-rocks.laz"
+    //     // "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
+    //     // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
+    // ).expect("Failed to open las file");
+
+    renderer.load_points(&mut reader);
+    drop(reader);
+
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+        match event {
+            Event::WindowEvent{event, ..} => {
+                match event {
+                    WindowEvent::Resized(size) => {
+                        renderer.resize(size);
+                    }
+                    WindowEvent::CloseRequested => {
+                        println!("Exiting");
+                        *control_flow = ControlFlow::Exit
+                    }
+                    WindowEvent::KeyboardInput{input, ..} => {
+                        let pressed = input.state == winit::event::ElementState::Pressed;
+                        if let Some(key) = input.virtual_keycode {
+                            renderer.cam_controller.process_keyboard_input(key, pressed)
+                        }
+                    }
+                    WindowEvent::CursorMoved{position, ..} => {
+                        let posvec = Vector2::<f32>::new(position.x as f32, position.y as f32);
+                        renderer.cam_controller.process_mouse_move(&mut renderer.cam, posvec);
+                    }
+                    WindowEvent::MouseInput{state, button, ..} => {
+                        let pressed = state == winit::event::ElementState::Pressed;
+                        renderer.cam_controller.process_mouse_button(button, pressed)
+                    }
+                    WindowEvent::MouseWheel{delta, ..} => {
+                        if let winit::event::MouseScrollDelta::LineDelta(_, dy) = delta {
+                            renderer.cam_controller.process_mouse_wheel(&mut renderer.cam, dy);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Event::RedrawRequested(_) => {
+                renderer.render(&window);
+            }
+            Event::RedrawEventsCleared => {
+                window.request_redraw();
+            }
+            _ => {}
+        }
+    });
+}
+
+fn main() {
+    let event_loop = EventLoop::new();
+    let window = winit::window::Window::new(&event_loop).unwrap();
+
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env_logger::init();
+        pollster::block_on(run(event_loop, window));
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+        console_log::init().expect("could not initialize logger");
+        use winit::platform::web::WindowExtWebSys;
+        // On wasm, append the canvas to the document body
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| doc.body())
+            .and_then(|body| {
+                body.append_child(&web_sys::Element::from(window.canvas()))
+                    .ok()
+            })
+            .expect("couldn't append canvas to document body");
+        wasm_bindgen_futures::spawn_local(run(event_loop, window));
+    }
+}

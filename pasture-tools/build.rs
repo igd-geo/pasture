@@ -1,7 +1,7 @@
 fn main() {
     let shaders = [
-        "src/bin/tri.frag",
-        "src/bin/tri.vert",
+        "src/bin/render/tri.frag",
+        "src/bin/render/tri.vert",
     ];
 
     let mut compiler = shaderc::Compiler::new().unwrap();
@@ -30,7 +30,7 @@ fn main() {
 
         // TODO: don't hardcode src/bin!
         let out_path = format!(
-            "src/bin/{}.spv",
+            "src/bin/render/{}.spv",
             path.file_name().unwrap().to_string_lossy()
         );
         std::fs::write(&out_path, &cs_spirv.as_binary_u8()).unwrap();
