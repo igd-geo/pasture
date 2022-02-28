@@ -73,6 +73,26 @@ pub fn json_arr_to_vec3f32(json_arr: &[Value]) -> Result<Vector3<f32>> {
     Ok(Vector3::new(x, y, z))
 }
 
+/// Converts an array of JSON Values into a Vector3<f64>
+pub fn json_arr_to_vec3f64(json_arr: &[Value]) -> Result<Vector3<f64>> {
+    if json_arr.len() != 3 {
+        bail!(
+            "JSON array must have length 3 to convert to Vector3<f32> (but has length {})",
+            json_arr.len()
+        )
+    }
+    let vals = json_arr
+        .iter()
+        .map(|v| v.as_f64().ok_or(anyhow!("Can't convert JSON value to f64")))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let x = vals[0];
+    let y = vals[1];
+    let z = vals[2];
+
+    Ok(Vector3::new(x, y, z))
+}
+
 pub fn json_arr_to_vec4u8(json_arr: &[Value]) -> Result<Vector4<u8>> {
     if json_arr.len() != 4 {
         bail!(

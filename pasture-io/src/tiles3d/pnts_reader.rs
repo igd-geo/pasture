@@ -27,7 +27,7 @@ use crate::{
     tiles3d::{attributes::COLOR_RGBA, json_arr_to_vec3f32, json_arr_to_vec4u8},
 };
 
-use super::PntsMetadata;
+use super::{json_arr_to_vec3f64, PntsMetadata};
 
 /// Defines how the `PntsReader` reads positions if the `RTC_CENTER` point semantic is present
 #[derive(Copy, Clone, Debug)]
@@ -202,7 +202,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let rtc_center = header
             .get("RTC_CENTER")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec3f32(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec3f64(&array),
                 _ => Err(anyhow!("RTC_CENTER value was no array entry")),
             })
             .transpose()?;
@@ -266,19 +266,18 @@ impl<R: BufRead + Seek> PntsReader<R> {
                 point_buffer.transform_attribute(
                     POSITION_3D.name(),
                     |_, position: &mut Vector3<f32>| {
-                        *position += rtc_center;
+                        *position = Vector3::new(
+                            (position.x as f64 + rtc_center.x) as f32,
+                            (position.y as f64 + rtc_center.y) as f32,
+                            (position.z as f64 + rtc_center.z) as f32,
+                        );
                     },
                 );
             } else {
-                let rtc_center_highp = Vector3::new(
-                    rtc_center.x as f64,
-                    rtc_center.y as f64,
-                    rtc_center.z as f64,
-                );
                 point_buffer.transform_attribute(
                     POSITION_3D.name(),
                     |_, position: &mut Vector3<f64>| {
-                        *position += rtc_center_highp;
+                        *position += rtc_center;
                     },
                 );
             }
