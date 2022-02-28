@@ -10,7 +10,7 @@ use pasture_core::{
 #[derive(Clone, Debug)]
 pub struct PntsMetadata {
     points_length: usize,
-    rtc_center: Option<Vector3<f32>>,
+    rtc_center: Option<Vector3<f64>>,
     quantized_volume_offset: Option<Vector3<f32>>,
     quantized_volume_scale: Option<Vector3<f32>>,
     constant_rgba: Option<Vector4<u8>>,
@@ -20,7 +20,7 @@ pub struct PntsMetadata {
 impl PntsMetadata {
     pub fn new(
         points_length: usize,
-        rtc_center: Option<Vector3<f32>>,
+        rtc_center: Option<Vector3<f64>>,
         quantized_volume_offset: Option<Vector3<f32>>,
         quantized_volume_scale: Option<Vector3<f32>>,
         constant_rgba: Option<Vector4<u8>>,
@@ -40,7 +40,10 @@ impl PntsMetadata {
         self.points_length
     }
 
-    pub fn rtc_center(&self) -> Option<Vector3<f32>> {
+    /// Access the `RTC_CENTER` field of the metadata. Note that even though the 3D Tiles spec
+    /// explicitly says this is a 3-component vector of `float32` values, it makes no sense to
+    /// use the low-precision f32 type for this field, so pasture provides it as `Vector3<f64>`
+    pub fn rtc_center(&self) -> Option<Vector3<f64>> {
         self.rtc_center
     }
 }
