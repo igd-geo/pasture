@@ -11,6 +11,7 @@ use super::{
 /// A non-owning view for a contiguous slice of interleaved point data. This is like `InterleavedVecPointBuffer`, but it
 /// does not own the point data. It is useful for passing around point data in an untyped but safe manner, for example in
 /// I/O heavy code.
+#[derive(Clone)]
 pub struct InterleavedPointView<'d> {
     point_data: &'d [u8],
     point_layout: PointLayout,
@@ -220,6 +221,7 @@ impl<'d> InterleavedPointBuffer for InterleavedPointView<'d> {
 
 /// A non-owning view for per-attribute point data. This is like `PerAttributeVecPointBuffer`, but it does not own the
 /// point data. It is useful for passing around point data in an untyped but safe manner, for example in I/O heavy code.
+#[derive(Clone)]
 pub struct PerAttributePointView<'d> {
     point_data: Vec<&'d [u8]>,
     point_layout: PointLayout,
