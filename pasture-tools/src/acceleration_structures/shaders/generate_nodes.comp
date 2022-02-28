@@ -22,7 +22,7 @@ layout(std430, set=1, binding=1) buffer Partitioning {
   uint indeces[];
 };
 
-layout (local_size_x=1, local_size_y=1, local_size_z=1) in;
+layout (local_size_x=8, local_size_y=1, local_size_z=1) in;
 
 uint[3] partitioning_order(double x, double y, double z){
   uint[] order = uint[3](0,1,2);
@@ -68,33 +68,62 @@ uint partition_run(uint start, uint end, double pivot, uint axis) {
   return j;
 }
 
-void partitioning(uint[3] axes, double[3] pivots, uint id){
+// void partitioning(uint[3] axes, double[3] pivots, uint id, uint local_thread_id){
+//   uint start = parents[id].points_start;
+//   uint end = parents[id].node_partitioning[0];
+
+//   parents[id].node_partitioning[3] = partition_run(start, end, pivots[axes[0]], axes[0]);
+
+//   parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivots[axes[1]], axes[1]);
+
+//   parents[id].node_partitioning[5] = partition_run(parents[id].node_partitioning[3], end, pivots[axes[1]], axes[1]);
+
+//   parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivots[axes[2]], axes[2]);
+
+//   parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivots[axes[2]], axes[2]);
+
+//   parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivots[axes[2]], axes[2]);
+
+//   parents[id].node_partitioning[6] = partition_run(parents[id].node_partitioning[5], end, pivots[axes[2]], axes[2]);
+
+//   parents[id].node_partitioning[7] = end;
+// }
+void partition_pass_first(uint axis, double pivot, uint id, uint thread_id) {
   uint start = parents[id].points_start;
-  uint end = parents[id].node_partitioning[0];
-  
-  parents[id].node_partitioning[3] = partition_run(start, end, pivots[axes[0]], axes[0]);
-  
-  parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivots[axes[1]], axes[1]);
-  parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivots[axes[2]], axes[2]);
-  parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivots[axes[2]], axes[2]);
-  parents[id].node_partitioning[5] = partition_run(parents[id].node_partitioning[3], end, pivots[axes[1]], axes[1]);
-  
-  parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivots[axes[2]], axes[2]);
-  parents[id].node_partitioning[6] = partition_run(parents[id].node_partitioning[5], end, pivots[axes[2]], axes[2]);
+  uint end = parents[id].points_end;
+  parents[id].node_partitioning[3] = partition_run(start, end, pivot, axis);
   parents[id].node_partitioning[7] = end;
+}
+void partition_pass_second(uint axis, double pivot, uint id, uint thread_id) {
+  uint start = parents[id].points_start;
+  uint end = parents[id].points_end;
+  switch(thread_id) {
+    case 0: parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivot, axis);
+    break;
+    case 1: parents[id].node_partitioning[5] = partition_run(parents[id].node_partitioning[3], end, pivot, axis);
+    break;
+  }
+}
+void partition_pass_third(uint axis, double pivot, uint id, uint thread_id){
+  uint start = parents[id].points_start;
+  uint end = parents[id].points_end;
+  switch(thread_id) {
+    case 0: parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivot, axis);
+    break;
+    case 1: parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivot, axis);
+    break;
+    case 2: parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivot, axis);
+    break;
+    case 3: parents[id].node_partitioning[6] = partition_run(parents[id].node_partitioning[5], end, pivot, axis);
+  }
 }
 
 bool[3] partitioned_to_right(uint[3] partition_order, uint index){
   bool[3] on_right_side = bool[3](false, false, false);
-  if(index % 2 != 0){
-    on_right_side[partition_order[2]] = true;
-  }
-  if(index >= 2 && index <= 3 || index >= 6){
-    on_right_side[partition_order[1]] = true;
-  }
-  if(index >= 4){
-    on_right_side[partition_order[0]] = true;
-  }
+
+  on_right_side[partition_order[2]] = index % 2 != 0;
+  on_right_side[partition_order[1]] = index >= 2 && index <= 3 || index >= 6;
+  on_right_side[partition_order[0]] = index >= 4;
   return on_right_side;
 }
 
@@ -104,20 +133,19 @@ double[2][3] get_childs_bounds(uint[3] partition_order, double[3] partition_axes
   if(child_index == 0) {
     bounds_min = parent.bounds_min;
     bounds_max = partition_axes;
+    return double[2][3](bounds_min, bounds_max);
   }
-  else {
-    bool[3] on_right_side = partitioned_to_right(partition_order, child_index);
-    for(uint k = 0; k < 3; ++k){
-      bounds_min[k] = on_right_side[k] ? partition_axes[k] : parent.bounds_min[k];
-      bounds_max[k] = on_right_side[k] ? parent.bounds_max[k] : partition_axes[k];
-
-    }
+  bool[3] on_right_side = partitioned_to_right(partition_order, child_index);
+  for(uint k = 0; k < 3; ++k){
+    bounds_min[k] = on_right_side[k] ? partition_axes[k] : parent.bounds_min[k];
+    bounds_max[k] = on_right_side[k] ? parent.bounds_max[k] : partition_axes[k];
   }
   return double[2][3](bounds_min, bounds_max);
 }
 
 void main() {
   uint idx = gl_WorkGroupID.x;
+  uint thread_idx = gl_LocalInvocationID.x;
   Node parent = parents[idx];
 
   double x_diff = parent.bounds_max[0] - parent.bounds_min[0];
@@ -129,31 +157,39 @@ void main() {
   double[3] partition_pivots = double[3](x_partition, y_partition, z_partition);
   uint[3] partition_order = partitioning_order(abs(x_diff), abs(y_diff), abs(z_diff));
   
-  partitioning(partition_order, partition_pivots, idx);
+  //partitioning(partition_order, partition_pivots, idx, thread_idx);
+  if(thread_idx == 0){
+    partition_pass_first(partition_order[0], partition_pivots[0], idx, thread_idx);
+  }
+  if(thread_idx < 2) {
+    partition_pass_second(partition_order[1], partition_pivots[1], idx, thread_idx);
+  }
+  if(thread_idx < 4) {
+    partition_pass_third(partition_order[2], partition_pivots[2], idx, thread_idx);
+  }
+  
+  if(thread_idx == 0) {
+    parents[idx].points_per_partition[thread_idx] = parents[idx].node_partitioning[thread_idx] - parents[idx].points_start;
+  } 
+  else {
+   parents[idx].points_per_partition[thread_idx] = parents[idx].node_partitioning[thread_idx] - parents[idx].node_partitioning[thread_idx - 1];
+  }
+  
+  if(thread_idx == 0) {
+    children[idx * 8 + thread_idx].points_start = parents[idx].points_start;
+  } else {
+    children[idx * 8 + thread_idx].points_start = parents[idx].node_partitioning[thread_idx - 1];
+  }
+  children[idx * 8 + thread_idx].points_per_partition[0] = parents[idx].points_per_partition[thread_idx];
+  children[idx * 8 + thread_idx].points_end = parents[idx].node_partitioning[thread_idx];
+  children[idx * 8 + thread_idx].node_partitioning[0] = children[idx * 8 + thread_idx].points_end;
+  double[2][3] child_bounds = get_childs_bounds(
+    partition_order,
+    double[3](x_partition, y_partition, z_partition),
+    thread_idx,
+    parent
+  );
+  children[idx * 8 + thread_idx].bounds_min = child_bounds[0];
+  children[idx* 8 + thread_idx].bounds_max = child_bounds[1];
 
-  for(uint i = 0; i < 8; ++i){
-    if(i == 0) {
-      parents[idx].points_per_partition[i] = parents[idx].node_partitioning[i] - parents[idx].points_start;
-    } else {
-    parents[idx].points_per_partition[i] = parents[idx].node_partitioning[i] - parents[idx].node_partitioning[i-1];
-    }
-  }
-  for(uint i = 0; i < 8; ++i){
-    if(i == 0) {
-      children[idx * 8 + i].points_start = parents[idx].points_start;
-    } else {
-      children[idx * 8 + i].points_start = parents[idx].node_partitioning[i - 1];
-    }
-    children[idx * 8 + i].points_per_partition[0] = parents[idx].points_per_partition[i];
-    children[idx * 8 + i].points_end = parents[idx].node_partitioning[i];
-    children[idx * 8 + i].node_partitioning[0] = children[idx * 8 + i].points_end;
-    double[2][3] child_bounds = get_childs_bounds(
-      partition_order,
-      double[3](x_partition, y_partition, z_partition),
-      i,
-      parent
-    );
-    children[idx * 8 + i].bounds_min = child_bounds[0];
-    children[idx* 8 + i].bounds_max = child_bounds[1];
-  }
 }

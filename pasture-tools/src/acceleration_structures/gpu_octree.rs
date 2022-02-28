@@ -4,13 +4,14 @@ use pasture_core::{
     math::AABB,
     nalgebra::{Point3, Vector3},
 };
-
+use priority_queue::DoublePriorityQueue;
+use ordered_float::OrderedFloat;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem;
 use std::time;
+use std::thread;
 use wgpu::util::DeviceExt;
-use bitvec::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct OctreeNode {
@@ -22,15 +23,22 @@ pub struct OctreeNode {
     point_end: u32,
 }
 
-pub struct GpuOctree<'a> {
+pub struct GpuOctree{
     gpu_device: wgpu::Device,
     gpu_queue: wgpu::Queue,
-    point_buffer: &'a dyn PointBuffer,
+    point_buffer: Vec<Vector3<f64>>,
+    raw_points: Vec<u8>,
     point_partitioning: Vec<u32>,
     root_node: Option<OctreeNode>,
     depth: u32,
     bounds: AABB<f64>,
     points_per_node: u32,
+}
+
+enum OctreeRelation {
+    In,
+    Out,
+    Partial,
 }
 
 impl OctreeNode {
@@ -113,6 +121,7 @@ impl OctreeNode {
             .collect();
         let mut rest_iter = rest_data.iter_mut();
         let mut node_partitioning = [0u32; 8];
+        use std::sync::{mpsc::channel, Arc, Mutex};
         for i in 0..8 {
             node_partitioning[i] = *rest_iter.next().unwrap();
         }
@@ -133,16 +142,40 @@ impl OctreeNode {
             point_end: points_end,
         }
     }
-    /// Checks if `pos` is within the bounds of the node.
-    fn contains(&self, pos: Point3<f64>) -> bool {
-        self.bounds.contains(&pos)
-    }
 
-    fn get_closest_child(pos: Point3<f64>) -> u32 {
-        let child_id = 0;
+    fn relation_to_point(&self, pos: &Vector3<f64>, radius: f64) -> OctreeRelation {
+        let node_extent = self.bounds.extent();
+        let node_center = self.bounds.center().coords;
+        let x_diff = (pos.x - node_center.x).abs();
+        let y_diff = (pos.y - node_center.y).abs();
+        let z_diff = (pos.z - node_center.z).abs();
 
-        child_id
+        // Point and radius outside of node
+        let max_diff = Vector3::new(
+            node_extent.x / 2. + radius,
+            node_extent.y / 2. + radius,
+            node_extent.z / 2. + radius
+        );
+        if x_diff >= max_diff.x || y_diff >= max_diff.y || z_diff >= max_diff.z {
+            return OctreeRelation::Out;
+        }
+        let radius_squared = radius * radius;
+        if x_diff <= node_extent.x || y_diff <= node_extent.y || z_diff <= node_extent.z {
+            let radius_squared = radius * radius;
+            let distance_squared = f64::powi(x_diff + node_extent.x * 0.5, 2) + f64::powi(y_diff + node_extent.y * 0.5, 2) + f64::powi(z_diff + node_extent.z * 0.5, 2);
+            // Whole Node lies within radius
+            if radius_squared >= distance_squared {
+                return OctreeRelation::In;
+            }
+            return OctreeRelation::Partial;
+        }
+        let distance_squared = f64::powi(x_diff - node_extent.x * 0.5, 2) + f64::powi(y_diff - node_extent.y * 0.5, 2) + f64::powi(z_diff - node_extent.z * 0.5, 2);
+        if radius_squared >= distance_squared{
+            return OctreeRelation::Partial;
+        }
+        return OctreeRelation::Out;
     }
+    
 }
 
 impl fmt::Display for OctreeNode {
@@ -164,7 +197,7 @@ impl fmt::Display for OctreeNode {
     }
 }
 
-impl<'a> GpuOctree<'a> {
+impl GpuOctree {
     /// Creates an empty Octree accelerated by the GPU.
     /// 
     /// `point_buffer`: pasture buffer containing the point cloud data
@@ -176,10 +209,10 @@ impl<'a> GpuOctree<'a> {
     /// The generated instance has no constructed octree. To get the octree,
     /// run `construct()`.
     pub async fn new(
-        point_buffer: &'a dyn PointBuffer,
+        point_buffer: & dyn PointBuffer,
         max_bounds: AABB<f64>,
         points_per_node: u32,
-    ) -> Result<GpuOctree<'a>, wgpu::RequestDeviceError> {
+    ) -> Result<GpuOctree, wgpu::RequestDeviceError> {
         if points_per_node < 1 {
             panic!("Cannot build octree with less than 1 point per node!")
         }
@@ -203,10 +236,25 @@ impl<'a> GpuOctree<'a> {
             )
             .await?;
             
+        let mut points: Vec<Vector3<f64>> = Vec::new();
+        let point_iter = AttributeIteratorByValue::new(point_buffer, &attributes::POSITION_3D);
+        for point in point_iter {
+            points.push(point);
+        }
+
+        let point_count = point_buffer.len();
+        let mut raw_points = vec![0u8; 24 * point_count];
+        point_buffer.get_raw_attribute_range(
+            0..point_count,
+            &attributes::POSITION_3D,
+            raw_points.as_mut_slice(),
+        );
+
         Ok(GpuOctree {
             gpu_device: device,
             gpu_queue: queue,
-            point_buffer,
+            point_buffer: points,
+            raw_points,
             point_partitioning: (0..point_buffer.len() as u32).collect(),
             root_node: None,
             depth: 0,
@@ -227,18 +275,8 @@ impl<'a> GpuOctree<'a> {
     pub async fn construct(&mut self) {
         let point_count = self.point_buffer.len();
         
-        // point cloud data, later uploaded to GPU
-        let mut raw_points = vec![0u8; 24 * point_count];
-        let now = time::Instant::now();
-        self.point_buffer.get_raw_attribute_range(
-            0..point_count,
-            &attributes::POSITION_3D,
-            raw_points.as_mut_slice(),
-        );
-        let elapsed = now.elapsed();
-        println!("Octree - Getting raw point data took {} ms", elapsed.as_millis());
-
-        let now = time::Instant::now();
+        let mut raw_points = &self.raw_points;
+        
         let mut compiler = shaderc::Compiler::new().unwrap();
         let comp_shader = include_str!("shaders/generate_nodes.comp");
         let comp_spirv = compiler
@@ -360,25 +398,25 @@ impl<'a> GpuOctree<'a> {
 
         let mut current_nodes = vec![&mut root_node];
 
-        let raw_indeces: Vec<u8> = (0u32..point_count as u32)
-            .flat_map(|x| x.to_le_bytes().to_vec())
-            .collect();
-
+        let index_range: Vec<u32> = (0u32..point_count as u32).map(u32::from).collect::<Vec<u32>>();
+        let raw_indeces: &[u8] = bytemuck::cast_slice(index_range.as_slice());
         let point_index_buffer =
             self.gpu_device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("IndexBuffer"),
-                    contents: &raw_indeces.as_slice(),
+                    contents: &raw_indeces,
                     usage: wgpu::BufferUsages::COPY_SRC
                         | wgpu::BufferUsages::COPY_DST
                         | wgpu::BufferUsages::STORAGE,
                 });
+        
         let index_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CPU_IndexBuffer"),
             size: raw_indeces.len() as u64,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
+        
         let points_bind_group = self
             .gpu_device
             .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -395,11 +433,8 @@ impl<'a> GpuOctree<'a> {
                     },
                 ],
             });
-            let elapsed = now.elapsed();
-            println!("Octree - GPU prep took {} ms", elapsed.as_millis());
-        let now_compute = time::Instant::now();
         while !current_nodes.is_empty() {
-            let now = time::Instant::now();
+            let num_threads = current_nodes.len();
             // Nodes buffers are created inside the loop, as their size changes per iteration
             let child_buffer_size = 8 * (OctreeNode::size() * current_nodes.len()) as u64; 
             let child_nodes_buffer_staging =
@@ -418,7 +453,7 @@ impl<'a> GpuOctree<'a> {
                     | wgpu::BufferUsages::STORAGE,
                 mapped_at_creation: false,
             });
-
+            
             let mut parent_nodes_raw = Vec::new();
             for node in &current_nodes {
                 parent_nodes_raw.append(&mut node.into_raw());
@@ -496,40 +531,20 @@ impl<'a> GpuOctree<'a> {
 
             self.gpu_queue.submit(Some(encoder.finish()));
 
-            let index_slice = index_buffer_staging.slice(..);
-            let mapped_future = index_slice.map_async(wgpu::MapMode::Read);
-
-            self.gpu_device.poll(wgpu::Maintain::Wait);
-            // Read in the changes of the global point partitioning
-            if let Ok(()) = mapped_future.await {
-                let mapped_index_buffer = index_slice.get_mapped_range();
-                let index_vec = mapped_index_buffer.to_vec();
-                let indices: Vec<u32> = index_vec
-                    .chunks_exact(4)
-                    .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
-                    .collect();
-
-                self.point_partitioning = indices.clone();
-
-                drop(mapped_index_buffer);
-                index_buffer_staging.unmap();
-            }
-
             let parents_slice = parent_nodes_buffer_staging.slice(..);
             let parents_future = parents_slice.map_async(wgpu::MapMode::Read);
-
+            let children_slice = child_nodes_buffer_staging.slice(..);
+            let children_future = children_slice.map_async(wgpu::MapMode::Read);
+            
             self.gpu_device.poll(wgpu::Maintain::Wait);
             if let Ok(()) = parents_future.await {
+                let download_now = time::Instant::now();
                 let mapped_nodes_data = parents_slice.get_mapped_range();
                 let mapped_node_buffer = mapped_nodes_data.to_vec();
                 let nodes: Vec<OctreeNode> = mapped_node_buffer
                     .chunks_exact(OctreeNode::size())
                     .map(|b| OctreeNode::from_raw(b.to_vec()))
                     .collect();
-
-                let children_slice = child_nodes_buffer_staging.slice(..);
-                let children_future = children_slice.map_async(wgpu::MapMode::Read);
-                self.gpu_device.poll(wgpu::Maintain::Wait);
 
                 if let Ok(()) = children_future.await {
                     let mapped_children_data = children_slice.get_mapped_range();
@@ -538,7 +553,6 @@ impl<'a> GpuOctree<'a> {
                         .chunks_exact(OctreeNode::size())
                         .map(|b| OctreeNode::from_raw(b.to_vec()))
                         .collect();
-                    let mut generated_children: Vec<&mut OctreeNode> = Vec::new();
                     for mut node in nodes {
                         let children_sizes = node.points_per_partition.clone();
 
@@ -561,7 +575,7 @@ impl<'a> GpuOctree<'a> {
                             if children_sizes[child_index] != 0
                                 && !child.is_leaf(self.points_per_node)
                             {
-                                generated_children.push(child);
+                                current_nodes.push(child);
                             } else {
                                 num_leaves += 1;
                             }
@@ -570,7 +584,6 @@ impl<'a> GpuOctree<'a> {
                             child_index += 1;
                         }
                     }
-                    current_nodes.append(&mut generated_children);
                     drop(mapped_nodes_data);
                     parent_nodes_buffer_staging.unmap();
                     drop(mapped_children_data);
@@ -581,15 +594,32 @@ impl<'a> GpuOctree<'a> {
                     child_nodes_buffer_staging.destroy();
                 }
             }
+            
             let work_done = self.gpu_queue.on_submitted_work_done();
             work_done.await;
 
             tree_depth += 1;
-            let elapsed = now.elapsed();
-            println!("Octree - Compute Pass took {} ms", elapsed.as_millis());
+
         }
-        let elapsed = now_compute.elapsed();
-        println!("Octree - Whole Computation loop took {} ms", elapsed.as_millis());
+        
+        let index_slice = index_buffer_staging.slice(..);
+        let mapped_future = index_slice.map_async(wgpu::MapMode::Read);
+
+        self.gpu_device.poll(wgpu::Maintain::Wait);
+        // Read in the changes of the global point partitioning
+        if let Ok(()) = mapped_future.await {
+            let mapped_index_buffer = index_slice.get_mapped_range();
+            let index_vec = mapped_index_buffer.to_vec();
+            let indices: Vec<u32> = index_vec
+                .chunks_exact(4)
+                .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                .collect();
+
+            self.point_partitioning = indices.clone();
+
+            drop(mapped_index_buffer);
+            index_buffer_staging.unmap();
+        }
         gpu_point_buffer.destroy();
         point_index_buffer.destroy();
         index_buffer_staging.destroy();
@@ -603,87 +633,94 @@ impl<'a> GpuOctree<'a> {
         return indices;
     }
 
-    fn deepest_octant(&self, node: &'a OctreeNode, pos: Point3<f64>, max_distance: f64) -> &'a OctreeNode {
-        if let Some(children) = node.children.as_ref() {
-            for child in children.iter() {
-                let bounds_extent = child.bounds.extent();
-                if !child.is_leaf(self.points_per_node)
-                    && child.contains(pos)
-                    && bounds_extent.x >= max_distance * 2.0
-                    && bounds_extent.y >= max_distance * 2.0
-                    && bounds_extent.z >= max_distance * 2.0
-                    {
-                    return self.deepest_octant(child, pos, max_distance);
-                }
-            }
+    pub fn k_nearest_neighbors(&self, pos: Vector3<f64>, radius: f64, k: usize) -> Vec<u32> {
+        if k < 1 {
+            return vec![];
         }
-        node
-    }
-    fn nearest_neighbor_helper(&self, pos: &Point3<f64>, dist: f64, node: &OctreeNode) -> Option<u32> {
-        let mut axes: Vector3<f64> = 0.5 * (node.bounds.max() - node.bounds.min());
-        axes += Vector3::new(node.bounds.min().x, node.bounds.min().y, node.bounds.min().z);
-        let pos_vector = Vector3::new(pos.x, pos.y, pos.z);
-        let mut nearest_index: Option<u32> = None;
-        let mut shortest_distance = f64::MAX;
-        if let Some(children) = node.children.as_ref() {
-            // Sort children according to proximity to pos
-            let mut sorted_children: Vec<&OctreeNode> = Vec::new();
-            for i in 0..8 {
-                let mut k = 0;
-                let mut center = 0.5 * (children[i].bounds.max() - children[i].bounds.min());
-                center += Vector3::new(children[i].bounds.min().x, children[i].bounds.min().y, children[i].bounds.min().z);
-                let curr_dist = center.metric_distance(&pos_vector);
-                for c in sorted_children.iter(){
-                    let sorted_center = 0.5 * (c.bounds.max() - c.bounds.min()) + Vector3::new(c.bounds.min().x, c.bounds.min().y, c.bounds.min().z);
-                    let sorted_dist = sorted_center.metric_distance(&pos_vector);
-                    if sorted_dist < curr_dist {
-                        k += 1;
-                    }
-                }
-                sorted_children.insert(k, &children[i]);
-                
-            }
-            for c in sorted_children.iter(){
-                if let None = nearest_index {
-                    nearest_index = self.nearest_neighbor_helper(pos, dist, c);
-                    if let Some(index) = nearest_index {
-                        let point = self.point_buffer.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D, index as usize);
-                        shortest_distance = point.metric_distance(&pos_vector);
-                    }
-                }
-                else {
-                    let current_nearest = self.nearest_neighbor_helper(pos, dist, c);
-                    if let Some(index) = current_nearest {
-                        let point = self.point_buffer.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D, current_nearest.unwrap() as usize);
-                        let curr_dist = point.metric_distance(&pos_vector);
-                        if curr_dist < shortest_distance {
-                            nearest_index = current_nearest;
-                            shortest_distance = curr_dist;
+        let node = self.root_node.as_ref().unwrap();
+        let mut worklist = vec![node];
+        let point_buffer = &self.point_buffer;
+        let mut points = DoublePriorityQueue::new();
+
+        if pos.x - radius > node.bounds.max().x ||
+            pos.x + radius < node.bounds.min().x ||
+            pos.y - radius > node.bounds.max().y ||
+            pos.y + radius < node.bounds.min().y ||
+            pos.z - radius > node.bounds.max().z ||
+            pos.z + radius < node.bounds.min().z 
+        {
+            return vec![];
+        }
+        let radius_squared = radius * radius;
+        while !worklist.is_empty() {
+            let node = worklist.pop().unwrap();
+            if node.is_leaf(self.points_per_node) {
+                let point_indices = self.get_points(node);
+                for i in point_indices.iter() {
+                    let point = point_buffer[*i as usize];
+                    let curr_dist = point - pos;
+                    let curr_dist = f64::powi(curr_dist.x, 2) + f64::powi(curr_dist.y, 2) + f64::powi(curr_dist.z, 2);
+                    if  curr_dist <= radius_squared{
+                        if points.len() >= k {
+                            let (_, dist) = points.peek_max().unwrap();
+                            if *dist > OrderedFloat(curr_dist) {
+                                points.pop_max();
+                                points.push(i.clone(), OrderedFloat(curr_dist));
+                            }
+                        }
+                        else {
+                            points.push(i.clone(), OrderedFloat(curr_dist));
                         }
                     }
                 }
+                let point_indices: Vec<u32> = self.get_points(node);
             }
-            
-        }
-        else if !node.is_empty(){
-            let point_indices = self.get_points(node);
-            for i in point_indices.iter() {
-                let point = self.point_buffer.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D, *i as usize);
-                let curr_dist = point.metric_distance(&pos_vector);
+            else {
                 
-                if  curr_dist <= dist && curr_dist < shortest_distance {
-                    shortest_distance = curr_dist;
-                    nearest_index = Some(i.clone())
-                }
+                match node.relation_to_point(&pos, radius) {
+                    OctreeRelation::In => {
+                        //let now = time::Instant::now();
+                        let point_indices = self.get_points(node);
+                        for i in point_indices.iter() {
+                            let point = point_buffer[*i as usize];
+                            let curr_dist = point - pos;
+                            let curr_dist = f64::powi(curr_dist.x, 2) + f64::powi(curr_dist.y, 2) + f64::powi(curr_dist.z, 2);
+                            //let curr_dist = curr_dist.x * curr_dist.x + curr_dist.y * curr_dist.y + curr_dist.z * curr_dist.z;
+                            if  curr_dist <= radius_squared {
+                                if points.len() >= k {
+                                    let (_, dist) = points.peek_max().unwrap();
+                                    if *dist > OrderedFloat(curr_dist) {
+                                        points.pop_max();
+                                        points.push(i.clone(), OrderedFloat(curr_dist));
+                                    }
+                                }
+                                else {
+                                    points.push(i.clone(), OrderedFloat(curr_dist));
+                                }
+                            }
+                        }
+                    }
+                    OctreeRelation::Partial => {
+                        if let Some(children) = node.children.as_ref() {
+                            children.iter().for_each(|c| {
+                                if !c.is_empty(){ 
+                                    worklist.push(c);
+                                }
+                            });
+                        }
+                    }
+                    OctreeRelation::Out => {}
+                }; 
             }
         }
-        nearest_index
-    }
-
-    pub fn nearest_neighbor(&self, pos: Point3<f64>, max_distance: f64) -> Option<u32> {
-        let node = self.deepest_octant(self.root_node.as_ref().unwrap(), pos, max_distance);
-        let neighbor = self.nearest_neighbor_helper(&pos, max_distance, &node);
-        neighbor
+        if points.is_empty() {
+            return vec![];
+        }
+        let mut nearest = points.into_ascending_sorted_vec();
+        nearest.truncate(k);
+        
+        return nearest;
+        
     }
 
 }
@@ -703,9 +740,10 @@ mod tests {
     use tokio;
 
     static FILE: &'static str = //"/home/jnoice/Downloads/WSV_Pointcloud_Tile-3-1.laz"
-                                "/home/jnoice/Downloads/interesting.las"
+                                //"/home/jnoice/Downloads/interesting.las"
                                 //"/home/jnoice/Downloads/45123H3316.laz"
                                 //"/home/jnoice/Downloads/OR_Camp_Creek_OLC_2008_000001.laz"
+                                "/home/jnoice/Downloads/portland.laz"
                                 ;
     #[tokio::test]
     async fn check_correct_bounds() {

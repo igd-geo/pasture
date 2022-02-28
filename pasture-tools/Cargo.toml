@@ -24,6 +24,8 @@ pretty_env_logger = "0.4.0"
 plotters = "^0.3.0"
 rand = {version = "0.8.3", features = ["small_rng"] }
 tokio = { version = "1.16.1", features = ["full"] }
+priority-queue = "1.2.1"
+ordered-float = "2.10.0"
 
 #gpu related
 wgpu = { version = "0.12.0", features = ["spirv"], optional = true }

@@ -1,7 +1,7 @@
 use crate::layout;
-use wgpu::util::DeviceExt;
 use std::collections::BTreeMap;
 use std::ops::BitOr;
+use wgpu::util::DeviceExt;
 
 /// The base structure used to get access to the GPU. In addition it handles things like
 /// shader compilation and the actual dispatch of work to the GPU.
@@ -66,18 +66,19 @@ impl<'a> Device<'a> {
     ///     };
     /// });
     /// ```
-    pub async fn new(device_options: DeviceOptions) -> Result<Device<'a>, wgpu::RequestDeviceError> {
+    pub async fn new(
+        device_options: DeviceOptions,
+    ) -> Result<Device<'a>, wgpu::RequestDeviceError> {
         // == Create an instance from the desired backend =========================================
 
         let backend_bits = match device_options.device_backend {
             // DeviceBackend::Primary => { wgpu::Backends::PRIMARY }
             // DeviceBackend::Secondary => { wgpu::Backends::SECONDARY }
-            DeviceBackend::Vulkan => { wgpu::Backends::VULKAN }
-            // DeviceBackend::Metal => { wgpu::Backends::METAL }
-            // DeviceBackend::Dx12 => { wgpu::Backends::DX12 }
-            // DeviceBackend::Dx11 => { wgpu::Backends::DX11 }
-            // DeviceBackend::OpenGL => { wgpu::Backends::GL }
-            // DeviceBackend::Browser => { wgpu::Backends::BROWSER_WEBGPU }
+            DeviceBackend::Vulkan => wgpu::Backends::VULKAN, // DeviceBackend::Metal => { wgpu::Backends::METAL }
+                                                             // DeviceBackend::Dx12 => { wgpu::Backends::DX12 }
+                                                             // DeviceBackend::Dx11 => { wgpu::Backends::DX11 }
+                                                             // DeviceBackend::OpenGL => { wgpu::Backends::GL }
+                                                             // DeviceBackend::Browser => { wgpu::Backends::BROWSER_WEBGPU }
         };
 
         let instance = wgpu::Instance::new(backend_bits);
@@ -92,13 +93,13 @@ impl<'a> Device<'a> {
         // The adapter gives us a handle to the actual device.
         // We can query some GPU information, such as the device name, its type (discrete vs integrated)
         // or the backend that is being used.
-        let adapter = instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: power_pref,
                 compatible_surface: None,
                 force_fallback_adapter: false,
-            }
-        ).await;
+            })
+            .await;
 
         let adapter = match adapter {
             Some(a) => a,
@@ -107,12 +108,17 @@ impl<'a> Device<'a> {
 
         // == Create a device and a queue from the given adapter ==================================
 
-        if !adapter.features().contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS) {
+        if !adapter
+            .features()
+            .contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS)
+        {
             return Result::Err(wgpu::RequestDeviceError);
         }
 
         let features = match device_options.use_adapter_features {
-            true => adapter.features().bitor(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS),
+            true => adapter
+                .features()
+                .bitor(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS),
             false => wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
         };
 
@@ -121,14 +127,16 @@ impl<'a> Device<'a> {
             false => wgpu::Limits::default(),
         };
 
-        let (wgpu_device, wgpu_queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("wgpu_device_and_queue"),
-                features,
-                limits,
-            },
-            None,
-        ).await?;
+        let (wgpu_device, wgpu_queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("wgpu_device_and_queue"),
+                    features,
+                    limits,
+                },
+                None,
+            )
+            .await?;
 
         // == Other fields =========================================================================
 
@@ -161,12 +169,18 @@ impl<'a> Device<'a> {
 
     /// Displays the features that the physical GPU is able to support.
     pub fn print_adapter_features(&self) {
-        println!("Features supported by the adapter: {:?}", self.adapter.features());
+        println!(
+            "Features supported by the adapter: {:?}",
+            self.adapter.features()
+        );
     }
 
     /// Displays the features that are currently active.
     pub fn print_active_features(&self) {
-        println!("Currently active features: {:?}", self.wgpu_device.features());
+        println!(
+            "Currently active features: {:?}",
+            self.wgpu_device.features()
+        );
     }
 
     /// Displays the default limits that are likely supported by all devices.
@@ -176,7 +190,10 @@ impl<'a> Device<'a> {
 
     /// Displays the best limits the physical GPU can support.
     pub fn print_adapter_limits(&self) {
-        println!("\"Best\" limits supported by the adapter: {:?}", self.adapter.limits());
+        println!(
+            "\"Best\" limits supported by the adapter: {:?}",
+            self.adapter.limits()
+        );
     }
 
     /// Displays the limits that are currently active.
@@ -191,46 +208,46 @@ impl<'a> Device<'a> {
     /// * `uniform_as_bytes` - the uniform's content as bytes. Make sure it's correctly aligned
     ///                        according to the `std140` layout rules.
     /// * `binding` - the binding at which the uniform buffer object is set in the shader.
-    pub fn create_uniform_bind_group(&self, uniform_as_bytes: &[u8], binding: u32) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+    pub fn create_uniform_bind_group(
+        &self,
+        uniform_as_bytes: &[u8],
+        binding: u32,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
         // TODO: separate buffer from bind group -> should probably become part of Device state
-        let uniform_buffer = self.wgpu_device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("uniform_buffer"),
-                contents: uniform_as_bytes,
-                usage: wgpu::BufferUsages::UNIFORM,
-            }
-        );
+        let uniform_buffer =
+            self.wgpu_device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("uniform_buffer"),
+                    contents: uniform_as_bytes,
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
 
-        let uniform_bind_group_layout = self.wgpu_device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                label: Some("uniform_bind_group_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
+        let uniform_bind_group_layout =
+            self.wgpu_device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("uniform_bind_group_layout"),
+                    entries: &[wgpu::BindGroupLayoutEntry {
                         binding,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: None
+                            min_binding_size: None,
                         },
-                        count: None
-                    }
-                ],
-            }
-        );
+                        count: None,
+                    }],
+                });
 
-        let uniform_bind_group = self.wgpu_device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
+        let uniform_bind_group = self
+            .wgpu_device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("uniform_bind_group"),
                 layout: &uniform_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding,
-                        resource: uniform_buffer.as_entire_binding(),
-                    },
-                ],
-            }
-        );
+                entries: &[wgpu::BindGroupEntry {
+                    binding,
+                    resource: uniform_buffer.as_entire_binding(),
+                }],
+            });
 
         (uniform_bind_group_layout, uniform_bind_group)
     }
@@ -238,7 +255,12 @@ impl<'a> Device<'a> {
     /// Associate a bind group and its layout with a given set on the shader side.
     /// Eg. if on the shader we have a buffer with `layout(std430, set=2, binding=0)`,
     /// then the passed in `index` should equal 2.
-    pub fn set_bind_group(&mut self, index: u32, bind_group_layout: &'a wgpu::BindGroupLayout, bind_group: &'a wgpu::BindGroup) {
+    pub fn set_bind_group(
+        &mut self,
+        index: u32,
+        bind_group_layout: &'a wgpu::BindGroupLayout,
+        bind_group: &'a wgpu::BindGroup,
+    ) {
         let bind_group_pair = BindGroupPair {
             bind_group_layout,
             bind_group,
@@ -253,7 +275,7 @@ impl<'a> Device<'a> {
             &wgpu::ShaderModuleDescriptor {
                 label: Some("wgsl_computer_shader_module"),
                 source: wgpu::ShaderSource::Wgsl(wgsl_compute_shader_src.into()),
-            }
+            },
         ));
 
         let pipeline = self.create_compute_pipeline(self.cs_module.as_ref().unwrap());
@@ -270,7 +292,10 @@ impl<'a> Device<'a> {
         self.compute_pipeline = Some(pipeline);
     }
 
-    fn compile_glsl_and_create_compute_module(&self, compute_shader_src: &str) -> Option<wgpu::ShaderModule> {
+    fn compile_glsl_and_create_compute_module(
+        &self,
+        compute_shader_src: &str,
+    ) -> Option<wgpu::ShaderModule> {
         // WebGPU wants its shaders pre-compiled in binary SPIR-V format.
         // So we'll take the source code of our compute shader and compile it
         // with the help of the shaderc crate.
@@ -289,35 +314,37 @@ impl<'a> Device<'a> {
         // Now with the binary data we can create and return our ShaderModule,
         // which will be executed on the GPU within our compute pipeline.
         Some(
-            self.wgpu_device.create_shader_module(&wgpu::ShaderModuleDescriptor {
-                label: Some("glsl_compute_shader_module"),
-                source: cs_data,
-            })
+            self.wgpu_device
+                .create_shader_module(&wgpu::ShaderModuleDescriptor {
+                    label: Some("glsl_compute_shader_module"),
+                    source: cs_data,
+                }),
         )
     }
 
     fn create_compute_pipeline(&self, cs_module: &wgpu::ShaderModule) -> wgpu::ComputePipeline {
-        let layouts = self.bind_group_data
+        let layouts = self
+            .bind_group_data
             .values()
             .map(|pair| pair.bind_group_layout)
             .collect::<Vec<&'a wgpu::BindGroupLayout>>();
 
-        let compute_pipeline_layout = self.wgpu_device.create_pipeline_layout(
-            &wgpu::PipelineLayoutDescriptor {
-                label: Some("compute_pipeline_layout"),
-                bind_group_layouts: layouts.as_slice(),
-                push_constant_ranges: &[],
-            }
-        );
+        let compute_pipeline_layout =
+            self.wgpu_device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("compute_pipeline_layout"),
+                    bind_group_layouts: layouts.as_slice(),
+                    push_constant_ranges: &[],
+                });
 
-        let compute_pipeline = self.wgpu_device.create_compute_pipeline(
-            &wgpu::ComputePipelineDescriptor {
-                label: Some("compute_pipeline"),
-                layout: Some(&compute_pipeline_layout),
-                module: &cs_module,
-                entry_point: "main",
-            }
-        );
+        let compute_pipeline =
+            self.wgpu_device
+                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("compute_pipeline"),
+                    layout: Some(&compute_pipeline_layout),
+                    module: &cs_module,
+                    entry_point: "main",
+                });
 
         compute_pipeline
     }
@@ -333,15 +360,16 @@ impl<'a> Device<'a> {
         // The resulting CommandBuffer can then be submitted to the GPU via a Queue.
         // Signal the end of the batch with CommandEncoder#finish().
         let mut encoder =
-            self.wgpu_device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("command_encoder") });
+            self.wgpu_device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("command_encoder"),
+                });
 
         {
             // The compute pass will start ("dispatch") our compute shader.
-            let mut compute_pass = encoder.begin_compute_pass(
-                &wgpu::ComputePassDescriptor {
-                    label: Some("compute_pass")
-                }
-            );
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("compute_pass"),
+            });
             compute_pass.set_pipeline(self.compute_pipeline.as_ref().unwrap());
 
             for (i, bind_group_pair) in self.bind_group_data.values().enumerate() {
@@ -390,7 +418,9 @@ pub enum DevicePower {
 
 impl Default for DevicePower {
     /// Default is [DevicePower::Low]
-    fn default() -> Self { Self::Low }
+    fn default() -> Self {
+        Self::Low
+    }
 }
 
 /// Currently only `Vulkan` is supported, because it is the only backend that allows 64-bit floats
@@ -411,7 +441,9 @@ pub enum DeviceBackend {
 
 impl Default for DeviceBackend {
     /// Default is `Vulkan`
-    fn default() -> Self { Self::Vulkan }
+    fn default() -> Self {
+        Self::Vulkan
+    }
 }
 
 // TODO: consider usage (readonly vs read/write, shader stages, ...), size, mapped_at_creation, etc.
