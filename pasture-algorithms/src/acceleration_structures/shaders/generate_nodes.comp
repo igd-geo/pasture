@@ -1,3 +1,18 @@
+/*
+Compute shader for processing octree nodes.
+This approach is based on the work shown in "GPU-based Adaptive Octree Construction Algorithms" by (Goradia, 2008),
+Global buffer indeces[] maps an index to a point of the point cloud.
+This is used, so that we do not need to swap any real point inside the Point buffer.
+We use the indices to later adress the correct points of a Pasture PointBuffer
+
+Each node holds an array called node_partitioning, that specifies the range of indices a node contains.
+node_partitioning: [4,9,12,12,20,22,26,30] points_per_partition: [4,5,3,0,8,2,4,4]
+
+Right now, each parent in parents[] node has its own WorkGroup consisting of 8 threads, each thread assigning the computed
+values to the corresponding child node in children[]. That means each block of 8 Nodes in children[] belongs to o Node in parents[].
+
+*/
+
 #version 450
 
 struct Node {
@@ -24,6 +39,8 @@ layout(std430, set=1, binding=1) buffer Partitioning {
 
 layout (local_size_x=8, local_size_y=1, local_size_z=1) in;
 
+/// Determines the order in which the node is divided on is axes
+/// [0,1,2] means partition order is x,y,z
 uint[3] partitioning_order(double x, double y, double z){
   uint[] order = uint[3](0,1,2);
   double[] axes = double[3](x,y,z);
@@ -44,12 +61,16 @@ uint[3] partitioning_order(double x, double y, double z){
   }
   return order;
 }
-
+/// Swaps the indices at place a and b
 void swap( uint a,  uint b){
   uint tmp = indeces[a];
   indeces[a] = indeces[b];
   indeces[b] = tmp;
 }
+
+/// Partitions the indeces buffer along given axis with given pivot
+/// When finished all points in [start, j) are less than pivot and all
+/// points in [j, end) are greater equals pivot
 uint partition_run(uint start, uint end, double pivot, uint axis) {
   uint i = start;
   uint j = start;
@@ -67,57 +88,44 @@ uint partition_run(uint start, uint end, double pivot, uint axis) {
 
   return j;
 }
-
-// void partitioning(uint[3] axes, double[3] pivots, uint id, uint local_thread_id){
-//   uint start = parents[id].points_start;
-//   uint end = parents[id].node_partitioning[0];
-
-//   parents[id].node_partitioning[3] = partition_run(start, end, pivots[axes[0]], axes[0]);
-
-//   parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivots[axes[1]], axes[1]);
-
-//   parents[id].node_partitioning[5] = partition_run(parents[id].node_partitioning[3], end, pivots[axes[1]], axes[1]);
-
-//   parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivots[axes[2]], axes[2]);
-
-//   parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivots[axes[2]], axes[2]);
-
-//   parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivots[axes[2]], axes[2]);
-
-//   parents[id].node_partitioning[6] = partition_run(parents[id].node_partitioning[5], end, pivots[axes[2]], axes[2]);
-
-//   parents[id].node_partitioning[7] = end;
-// }
-void partition_pass_first(uint axis, double pivot, uint id, uint thread_id) {
+/// Starts the different partitionig phases for the axes
+/// At the end half of node_partitioning (0-3) are below pivots[0] on axes[0],
+/// (0-1) are below pivots[1] on axes[1] and (2-3) are above pivots[1] o axes[1]
+/// (0) and (2) are below pivots[2] on axis[2], (1) and (3) are above pivots[2] on axis[2].
+/// Same happens on subpartition (4-7) of node_partitioning
+void partitioning(uint[3] axes, double[3] pivots, uint id, uint local_thread_id){
   uint start = parents[id].points_start;
-  uint end = parents[id].points_end;
-  parents[id].node_partitioning[3] = partition_run(start, end, pivot, axis);
-  parents[id].node_partitioning[7] = end;
-}
-void partition_pass_second(uint axis, double pivot, uint id, uint thread_id) {
-  uint start = parents[id].points_start;
-  uint end = parents[id].points_end;
-  switch(thread_id) {
-    case 0: parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivot, axis);
-    break;
-    case 1: parents[id].node_partitioning[5] = partition_run(parents[id].node_partitioning[3], end, pivot, axis);
-    break;
+  uint end = parents[id].node_partitioning[0];
+  if(local_thread_id == 0){
+    parents[id].node_partitioning[3] = partition_run(start, end, pivots[axes[0]], axes[0]);
   }
-}
-void partition_pass_third(uint axis, double pivot, uint id, uint thread_id){
-  uint start = parents[id].points_start;
-  uint end = parents[id].points_end;
-  switch(thread_id) {
-    case 0: parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivot, axis);
-    break;
-    case 1: parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivot, axis);
-    break;
-    case 2: parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivot, axis);
-    break;
-    case 3: parents[id].node_partitioning[6] = partition_run(parents[id].node_partitioning[5], end, pivot, axis);
+  barrier();
+  if(local_thread_id == 1) {
+    parents[id].node_partitioning[1] = partition_run(start, parents[id].node_partitioning[3], pivots[axes[1]], axes[1]);
   }
+  else if(local_thread_id == 2){
+    parents[id].node_partitioning[5] = partition_run(parents[id].node_partitioning[3], end, pivots[axes[1]], axes[1]);
+  }
+  barrier();
+  if(local_thread_id == 3){
+    parents[id].node_partitioning[0] = partition_run(start, parents[id].node_partitioning[1], pivots[axes[2]], axes[2]);
+  }
+  else if(local_thread_id == 4){
+    parents[id].node_partitioning[2] = partition_run(parents[id].node_partitioning[1], parents[id].node_partitioning[3], pivots[axes[2]], axes[2]);
+  }
+  else if(local_thread_id == 5){
+    parents[id].node_partitioning[4] = partition_run(parents[id].node_partitioning[3], parents[id].node_partitioning[5], pivots[axes[2]], axes[2]);
+  }
+  else if(local_thread_id == 6){
+    parents[id].node_partitioning[6] = partition_run(parents[id].node_partitioning[5], end, pivots[axes[2]], axes[2]);
+  }
+  else if(local_thread_id == 7){
+    parents[id].node_partitioning[7] = end;
+  }
+  barrier();
 }
 
+/// Returns if child at `index` in parent is partitioned on the right side of the pivot on any axis
 bool[3] partitioned_to_right(uint[3] partition_order, uint index){
   bool[3] on_right_side = bool[3](false, false, false);
 
@@ -126,7 +134,7 @@ bool[3] partitioned_to_right(uint[3] partition_order, uint index){
   on_right_side[partition_order[0]] = index >= 4;
   return on_right_side;
 }
-
+/// Calculates the Bounding Box of given child
 double[2][3] get_childs_bounds(uint[3] partition_order, double[3] partition_axes, uint child_index, Node parent){
   double[3] bounds_min;
   double[3] bounds_max;
@@ -147,7 +155,8 @@ void main() {
   uint idx = gl_WorkGroupID.x;
   uint thread_idx = gl_LocalInvocationID.x;
   Node parent = parents[idx];
-
+  // Calculation of axis-length and center point coorddinates 
+  // of parent's bounding box
   double x_diff = parent.bounds_max[0] - parent.bounds_min[0];
   double y_diff = parent.bounds_max[1] - parent.bounds_min[1];
   double z_diff = parent.bounds_max[2] - parent.bounds_min[2];
@@ -157,16 +166,7 @@ void main() {
   double[3] partition_pivots = double[3](x_partition, y_partition, z_partition);
   uint[3] partition_order = partitioning_order(abs(x_diff), abs(y_diff), abs(z_diff));
   
-  //partitioning(partition_order, partition_pivots, idx, thread_idx);
-  if(thread_idx == 0){
-    partition_pass_first(partition_order[0], partition_pivots[0], idx, thread_idx);
-  }
-  if(thread_idx < 2) {
-    partition_pass_second(partition_order[1], partition_pivots[1], idx, thread_idx);
-  }
-  if(thread_idx < 4) {
-    partition_pass_third(partition_order[2], partition_pivots[2], idx, thread_idx);
-  }
+  partitioning(partition_order, partition_pivots, idx, thread_idx);
   
   if(thread_idx == 0) {
     parents[idx].points_per_partition[thread_idx] = parents[idx].node_partitioning[thread_idx] - parents[idx].points_start;
@@ -174,7 +174,9 @@ void main() {
   else {
    parents[idx].points_per_partition[thread_idx] = parents[idx].node_partitioning[thread_idx] - parents[idx].node_partitioning[thread_idx - 1];
   }
-  
+  // writes computed data into children
+  // based on the number of points belonging to a child, we can
+  // decide if the child is a leaf or should be processed as parent in next compute pass
   if(thread_idx == 0) {
     children[idx * 8 + thread_idx].points_start = parents[idx].points_start;
   } else {
@@ -191,5 +193,4 @@ void main() {
   );
   children[idx * 8 + thread_idx].bounds_min = child_bounds[0];
   children[idx* 8 + thread_idx].bounds_max = child_bounds[1];
-
 }

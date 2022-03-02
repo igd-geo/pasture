@@ -1,7 +1,7 @@
 use pasture_core::{
     containers::{attr1::AttributeIteratorByValue, PointBuffer, PointBufferExt, PerAttributePointBufferExt},
     layout::attributes,
-    math::AABB,
+    math::{AABB, DynamicMortonIndex, Octant, MortonIndexNaming, MortonIndex64},
     nalgebra::{Point3, Vector3},
 };
 use priority_queue::DoublePriorityQueue;
@@ -9,8 +9,6 @@ use ordered_float::OrderedFloat;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem;
-use std::time;
-use std::thread;
 use wgpu::util::DeviceExt;
 
 #[derive(Debug, Clone)]
@@ -33,6 +31,7 @@ pub struct GpuOctree{
     depth: u32,
     bounds: AABB<f64>,
     points_per_node: u32,
+    morton_code: DynamicMortonIndex,
 }
 
 enum OctreeRelation {
@@ -143,6 +142,10 @@ impl OctreeNode {
         }
     }
 
+    /// Specifies the relation between the query point `pos` and the Bounding Box of the Node.
+    /// OctreeRelation::In      ==> the whole node sits inside the radius of the query
+    /// OctreeRelation::Partial ==> node and query intersect or node contains whole query
+    /// OctreeRelation::Out     ==> node and query are disjoint
     fn relation_to_point(&self, pos: &Vector3<f64>, radius: f64) -> OctreeRelation {
         let node_extent = self.bounds.extent();
         let node_center = self.bounds.center().coords;
@@ -236,12 +239,16 @@ impl GpuOctree {
             )
             .await?;
             
+
+        // Points are read from the Pasture PointBuffer to allow for faster access of individual points.,
+        // Without this, onw would need to get each raw point individually and convert it
         let mut points: Vec<Vector3<f64>> = Vec::new();
         let point_iter = AttributeIteratorByValue::new(point_buffer, &attributes::POSITION_3D);
         for point in point_iter {
             points.push(point);
         }
 
+        // raw points read here, so that it must not be done while construction
         let point_count = point_buffer.len();
         let mut raw_points = vec![0u8; 24 * point_count];
         point_buffer.get_raw_attribute_range(
@@ -249,6 +256,7 @@ impl GpuOctree {
             &attributes::POSITION_3D,
             raw_points.as_mut_slice(),
         );
+        let morton_code = DynamicMortonIndex::from_octants(&[]);
 
         Ok(GpuOctree {
             gpu_device: device,
@@ -260,6 +268,7 @@ impl GpuOctree {
             depth: 0,
             bounds: max_bounds,
             points_per_node,
+            morton_code
         })
     }
 
@@ -268,6 +277,20 @@ impl GpuOctree {
         println!("Tree Depth: {}", self.depth);
         println!("{}", self.root_node.as_ref().unwrap());
     }
+
+    /// Prints the morton index for given point inside the AABB of the octree
+    pub fn print_morton_code(&self, point: &Point3<f64>) {
+        if let Some(root) = self.root_node.as_ref() {
+            println!("{}", 
+            MortonIndex64::from_point_in_bounds(&point, &root.bounds)
+            .to_string(MortonIndexNaming::AsOctantConcatenationWithRoot));
+        }
+        else {
+            println!("Octree not constructed yet");
+        }
+    }
+
+    // }
     /// Run top-down construction of the octree.
     /// 
     /// Starting from the root, on each level the children of all current leaves
@@ -375,12 +398,13 @@ impl GpuOctree {
 
         let gpu_point_buffer =
             self.gpu_device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                .create_buffer(&wgpu::BufferDescriptor {
                     label: Some("PointBuffer"),
-                    contents: &raw_points.as_slice(),
+                    size: (point_count * mem::size_of::<Vector3<f64>>()) as u64,
                     usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
+                    mapped_at_creation: false,
                 });
-
+        self.gpu_queue.write_buffer(&gpu_point_buffer, 0, self.raw_points.as_slice());
         let mut root_node = OctreeNode {
             bounds: self.bounds,
             children: None,
@@ -402,21 +426,17 @@ impl GpuOctree {
         let raw_indeces: &[u8] = bytemuck::cast_slice(index_range.as_slice());
         let point_index_buffer =
             self.gpu_device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                .create_buffer(&wgpu::BufferDescriptor {
                     label: Some("IndexBuffer"),
-                    contents: &raw_indeces,
+                    size: (point_count * mem::size_of::<u32>()) as u64,
                     usage: wgpu::BufferUsages::COPY_SRC
                         | wgpu::BufferUsages::COPY_DST
+                        | wgpu::BufferUsages::MAP_READ
                         | wgpu::BufferUsages::STORAGE,
+                    mapped_at_creation: false,
                 });
-        
-        let index_buffer_staging = self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("CPU_IndexBuffer"),
-            size: raw_indeces.len() as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        
+        self.gpu_queue.write_buffer(&point_index_buffer, 0, raw_indeces);
+
         let points_bind_group = self
             .gpu_device
             .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -434,8 +454,10 @@ impl GpuOctree {
                 ],
             });
         while !current_nodes.is_empty() {
-            let num_threads = current_nodes.len();
+            let num_blocks = current_nodes.len();
+
             // Nodes buffers are created inside the loop, as their size changes per iteration
+            // Staging Buffers do not reside on GPU and are used for reading Compure results
             let child_buffer_size = 8 * (OctreeNode::size() * current_nodes.len()) as u64; 
             let child_nodes_buffer_staging =
                 self.gpu_device.create_buffer(&wgpu::BufferDescriptor {
@@ -467,13 +489,16 @@ impl GpuOctree {
                 });
             let parent_nodes_buffer =
                 self.gpu_device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    .create_buffer(&wgpu::BufferDescriptor {
                         label: Some("ParentNodesBuffer"),
-                        contents: parent_nodes_raw.as_slice(),
+                        size: current_nodes.len() as u64 * OctreeNode::size() as u64,
                         usage: wgpu::BufferUsages::COPY_SRC
                             | wgpu::BufferUsages::COPY_DST
                             | wgpu::BufferUsages::STORAGE,
+                        mapped_at_creation: false,
                     });
+            self.gpu_queue.write_buffer(&parent_nodes_buffer, 0, parent_nodes_raw.as_slice());
+
             let nodes_bind_group = self
                 .gpu_device
                 .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -505,8 +530,9 @@ impl GpuOctree {
                 compute_pass.set_bind_group(1, &points_bind_group, &[]);
 
                 compute_pass.insert_debug_marker("Pasture Compute Debug");
-                compute_pass.dispatch(current_nodes.len() as u32, 1, 1);
+                compute_pass.dispatch(num_blocks as u32, 1, 1);
             }
+            // Copy computed Nodes into CPU staging buffers for mapped reading
             encoder.copy_buffer_to_buffer(
                 &child_nodes_buffer,
                 0,
@@ -521,16 +547,10 @@ impl GpuOctree {
                 0,
                 parent_nodes_raw.len() as u64,
             );
-            encoder.copy_buffer_to_buffer(
-                &point_index_buffer,
-                0,
-                &index_buffer_staging,
-                0,
-                raw_indeces.len() as u64,
-            );
+            
 
             self.gpu_queue.submit(Some(encoder.finish()));
-
+            
             let parents_slice = parent_nodes_buffer_staging.slice(..);
             let parents_future = parents_slice.map_async(wgpu::MapMode::Read);
             let children_slice = child_nodes_buffer_staging.slice(..);
@@ -538,7 +558,6 @@ impl GpuOctree {
             
             self.gpu_device.poll(wgpu::Maintain::Wait);
             if let Ok(()) = parents_future.await {
-                let download_now = time::Instant::now();
                 let mapped_nodes_data = parents_slice.get_mapped_range();
                 let mapped_node_buffer = mapped_nodes_data.to_vec();
                 let nodes: Vec<OctreeNode> = mapped_node_buffer
@@ -563,7 +582,7 @@ impl GpuOctree {
 
                         let node_ref = current_nodes.remove(0);
                         *node_ref = node;
-
+                        
                         let children: &mut Box<[OctreeNode; 8]> =
                             node_ref.children.as_mut().unwrap();
 
@@ -583,6 +602,15 @@ impl GpuOctree {
                             num_nodes += 1;
                             child_index += 1;
                         }
+                        let morton_octants: Vec<Octant> = vec![
+                            0, 1, 2, 3, 4, 5, 6, 7
+                        ]
+                        .iter()
+                        .map(|&raw_octant| (raw_octant as u8).try_into().unwrap())
+                        .collect();
+
+                        morton_octants.iter()
+                        .for_each(|octant| self.morton_code.add_octant(*octant));
                     }
                     drop(mapped_nodes_data);
                     parent_nodes_buffer_staging.unmap();
@@ -594,15 +622,11 @@ impl GpuOctree {
                     child_nodes_buffer_staging.destroy();
                 }
             }
-            
-            let work_done = self.gpu_queue.on_submitted_work_done();
-            work_done.await;
 
             tree_depth += 1;
-
         }
-        
-        let index_slice = index_buffer_staging.slice(..);
+        // Point indices are read after compute loop to reduce data copying and runtime
+        let index_slice = point_index_buffer.slice(..);
         let mapped_future = index_slice.map_async(wgpu::MapMode::Read);
 
         self.gpu_device.poll(wgpu::Maintain::Wait);
@@ -618,25 +642,30 @@ impl GpuOctree {
             self.point_partitioning = indices.clone();
 
             drop(mapped_index_buffer);
-            index_buffer_staging.unmap();
+            point_index_buffer.unmap();
         }
         gpu_point_buffer.destroy();
         point_index_buffer.destroy();
-        index_buffer_staging.destroy();
         self.root_node = Some(root_node);
         self.depth = tree_depth;
     }
 
+    /// Returns a Vec containing the indices of all points belonging to `point`
     fn get_points(&self, node: &OctreeNode) -> Vec<u32> {
         let indices =
             self.point_partitioning[node.point_start as usize..node.point_end as usize].to_vec();
         return indices;
     }
 
+    /// Computes the `k` nearest neighbors of `point` that are within `radius`. 
+    /// Returns a Vec containing the indices to the neighbor points in increasing order of distance 
     pub fn k_nearest_neighbors(&self, pos: Vector3<f64>, radius: f64, k: usize) -> Vec<u32> {
         if k < 1 {
             return vec![];
         }
+        // We use a Vec<&Octree> as working queue for the nodes that we are visitting
+        // We use a priority queue so that the found indices are already
+        // being sorted by their distance to pos
         let node = self.root_node.as_ref().unwrap();
         let mut worklist = vec![node];
         let point_buffer = &self.point_buffer;
@@ -652,8 +681,10 @@ impl GpuOctree {
             return vec![];
         }
         let radius_squared = radius * radius;
+
         while !worklist.is_empty() {
             let node = worklist.pop().unwrap();
+            // When node is leaf we need to search it's points
             if node.is_leaf(self.points_per_node) {
                 let point_indices = self.get_points(node);
                 for i in point_indices.iter() {
@@ -676,16 +707,16 @@ impl GpuOctree {
                 let point_indices: Vec<u32> = self.get_points(node);
             }
             else {
-                
+                // When node is not leaf, we must check if the Bounding Box of the node is in range of the query
+                // If so, we check if the whole node is inside the radius to possibly reduce step downs
+                // If node and query only intersect, children of the node are inspected
                 match node.relation_to_point(&pos, radius) {
                     OctreeRelation::In => {
-                        //let now = time::Instant::now();
                         let point_indices = self.get_points(node);
                         for i in point_indices.iter() {
                             let point = point_buffer[*i as usize];
                             let curr_dist = point - pos;
                             let curr_dist = f64::powi(curr_dist.x, 2) + f64::powi(curr_dist.y, 2) + f64::powi(curr_dist.z, 2);
-                            //let curr_dist = curr_dist.x * curr_dist.x + curr_dist.y * curr_dist.y + curr_dist.z * curr_dist.z;
                             if  curr_dist <= radius_squared {
                                 if points.len() >= k {
                                     let (_, dist) = points.peek_max().unwrap();

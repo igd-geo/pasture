@@ -12,30 +12,16 @@ categories = ["data-structures", "command-line-utilities"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = {version = "=0.2.0", path = "../pasture-core", features=["gpu"]}
+pasture-core = {version = "=0.2.0", path = "../pasture-core"}
 pasture-io = {version = "=0.2.0", path = "../pasture-io" }
 pasture-algorithms = {version = "=0.2.0", path = "../pasture-algorithms" }
 pasture-derive = {version = "=0.2.0", path = "../pasture-derive" }
 anyhow = "1.0.34"
 clap = "2.33.3"
 log = "0.4"
-env_logger = "0.9.0"
 pretty_env_logger = "0.4.0"
 plotters = "^0.3.0"
 rand = {version = "0.8.3", features = ["small_rng"] }
-tokio = { version = "1.16.1", features = ["full"] }
-priority-queue = "1.2.1"
-ordered-float = "2.10.0"
-
-#gpu related
-wgpu = { version = "0.12.0", features = ["spirv"], optional = true }
-shaderc = { version = "0.7.2", optional = true }
-futures = { version = "0.3", optional = true }
-bytemuck = { version = "1.5.1", optional = true }
-
-[features]
-gpu = ["wgpu", "shaderc", "futures", "bytemuck"]
-
 [[bin]]
 name = "reorder_laz_chunks"
 
