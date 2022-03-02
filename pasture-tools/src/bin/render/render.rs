@@ -1,4 +1,6 @@
+use std::path::{Path, PathBuf};
 use pasture_io::las::LASReader;
+use clap::{App, Arg};
 
 use winit::{
     event::{Event, WindowEvent},
@@ -10,15 +12,45 @@ use nalgebra::Vector2;
 
 mod renderer;
 
-async fn run(event_loop: EventLoop<()>, window: Window) {
+struct Args {
+    pub input_file: PathBuf,
+}
+
+fn get_args() -> Args {
+    let matches = App::new("pasture renderer")
+        .version("0.1")
+        .author("Jan Kelling <jan.kelling@stud.tu-darmstadt.de>")
+        .about("Renders point cloud files")
+        .arg(
+            Arg::with_name("INPUT")
+                .short("i")
+                .takes_value(true)
+                .value_name("INPUT")
+                .help("Input point cloud file")
+                .required(true),
+        )
+        .get_matches();
+
+    let input_file = PathBuf::from(matches.value_of("INPUT").unwrap());
+
+    Args {
+        input_file,
+    }
+}
+
+async fn run(event_loop: EventLoop<()>, window: Window, path: Option<PathBuf>) {
     let mut renderer = renderer::Renderer::new(&window).await;
 
-    // For wasm: cannot load from file atm
-    // let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
-    let buf : &[u8] = include_bytes!("/home/jan/loads/red-rocks.laz");
-    // let buf : &[u8] = include_bytes!("/home/jan/loads/interesting.las");
-    let c = std::io::Cursor::new(buf);
-    let mut reader = LASReader::from_read(c, true).expect("Failed to create LASReader");
+    // For wasm: cannot load from file atm. Include statically.
+    let mut reader = if let Some(reader_path) = path {
+        LASReader::from_path(reader_path).expect("Failed to open lad file")
+    } else {
+        // TODO:
+        // let buf : &[u8] = include_bytes!("/home/jan/loads/red-rocks.laz");
+        let buf : &[u8] = include_bytes!("../../../../pasture-io/examples/in/10_points_format_1.las");
+        let c = std::io::Cursor::new(buf);
+        LASReader::from_read(c, true).expect("Failed to create LASReader")
+    };
 
     // let mut reader = LASReader::from_path(
     //     // "/home/jan/loads/points.laz"
@@ -89,11 +121,11 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = winit::window::Window::new(&event_loop).unwrap();
 
-
     #[cfg(not(target_arch = "wasm32"))]
     {
+        let args = get_args();
         env_logger::init();
-        pollster::block_on(run(event_loop, window));
+        pollster::block_on(run(event_loop, window, Some(args.input_file)));
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -110,6 +142,6 @@ fn main() {
                     .ok()
             })
             .expect("couldn't append canvas to document body");
-        wasm_bindgen_futures::spawn_local(run(event_loop, window));
+        wasm_bindgen_futures::spawn_local(run(event_loop, window, None));
     }
 }
