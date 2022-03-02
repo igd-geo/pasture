@@ -43,7 +43,7 @@ fn main() -> Result<()> {
 }
 ```
 
-For more examples, check out the [`pasture_core` examples](pasture_core/examples) and the [`pasture_io` examples](pasture_io/examples).
+For more examples, check out the [`pasture_core` examples](pasture-core/examples) and the [`pasture_io` examples](pasture-io/examples).
 
 # Development
 
