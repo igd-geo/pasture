@@ -4,10 +4,7 @@ use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use las_rs::{point::Format, Header};
 use las_rs::{raw, Builder, Vlr};
-use laz::{
-    las::laszip::{LASZIP_RECORD_ID, LASZIP_USER_ID},
-    LasZipDecompressor,
-};
+use laz::LasZipDecompressor;
 use pasture_core::layout::PointAttributeDefinition;
 use pasture_core::{
     containers::InterleavedPointView,
@@ -28,7 +25,7 @@ use crate::base::{PointReader, SeekToPoint};
 
 /// Is the given VLR the LASzip VLR? Function taken from the `las` crate because it is not exported there
 fn is_laszip_vlr(vlr: &Vlr) -> bool {
-    if &vlr.user_id == LASZIP_USER_ID && vlr.record_id == LASZIP_RECORD_ID {
+    if &vlr.user_id == laz::LazVlr::USER_ID && vlr.record_id == laz::LazVlr::RECORD_ID {
         true
     } else {
         false

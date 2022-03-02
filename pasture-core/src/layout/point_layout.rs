@@ -292,7 +292,7 @@ impl PointAttributeDefinition {
     /// # assert_eq!(custom_position_attribute.name(), attributes::POSITION_3D.name());
     /// # assert_eq!(custom_position_attribute.datatype(), PointAttributeDataType::Vec3f32);
     /// ```
-    pub fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
+    pub const fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
         Self {
             name: self.name,
             datatype: new_datatype,

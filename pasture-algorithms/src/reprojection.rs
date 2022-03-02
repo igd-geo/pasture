@@ -2,13 +2,14 @@ use std::ffi::CString;
 
 use anyhow::Result;
 use pasture_core::containers::{PointBufferWriteable, PointBufferWriteableExt};
-use pasture_core::nalgebra::Vector3;
+use pasture_core::math::AABB;
+use pasture_core::nalgebra::{Point3, Vector3};
 
 use pasture_core::containers::{PointBuffer, PointBufferExt};
 use pasture_core::layout::attributes::POSITION_3D;
 /// Wrapper around the proj types from the proj_sys crate. Supports transformations (the Rust proj bindings don't support this)
 pub struct Projection {
-    proj_context: *mut proj_sys::projCtx_t,
+    proj_context: *mut proj_sys::pj_ctx,
     projection: *mut proj_sys::PJconsts,
 }
 
@@ -42,6 +43,21 @@ impl Projection {
                 proj_sys::proj_trans(self.projection, proj_sys::PJ_DIRECTION_PJ_FWD, coord);
             Vector3::new(target_coords.v[0], target_coords.v[1], target_coords.v[2])
         }
+    }
+
+    /// Transforms the given bounding box using the associated `Projection`. This keeps the bounding box axis-aligned,
+    /// the size might change though
+    pub fn transform_bounds(&self, bounds: &AABB<f64>) -> AABB<f64> {
+        let transformed_min =
+            self.transform(Vector3::new(bounds.min().x, bounds.min().y, bounds.min().z));
+        let transformed_max =
+            self.transform(Vector3::new(bounds.max().x, bounds.max().y, bounds.max().z));
+
+        let bounds: AABB<f64> = AABB::from_min_max_unchecked(
+            Point3::from(transformed_min),
+            Point3::from(transformed_min),
+        );
+        AABB::extend_with_point(&bounds, &Point3::from(transformed_max))
     }
 }
 

@@ -7,6 +7,7 @@ use super::{
 };
 
 /// Non-owning, read-only slice of the data of an `InterleavedPointBuffer`
+#[derive(Clone)]
 pub struct InterleavedPointBufferSlice<'p> {
     buffer: &'p dyn InterleavedPointBuffer,
     range_in_buffer: Range<usize>,
@@ -94,6 +95,7 @@ impl<'p> InterleavedPointBuffer for InterleavedPointBufferSlice<'p> {
 }
 
 /// Non-owning, read-only slice of the data of a `PerAttributePointBuffer`
+#[derive(Clone)]
 pub struct PerAttributePointBufferSlice<'p> {
     buffer: &'p dyn PerAttributePointBuffer,
     range_in_buffer: Range<usize>,

@@ -1,6 +1,6 @@
 [package]
 name = "pasture-core"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
 license-file = "LICENSE"

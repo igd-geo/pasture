@@ -13,6 +13,7 @@ use super::{
 use rayon::prelude::*;
 
 /// `PointBuffer` type that uses Interleaved memory layout and `Vec`-based owning storage for point data
+#[derive(Clone, Debug)]
 pub struct InterleavedVecPointStorage {
     layout: PointLayout,
     points: Vec<u8>,
@@ -582,6 +583,7 @@ impl<T: PointType> From<Vec<T>> for InterleavedVecPointStorage {
 }
 
 /// `PointBuffer` type that uses PerAttribute memory layout and `Vec`-based owning storage for point data
+#[derive(Clone, Debug)]
 pub struct PerAttributeVecPointStorage {
     layout: PointLayout,
     attributes: HashMap<&'static str, Vec<u8>>,

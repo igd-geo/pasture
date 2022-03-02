@@ -6,10 +6,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use las_rs::{point::Format, Builder, Vlr};
-use laz::{
-    las::laszip::LASZIP_DESCRIPTION, las::laszip::LASZIP_RECORD_ID, las::laszip::LASZIP_USER_ID,
-    LasZipCompressor, LazItemRecordBuilder, LazVlr,
-};
+use laz::{LasZipCompressor, LazItemRecordBuilder, LazVlr};
 use pasture_core::{containers::PointBuffer, layout::PointLayout, nalgebra::Vector3};
 
 use crate::base::PointWriter;
@@ -152,6 +149,13 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
             _point_start_index: point_start_index,
             requires_flush: true,
         })
+    }
+
+    /// Consumes this `RawLASWriter` and returns the underlying write type `T`. The data is flushed
+    /// before returning the writer
+    pub fn into_inner(mut self) -> Result<T> {
+        self.flush()?;
+        Ok(self.writer)
     }
 
     /// Writes the current header to the start of the file
@@ -616,13 +620,6 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawLASWriter<T> {
     }
 }
 
-impl<T: std::io::Write + std::io::Seek> Drop for RawLASWriter<T> {
-    fn drop(&mut self) {
-        self.flush()
-            .expect("RawLASWriter::drop: Could not flush point data");
-    }
-}
-
 pub(crate) struct RawLAZWriter<T: std::io::Write + std::io::Seek + Send + 'static> {
     writer: LasZipCompressor<'static, T>,
     default_layout: PointLayout,
@@ -669,9 +666,9 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         let mut raw_laz_vlr_cursor = Cursor::new(Vec::<u8>::new());
         raw_laz_vlr.write_to(&mut raw_laz_vlr_cursor)?;
         let laz_vlr = Vlr {
-            user_id: LASZIP_USER_ID.to_owned(),
-            record_id: LASZIP_RECORD_ID,
-            description: LASZIP_DESCRIPTION.to_owned(),
+            user_id: laz::LazVlr::USER_ID.to_owned(),
+            record_id: laz::LazVlr::RECORD_ID,
+            description: laz::LazVlr::DESCRIPTION.to_owned(),
             data: raw_laz_vlr_cursor.into_inner(),
         };
 
@@ -704,6 +701,13 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                 .collect::<Result<Vec<_>, _>>()?,
             requires_flush: false,
         })
+    }
+
+    /// Consumes this `RawLASWriter` and returns the underlying write type `T`. The data is flushed
+    /// before returning the writer
+    pub fn into_inner(mut self) -> Result<T> {
+        self.do_flush()?;
+        Ok(self.writer.into_inner())
     }
 
     fn write_points_default_layout(&mut self, points: &dyn PointBuffer) -> Result<()> {
@@ -1156,10 +1160,10 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         Ok(())
     }
 
-    fn do_flush(&mut self) {
-        self.writer.done().expect("Could not flush LAZ contents");
-        self.write_evlrs().expect("Could not write LAZ EVLRs");
-        self.write_header().expect("Could not write LAZ header");
+    fn do_flush(&mut self) -> Result<()> {
+        self.writer.done()?;
+        self.write_evlrs()?;
+        self.write_header()
     }
 }
 
@@ -1173,17 +1177,11 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> PointWriter for RawLAZW
     }
 
     fn flush(&mut self) -> Result<()> {
-        panic!("Flush is not supported when writing LAZ files!");
+        self.do_flush()
     }
 
     fn get_default_point_layout(&self) -> &PointLayout {
         &self.default_layout
-    }
-}
-
-impl<T: std::io::Write + std::io::Seek + Send + 'static> Drop for RawLAZWriter<T> {
-    fn drop(&mut self) {
-        self.do_flush()
     }
 }
 
@@ -1238,6 +1236,7 @@ mod tests {
                         assert_eq!(expected_format, *writer.get_default_point_layout());
 
                         writer.write(test_data.as_ref())?;
+                        writer.flush()?;
                     }
 
                     {
@@ -1315,6 +1314,7 @@ mod tests {
                         )?;
 
                         writer.write(&expected_data)?;
+                        writer.flush()?;
                     }
 
                     {
@@ -1414,6 +1414,7 @@ mod tests {
                         assert_eq!(expected_format, *writer.get_default_point_layout());
 
                         writer.write(test_data.as_ref())?;
+                        writer.flush()?;
                     }
 
                     {
@@ -1492,6 +1493,7 @@ mod tests {
                         )?;
 
                         writer.write(&expected_data)?;
+                        writer.flush()?;
                     }
 
                     {
@@ -1581,20 +1583,4 @@ mod tests {
     laz_write_tests!(laz_write_1, 1, LasPointFormat1);
     laz_write_tests!(laz_write_2, 2, LasPointFormat2);
     laz_write_tests!(laz_write_3, 3, LasPointFormat3);
-
-    #[test]
-    #[should_panic]
-    fn test_raw_laz_writer_flush() {
-        let format = Format::new(0).unwrap();
-        let mut header_builder = Builder::from((1, 4));
-        header_builder.point_format = format.clone();
-
-        let mut writer = RawLAZWriter::from_write_and_header(
-            Cursor::new(vec![]),
-            header_builder.into_header().unwrap(),
-        )
-        .unwrap();
-
-        writer.flush().unwrap_or_default();
-    }
 }

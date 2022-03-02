@@ -7,51 +7,80 @@ use crate::base::PointWriter;
 
 use super::{path_is_compressed_las_file, RawLASWriter, RawLAZWriter};
 
-/// `PointWriter` implementation for LAS/LAZ files
-pub struct LASWriter {
-    writer: Box<dyn PointWriter>,
+enum WriterVariant<T: Write + Seek + Send + 'static> {
+    LAS(RawLASWriter<T>),
+    LAZ(RawLAZWriter<T>),
 }
 
-impl LASWriter {
+/// `PointWriter` implementation for LAS/LAZ files.
+///
+/// *NOTE*: Due to the nature of the LAS file format, this file
+/// writer requires manual `flush` calls in order to actually write the LAS/LAZ data. Once you are done
+/// writing points, make sure to call `flush` so that the LAS header is updated correctly.
+pub struct LASWriter<T: Write + Seek + Send + 'static> {
+    writer: WriterVariant<T>,
+}
+
+impl<T: Write + Seek + Send + 'static> LASWriter<T> {
+    /// Creates a new 'LASWriter` from the given writer and LAS header
+    pub fn from_writer_and_header(
+        writer: T,
+        header: las::Header,
+        is_compressed: bool,
+    ) -> Result<Self> {
+        let raw_writer: WriterVariant<T> = if is_compressed {
+            WriterVariant::LAZ(RawLAZWriter::from_write_and_header(writer, header)?)
+        } else {
+            WriterVariant::LAS(RawLASWriter::from_write_and_header(writer, header)?)
+        };
+        Ok(Self { writer: raw_writer })
+    }
+
+    /// Unwraps with LASWriter, returning the underlying write type `T`. All internal data is flushed before returning
+    /// the writer
+    pub fn into_inner(self) -> Result<T> {
+        match self.writer {
+            WriterVariant::LAS(writer) => writer.into_inner(),
+            WriterVariant::LAZ(writer) => writer.into_inner(),
+        }
+    }
+}
+
+impl LASWriter<BufWriter<File>> {
     /// Creates a new 'LASWriter` from the given path and LAS header
     pub fn from_path_and_header<P: AsRef<Path>>(path: P, header: las::Header) -> Result<Self> {
         let is_compressed = path_is_compressed_las_file(path.as_ref())?;
         let writer = BufWriter::new(File::create(path)?);
         Self::from_writer_and_header(writer, header, is_compressed)
     }
-
-    /// Creates a new 'LASWriter` from the given writer and LAS header
-    pub fn from_writer_and_header<T: Write + Seek + Send + 'static>(
-        writer: T,
-        header: las::Header,
-        is_compressed: bool,
-    ) -> Result<Self> {
-        let raw_writer: Box<dyn PointWriter> = if is_compressed {
-            Box::new(RawLAZWriter::from_write_and_header(writer, header)?)
-        } else {
-            Box::new(RawLASWriter::from_write_and_header(writer, header)?)
-        };
-        Ok(Self { writer: raw_writer })
-    }
 }
 
-impl PointWriter for LASWriter {
+impl<T: Write + Seek + Send + 'static> PointWriter for LASWriter<T> {
     fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
-        self.writer.write(points)
+        match &mut self.writer {
+            WriterVariant::LAS(writer) => writer.write(points),
+            WriterVariant::LAZ(writer) => writer.write(points),
+        }
     }
 
     fn flush(&mut self) -> Result<()> {
-        self.writer.flush()
+        match &mut self.writer {
+            WriterVariant::LAS(writer) => writer.flush(),
+            WriterVariant::LAZ(writer) => writer.flush(),
+        }
     }
 
     fn get_default_point_layout(&self) -> &PointLayout {
-        self.writer.get_default_point_layout()
+        match &self.writer {
+            WriterVariant::LAS(writer) => writer.get_default_point_layout(),
+            WriterVariant::LAZ(writer) => writer.get_default_point_layout(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{io::Cursor, path::PathBuf};
 
     use las::{point::Format, Builder};
     use pasture_core::{
@@ -336,6 +365,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -372,6 +402,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -449,6 +480,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -485,6 +517,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -567,6 +600,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -603,6 +637,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -685,6 +720,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -721,6 +757,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -808,6 +845,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -844,6 +882,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -945,6 +984,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -981,6 +1021,7 @@ mod tests {
                 las_header_builder.into_header().unwrap(),
             )?;
             writer.write(&source_point_buffer)?;
+            writer.flush()?;
         }
 
         {
@@ -1065,6 +1106,64 @@ mod tests {
                 );
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_las_writer_into_inner() -> Result<()> {
+        let source_points = get_test_points_las_format_0();
+        let source_point_buffer = prepare_point_buffer(&source_points);
+
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+
+        let mut las_header_builder = Builder::from((1, 4));
+        las_header_builder.point_format = Format::new(0)?;
+
+        {
+            let mut writer = LASWriter::from_writer_and_header(
+                cursor,
+                las_header_builder.into_header().unwrap(),
+                false,
+            )?;
+            writer.write(&source_point_buffer)?;
+
+            cursor = writer.into_inner()?;
+        }
+
+        // Assert that some bytes have been written. We could assert the exact number, but that might depend on implementation details
+        // like padding that we don't really care about
+        let vec = cursor.into_inner();
+        assert!(vec.len() > 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_laz_writer_into_inner() -> Result<()> {
+        let source_points = get_test_points_las_format_0();
+        let source_point_buffer = prepare_point_buffer(&source_points);
+
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+
+        let mut las_header_builder = Builder::from((1, 4));
+        las_header_builder.point_format = Format::new(0)?;
+
+        {
+            let mut writer = LASWriter::from_writer_and_header(
+                cursor,
+                las_header_builder.into_header().unwrap(),
+                true,
+            )?;
+            writer.write(&source_point_buffer)?;
+
+            cursor = writer.into_inner()?;
+        }
+
+        // Assert that some bytes have been written. We could assert the exact number, but that might depend on implementation details
+        // like padding that we don't really care about
+        let vec = cursor.into_inner();
+        assert!(vec.len() > 0);
 
         Ok(())
     }
