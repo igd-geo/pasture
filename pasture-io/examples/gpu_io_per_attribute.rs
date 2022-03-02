@@ -104,6 +104,7 @@ mod ex {
         let mut gpu_point_buffer = GpuPointBufferPerAttribute::new();
         gpu_point_buffer.malloc(point_count as u64, &buffer_infos, &mut device.wgpu_device);
         gpu_point_buffer.upload(&mut point_buffer, 0..point_count, &buffer_infos, &mut device.wgpu_device, &device.wgpu_queue);
+        gpu_point_buffer.create_bind_group(&mut device.wgpu_device);
 
         // Here: GpuPointBuffer -> "set=0",
         //       PointUniform   -> "set=1"

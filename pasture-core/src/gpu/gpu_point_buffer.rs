@@ -766,7 +766,7 @@ impl GpuPointBufferInterleaved {
         }
     }
 
-    fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
+    pub fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
         let bind_group_layout = wgpu_device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 label: Some("storage_bind_group_layout"),
@@ -944,8 +944,6 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
             let gpu_buffer = self.buffers.get(info.attribute.name()).unwrap();
             wgpu_queue.write_buffer(gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
         }
-
-        // self.create_bind_group(wgpu_device);
     }
 
     /// Writes the contents of the GPU buffer into `point_buffer`, which is in per-attribute format,
@@ -1146,7 +1144,7 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
         }
     }
 
-    fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
+    pub fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
         let mut group_layout_entries: Vec<wgpu::BindGroupLayoutEntry> = vec![];
         let mut group_entries: Vec<wgpu::BindGroupEntry> = vec![];
 

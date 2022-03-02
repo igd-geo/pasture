@@ -128,6 +128,7 @@ mod ex {
             &mut device.wgpu_device,
             &device.wgpu_queue,
         );
+        gpu_point_buffer.create_bind_group(&mut device.wgpu_device);
 
         // Here: GpuPointBuffer -> "set=0",
         //       PointUniform   -> "set=1"

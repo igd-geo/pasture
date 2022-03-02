@@ -4,7 +4,6 @@ use pasture_io::las::LASReader;
 
 use pasture_core::{
     containers::{
-        PerAttributeVecPointStorage,
         InterleavedVecPointStorage,
         PointBufferExt,
     },
@@ -13,13 +12,8 @@ use pasture_core::{
     },
 };
 
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::Window,
-};
-
-use nalgebra::{Vector2, Vector3, Vector4, Point3, UnitQuaternion, Matrix4};
+use winit::window::Window;
+use nalgebra::{Vector2, Vector3, Point3, UnitQuaternion, Matrix4};
 use crevice::std140::AsStd140;
 use instant::Instant;
 
@@ -62,14 +56,14 @@ impl Camera {
 }
 
 pub trait CameraController {
-    fn update(&mut self, cam: &mut Camera, dt: f32) {}
-    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2::<f32>) {}
-    fn process_keyboard_input(&mut self, key: winit::event::VirtualKeyCode, pressed: bool) {}
-    fn process_mouse_button(&mut self, key: winit::event::MouseButton, pressed: bool) {}
-    fn process_mouse_wheel(&mut self, cam: &mut Camera, delta: f32) {}
+    fn update(&mut self, _cam: &mut Camera, _dt: f32) {}
+    fn process_mouse_move(&mut self, _cam: &mut Camera, _pos: Vector2::<f32>) {}
+    fn process_keyboard_input(&mut self, _cam: &mut Camera, _key: winit::event::VirtualKeyCode, _pressed: bool) {}
+    fn process_mouse_button(&mut self, _cam: &mut Camera, _key: winit::event::MouseButton, _pressed: bool) {}
+    fn process_mouse_wheel(&mut self, _cam: &mut Camera, _delta: f32) {}
 }
 
-struct FPSCameraController {
+pub struct FPSCameraController {
     pitch: f32,
     yaw: f32,
 
@@ -84,7 +78,7 @@ struct FPSCameraController {
     pub mouse_pos: Option<Vector2::<f32>>,
 }
 
-struct ArcballCameraController {
+pub struct ArcballCameraController {
 	// Describes how far the rotation center is in front of the camera.
 	offset: f32,
 
@@ -182,7 +176,7 @@ impl CameraController for FPSCameraController {
         self.mouse_pos = Some(pos)
     }
 
-    fn process_keyboard_input(&mut self, key: winit::event::VirtualKeyCode, pressed: bool) {
+    fn process_keyboard_input(&mut self, _cam: &mut Camera, key: winit::event::VirtualKeyCode, pressed: bool) {
         match key {
             winit::event::VirtualKeyCode::W => {
                 self.w_down = pressed
@@ -206,7 +200,7 @@ impl CameraController for FPSCameraController {
         }
     }
 
-    fn process_mouse_button(&mut self, button: winit::event::MouseButton, pressed: bool) {
+    fn process_mouse_button(&mut self, _cam: &mut Camera, button: winit::event::MouseButton, pressed: bool) {
         if button == winit::event::MouseButton::Left {
             self.rotating = pressed
         }
@@ -225,6 +219,12 @@ impl ArcballCameraController {
 
     pub fn center(&self, cam: &Camera) -> Point3::<f32> {
         cam.pos + self.offset * cam.view_dir()
+    }
+
+    pub fn zoom(&mut self, cam: &mut Camera, fac: f32) {
+        let c = self.center(cam); // old center
+        self.offset *= fac;
+        cam.pos = c - self.offset * cam.view_dir();
     }
 }
 
@@ -269,19 +269,29 @@ impl CameraController for ArcballCameraController {
         self.mouse_pos = Some(pos)
     }
 
-    fn process_mouse_button(&mut self, button: winit::event::MouseButton, pressed: bool) {
-        if button == winit::event::MouseButton::Middle {
+    fn process_mouse_button(&mut self, _cam: &mut Camera, button: winit::event::MouseButton, pressed: bool) {
+        if button == winit::event::MouseButton::Left {
             self.panning = pressed
-        } else if button == winit::event::MouseButton::Right {
+        } else if button == winit::event::MouseButton::Middle {
             self.rotating = pressed
         }
     }
 
     fn process_mouse_wheel(&mut self, cam: &mut Camera, delta: f32) {
         const ZOOM_FAC : f32 = 1.1;
-        let c = self.center(cam); // old center
-        self.offset *= f32::powf(ZOOM_FAC, -delta);
-        cam.pos = c - self.offset * cam.view_dir();
+        self.zoom(cam, f32::powf(ZOOM_FAC, -delta));
+    }
+
+    // NOTE: mostly for web, mouse wheel input does not seem to work there
+    fn process_keyboard_input(&mut self, cam: &mut Camera, key: winit::event::VirtualKeyCode, pressed: bool) {
+        const ZOOM_FAC : f32 = 1.1;
+        if key == winit::event::VirtualKeyCode::I && pressed {
+            println!("zoom in");
+            self.zoom(cam, 1.0 / ZOOM_FAC);
+        } else if key == winit::event::VirtualKeyCode::O && pressed {
+            println!("zoom out");
+            self.zoom(cam, ZOOM_FAC);
+        }
     }
 }
 
@@ -538,7 +548,7 @@ impl Renderer {
 
     pub fn load_points(&mut self, reader: &mut LASReader) {
         let default_layout = reader.get_default_point_layout();
-        println!("layout: {}", default_layout);
+        println!("point layout: {}", default_layout);
 
         let point_count = reader.remaining_points();
         let layout = PointLayout::from_attributes(&[
@@ -548,10 +558,10 @@ impl Renderer {
 
         self.point_count = point_count as u32;
         let mut point_buffer = InterleavedVecPointStorage::with_capacity(point_count, layout);
-        reader.read_into(&mut point_buffer, point_count).unwrap();
 
-        // let position: Vector3<f32> = point_buffer.get_attribute(&POINT_ATTRIB_3D_F32, 0);
-        // println!("pos0: {}", position);
+        println!("Reading {} points (this can take a while for large point clouds)", point_count);
+        reader.read_into(&mut point_buffer, point_count).unwrap();
+        println!("Done!");
 
         let inf = f32::INFINITY;
         let mut aabb_min = Vector3::new(inf, inf, inf);
@@ -573,21 +583,24 @@ impl Renderer {
         println!("aabb min: {:?}", aabb_min);
         println!("aabb max: {:?}", aabb_max);
 
-        println!("computing color bounds...");
-
-        let mut color_min = Vector3::<u16>::new(65535, 65535, 65535);
-        let mut color_max = Vector3::<u16>::new(0, 0, 0);
-
-        for color in point_buffer.iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB) {
-            color_min = nalgebra::Matrix::inf(&color, &color_min);
-            color_max = nalgebra::Matrix::sup(&color, &color_max);
-        }
-
-        println!("color min: {:?}", color_min);
-        println!("color max: {:?}", color_max);
-
         let center = 0.5f32 * (aabb_min + aabb_max);
         println!("center: {:?}", self.cam.pos);
+
+        let output_color_bounds = true;
+        if output_color_bounds {
+            println!("computing color bounds...");
+
+            let mut color_min = Vector3::<u16>::new(65535, 65535, 65535);
+            let mut color_max = Vector3::<u16>::new(0, 0, 0);
+
+            for color in point_buffer.iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB) {
+                color_min = nalgebra::Matrix::inf(&color, &color_min);
+                color_max = nalgebra::Matrix::sup(&color, &color_max);
+            }
+
+            println!("color min: {:?}", color_min);
+            println!("color max: {:?}", color_max);
+        }
 
         let extent = aabb_max - aabb_min;
         let max_ext = f32::max(extent.x, f32::max(extent.y, extent.z));

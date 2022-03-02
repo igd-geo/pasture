@@ -1,17 +1,4 @@
-use pasture_core::gpu as pgpu;
-use pasture_io::base::PointReader;
 use pasture_io::las::LASReader;
-
-use pasture_core::{
-    containers::{
-        PerAttributeVecPointStorage,
-        InterleavedVecPointStorage,
-        PointBufferExt,
-    },
-    layout::{
-        attributes, PointLayout, PointAttributeDefinition, PointAttributeDataType
-    },
-};
 
 use winit::{
     event::{Event, WindowEvent},
@@ -19,24 +6,27 @@ use winit::{
     window::Window,
 };
 
-use nalgebra::{Vector2, Vector3, Vector4, Point3, UnitQuaternion, Matrix4};
-use crevice::std140::AsStd140;
-
-use instant::Instant;
+use nalgebra::Vector2;
 
 mod renderer;
 
 async fn run(event_loop: EventLoop<()>, window: Window) {
     let mut renderer = renderer::Renderer::new(&window).await;
 
-    // For wasm: cannot load from file
-    let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
+    // For wasm: cannot load from file atm
+    // let buf : &[u8] = include_bytes!("/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las");
+    let buf : &[u8] = include_bytes!("/home/jan/loads/red-rocks.laz");
+    // let buf : &[u8] = include_bytes!("/home/jan/loads/interesting.las");
     let c = std::io::Cursor::new(buf);
-    let mut reader = LASReader::from_read(c, false).expect("Failed to create LASReader");
+    let mut reader = LASReader::from_read(c, true).expect("Failed to create LASReader");
 
     // let mut reader = LASReader::from_path(
     //     // "/home/jan/loads/points.laz"
     //     "/home/jan/loads/red-rocks.laz"
+    //     // "/home/jan/loads/open-topo-large.laz"
+    //     // "/home/jan/loads/MtStHelens.laz",
+    //     // "/home/jan/loads/Grass Lake Small.laz",
+    //     // "/home/jan/loads/athletic-fields.laz",
     //     // "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
     //     // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
     // ).expect("Failed to open las file");
@@ -59,7 +49,13 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     WindowEvent::KeyboardInput{input, ..} => {
                         let pressed = input.state == winit::event::ElementState::Pressed;
                         if let Some(key) = input.virtual_keycode {
-                            renderer.cam_controller.process_keyboard_input(key, pressed)
+                            if key == winit::event::VirtualKeyCode::F {
+                                renderer.cam_controller = Box::new(renderer::FPSCameraController::new());
+                            } else if key == winit::event::VirtualKeyCode::B {
+                                renderer.cam_controller = Box::new(renderer::ArcballCameraController::new());
+                            } else {
+                                renderer.cam_controller.process_keyboard_input(&mut renderer.cam, key, pressed)
+                            }
                         }
                     }
                     WindowEvent::CursorMoved{position, ..} => {
@@ -68,7 +64,7 @@ async fn run(event_loop: EventLoop<()>, window: Window) {
                     }
                     WindowEvent::MouseInput{state, button, ..} => {
                         let pressed = state == winit::event::ElementState::Pressed;
-                        renderer.cam_controller.process_mouse_button(button, pressed)
+                        renderer.cam_controller.process_mouse_button(&mut renderer.cam, button, pressed)
                     }
                     WindowEvent::MouseWheel{delta, ..} => {
                         if let winit::event::MouseScrollDelta::LineDelta(_, dy) = delta {

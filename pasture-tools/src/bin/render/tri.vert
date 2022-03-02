@@ -4,6 +4,7 @@ layout(location = 0) in vec3 inPos;
 layout(location = 1) in uvec3 inColor;
 
 layout(location = 0) out vec3 outColor;
+layout(location = 1) out vec2 outPos;
 
 layout(set = 0, binding = 0) uniform UBO {
 	mat4 matrix;
@@ -37,8 +38,10 @@ void main() {
 	}
 
 	gl_Position = ubo.matrix * vec4(pos, 1);
-	gl_Position.xy += 0.01 * rectPos;
+	float rectSize = 0.005f;
+	gl_Position.xy += rectSize * (-1.0 + 2.f * rectPos);
 
 	outColor = inColor / 255.f;
+	outPos = -1.f + 2.f * rectPos;
 }
 

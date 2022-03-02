@@ -199,6 +199,7 @@ mod ex {
             &mut device.wgpu_device,
             &device.wgpu_queue,
         );
+        gpu_point_buffer.create_bind_group(&mut device.wgpu_device);
 
         device.set_bind_group(
             0,
