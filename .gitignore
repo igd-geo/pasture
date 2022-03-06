@@ -8,6 +8,7 @@ Cargo.lock
 .DS_Store
 
 /pasture-io/examples/out/test_output.las
+/pasture-tools/src/bin/render/*.spv
 
 render.d.ts
 render.js

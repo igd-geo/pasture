@@ -45,23 +45,11 @@ async fn run(event_loop: EventLoop<()>, window: Window, path: Option<PathBuf>) {
     let mut reader = if let Some(reader_path) = path {
         LASReader::from_path(reader_path).expect("Failed to open lad file")
     } else {
-        // TODO:
         // let buf : &[u8] = include_bytes!("/home/jan/loads/red-rocks.laz");
         let buf : &[u8] = include_bytes!("../../../../pasture-io/examples/in/10_points_format_1.las");
         let c = std::io::Cursor::new(buf);
         LASReader::from_read(c, true).expect("Failed to create LASReader")
     };
-
-    // let mut reader = LASReader::from_path(
-    //     // "/home/jan/loads/points.laz"
-    //     "/home/jan/loads/red-rocks.laz"
-    //     // "/home/jan/loads/open-topo-large.laz"
-    //     // "/home/jan/loads/MtStHelens.laz",
-    //     // "/home/jan/loads/Grass Lake Small.laz",
-    //     // "/home/jan/loads/athletic-fields.laz",
-    //     // "/home/jan/code/pasture/pasture-io/examples/in/10_points_format_1.las"
-    //     // "/home/jan/loads/NEONDSSampleLiDARPointCloud.las"
-    // ).expect("Failed to open las file");
 
     renderer.load_points(&mut reader);
     drop(reader);
