@@ -127,6 +127,12 @@ impl InterleavedVecPointStorage {
         self.points.extend_from_slice(point_bytes_and_size);
     }
 
+    /// Pushes a single point into the associated `InterleavedVecPointStorage`. This is the unsafe, untyped version of `push_point_unchecked`. It performs zero correctness checks and assumes that `point_data` contains the data for exactly
+    /// one point in the point layout of this buffer
+    pub unsafe fn push_raw_point(&mut self, point_data: &[u8]) {
+        self.points.extend_from_slice(point_data);
+    }
+
     /// Pushes a range of points into the associated `InterleavedVecPointStorage`.
     ///
     /// # Examples

@@ -92,16 +92,12 @@ impl<T: Read + Seek> RawLASReader<T> {
         let mut buffer_cursor = Cursor::new(chunk_buffer);
 
         let format = Format::new(self.metadata.point_format())?;
+        let num_extra_bytes = format.extra_bytes;
 
-        let offset_to_first_point_in_file = self.reader.seek(SeekFrom::Current(0))?;
+        // This method assumes that self.reader is currently at the starting point of the chunk to read. Since it
+        // is only ever called from within the loop in `read_into_default_layout`, this assumption is correct!
 
-        for point_index in 0..num_points_in_chunk {
-            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
-            // supported by pasture at the moment, so we skip over them
-            let start_of_source_point =
-                offset_to_first_point_in_file + point_index as u64 * self.size_of_point_in_file;
-            self.reader.seek(SeekFrom::Start(start_of_source_point))?;
-
+        for _ in 0..num_points_in_chunk {
             // XYZ
             let local_x = self.reader.read_i32::<LittleEndian>()?;
             let local_y = self.reader.read_i32::<LittleEndian>()?;
@@ -188,6 +184,12 @@ impl<T: Read + Seek> RawLASReader<T> {
                 buffer_cursor.write_f32::<NativeEndian>(self.reader.read_f32::<LittleEndian>()?)?;
                 buffer_cursor.write_f32::<NativeEndian>(self.reader.read_f32::<LittleEndian>()?)?;
                 buffer_cursor.write_f32::<NativeEndian>(self.reader.read_f32::<LittleEndian>()?)?;
+            }
+
+            // Skip the extra bytes, reading extra bytes is not yet supported by pasture
+            if num_extra_bytes > 0 {
+                self.reader
+                    .seek(SeekFrom::Current(num_extra_bytes as i64))?;
             }
         }
 
