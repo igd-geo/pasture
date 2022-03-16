@@ -87,6 +87,7 @@
         - [ ] Extend the benchmarks for more point layouts
         - [ ] Read and write with `PerAttributePointBuffer`
     - [ ] Examples
+    - [ ] Provide an easy-to-use API to just read/write points from/to files
 - [ ] 3D Tiles
     - [ ] Reader
         - [x] Positions

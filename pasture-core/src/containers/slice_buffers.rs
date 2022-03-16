@@ -202,6 +202,10 @@ pub struct PerAttributePointBufferSliceMut<'p> {
     range_in_buffer: Range<usize>,
 }
 
+// TODO Unsure whether this is a good idea. The assumption behind this unsafe impl is that we can only every get multiple
+// `PerAttributePointBufferSliceMut` instances pointing to the same buffer if they point to *disjunct* regions of the
+// buffer, and that should make accessing them from multiple threads safe. But maybe this is an assumption that the clients
+// have to make, not pasture?
 unsafe impl<'a> Send for PerAttributePointBufferSliceMut<'a> {}
 
 impl<'p> PerAttributePointBufferSliceMut<'p> {
