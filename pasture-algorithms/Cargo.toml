@@ -21,6 +21,19 @@ typenum = "1.13.0"
 proj-sys = "0.22.0"
 kd-tree = "0.3.0"
 num-traits = "0.2.14"
+tokio = { version = "1.16.1", features = ["full"] }
+priority-queue = "1.2.1"
+ordered-float = "2.10.0"
+
+#gpu related
+wgpu = { version = "0.12.0", features = ["spirv"], optional = true }
+shaderc = { version = "0.7.2", optional = true }
+futures = { version = "0.3", optional = true }
+bytemuck = { version = "1.5.1", optional = true }
+
+[features]
+gpu = ["wgpu", "shaderc", "futures", "bytemuck"]
+
 
 [dev-dependencies]
 criterion = "0.3"

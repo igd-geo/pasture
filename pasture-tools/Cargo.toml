@@ -22,7 +22,6 @@ log = "0.4"
 pretty_env_logger = "0.4.0"
 plotters = "^0.3.0"
 rand = {version = "0.8.3", features = ["small_rng"] }
-
 [[bin]]
 name = "reorder_laz_chunks"
 

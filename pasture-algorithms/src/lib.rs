@@ -4,6 +4,10 @@
 //! Pasture contains algorithms that can manipulate the point cloud data or
 //! calculate results based on them.
 
+// Data structures used for accelerating operations on point clouds
+#[cfg(feature = "gpu")]
+pub mod acceleration_structures;
+
 // Algorithm to calculate the bounding box of a point cloud.
 pub mod bounds;
 // Get the minimum and maximum value of a specific attribute in a point cloud.
