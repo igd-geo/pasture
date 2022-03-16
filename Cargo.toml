@@ -6,6 +6,3 @@ resolver = "2"
 # needed for emscripten fix
 # https://github.com/chronotope/chrono/pull/568
 chrono = { git = 'https://github.com/chronotope/chrono', branch = 'main' }
-# custom getrandom to enable js feature by default.
-# We don't directly pulll the crate so no idea how to do it otherwise.
-getrandom = {git = 'https://github.com/nyorain/getrandom', branch = 'master' }

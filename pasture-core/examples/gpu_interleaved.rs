@@ -159,7 +159,7 @@ mod ex {
         };
 
         let mut gpu_point_buffer = GpuPointBufferInterleaved::new();
-        gpu_point_buffer.malloc(3, &buffer_info_interleaved, &mut device.wgpu_device);
+        gpu_point_buffer.malloc(3, &buffer_info_interleaved, &mut device.wgpu_device, true);
         gpu_point_buffer.upload(
             &point_buffer,
             0..point_buffer.len(),

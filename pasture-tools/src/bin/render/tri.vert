@@ -10,8 +10,6 @@ layout(set = 0, binding = 0) uniform UBO {
 	mat4 matrix;
 } ubo;
 
-const bool swizzleYZ = true;
-
 void main() {
 	// NOTE: the first line triggers a bug in gfx-rs/naga when translating
 	// it to a webgl shader
@@ -32,10 +30,6 @@ void main() {
 
 	float size = 0.05;
 	vec3 pos = inPos;
-
-	if(swizzleYZ) {
-		pos = pos.xzy;
-	}
 
 	gl_Position = ubo.matrix * vec4(pos, 1);
 	float rectSize = 0.005f;

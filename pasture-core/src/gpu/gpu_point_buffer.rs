@@ -409,7 +409,8 @@ impl GpuPointBufferInterleaved {
 
     /// Allocates enough memory on the device to hold `num_points` many points that are structured
     /// as described in `buffer_info`.
-    pub fn malloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved, wgpu_device: &mut wgpu::Device) {
+    pub fn malloc(&mut self, num_points: u64, buffer_info: &BufferInfoInterleaved,
+                  wgpu_device: &mut wgpu::Device, allow_download: bool) {
         // Determine struct alignment
         let struct_alignment =  self.struct_alignment(&buffer_info);
 
@@ -434,18 +435,26 @@ impl GpuPointBufferInterleaved {
 
         self.buffer_binding = Some(buffer_info.binding);
 
-        // TODO: warning message from wgpu
-        //  Feature MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu.
-        //  This is a massive performance footgun and likely not what you wanted.
+        let mut usage =
+            wgpu::BufferUsages::STORAGE |
+            wgpu::BufferUsages::COPY_SRC |
+            wgpu::BufferUsages::COPY_DST |
+            wgpu::BufferUsages::VERTEX; // for renderer
+
+        if allow_download {
+            // TODO: warning message from wgpu
+            //  Feature MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu.
+            //  This is a massive performance footgun and likely not what you wanted.
+            usage = usage |
+                wgpu::BufferUsages::MAP_READ |
+                wgpu::BufferUsages::MAP_WRITE;
+        }
+
         self.buffer = Some(wgpu_device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("storage_buffer"),
                 size,
-                usage: wgpu::BufferUsages::STORAGE |
-                    // wgpu::BufferUsages::MAP_READ |
-                    // wgpu::BufferUsages::MAP_WRITE |
-                    wgpu::BufferUsages::COPY_SRC |
-                    wgpu::BufferUsages::COPY_DST,
+                usage,
                 mapped_at_creation: false
             }
         ));
@@ -524,8 +533,6 @@ impl GpuPointBufferInterleaved {
 
         let gpu_buffer = self.buffer.as_ref().unwrap();
         wgpu_queue.write_buffer(&gpu_buffer, offset as wgpu::BufferAddress, bytes_to_write);
-
-        // self.create_bind_group(wgpu_device);
     }
 
     /// Writes the contents of the GPU buffer into `point_buffer`, which is in interleaved format,
@@ -766,6 +773,7 @@ impl GpuPointBufferInterleaved {
         }
     }
 
+    /// Needs to be called before using the buffer in a shader via a bound group.
     pub fn create_bind_group(&mut self, wgpu_device: &mut wgpu::Device) {
         let bind_group_layout = wgpu_device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
@@ -863,7 +871,8 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
 
     /// Allocates enough memory on the device to hold `num_points` many points that are structured
     /// as described in `buffer_info`.
-    pub fn malloc(&mut self, num_points: u64, buffer_infos: &'a[BufferInfoPerAttribute], wgpu_device: &mut wgpu::Device) {
+    pub fn malloc(&mut self, num_points: u64, buffer_infos: &'a[BufferInfoPerAttribute],
+                  wgpu_device: &mut wgpu::Device, allow_download: bool) {
         for info in buffer_infos {
             let size = (num_points as usize) * self.alignment_per_element(info.attribute.datatype());
 
@@ -876,19 +885,26 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
             self.buffer_sizes.insert(key.clone(), size as wgpu::BufferAddress);
             self.buffer_bindings.insert(key.clone(), info.binding);
 
-            // TODO: warning message from wgpu
-            //  Feature MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu.
-            //  This is a massive performance footgun and likely not what you wanted.
+            let mut usage =
+                wgpu::BufferUsages::STORAGE |
+                wgpu::BufferUsages::COPY_SRC |
+                wgpu::BufferUsages::COPY_DST |
+                wgpu::BufferUsages::VERTEX; // for renderer
+
+            if allow_download {
+                // TODO: warning message from wgpu
+                //  Feature MAPPABLE_PRIMARY_BUFFERS enabled on a discrete gpu.
+                //  This is a massive performance footgun and likely not what you wanted.
+                usage = usage |
+                    wgpu::BufferUsages::MAP_READ |
+                    wgpu::BufferUsages::MAP_WRITE;
+            }
+
             self.buffers.insert(key.clone(), wgpu_device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: Some(format!("storage_buffer_{}", key).as_str()),
                     size: size as wgpu::BufferAddress,
-                    usage: wgpu::BufferUsages::STORAGE |
-                        // wgpu::BufferUsages::MAP_READ |
-                        // wgpu::BufferUsages::MAP_WRITE |
-                        wgpu::BufferUsages::COPY_SRC |
-                        wgpu::BufferUsages::COPY_DST |
-                        wgpu::BufferUsages::VERTEX,
+                    usage,
                     mapped_at_creation: false,
                 }
             ));
@@ -948,6 +964,8 @@ impl<'a> GpuPointBufferPerAttribute<'a> {
 
     /// Writes the contents of the GPU buffer into `point_buffer`, which is in per-attribute format,
     /// within the `points_range` range.
+    /// NOTE: Not supported on the webgl webgpu backend at the moment due
+    /// to its limitations (can't create the buffer with map_read | map_write usage)
     pub async fn download_into_per_attribute(
         &self,
         point_buffer: &mut dyn PerAttributePointBufferMut<'_>,

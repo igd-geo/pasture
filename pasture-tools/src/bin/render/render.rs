@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use pasture_io::las::LASReader;
 use clap::{App, Arg};
 
@@ -48,10 +48,10 @@ async fn run(event_loop: EventLoop<()>, window: Window, path: Option<PathBuf>) {
         // let buf : &[u8] = include_bytes!("/home/jan/loads/red-rocks.laz");
         let buf : &[u8] = include_bytes!("../../../../pasture-io/examples/in/10_points_format_1.las");
         let c = std::io::Cursor::new(buf);
-        LASReader::from_read(c, true).expect("Failed to create LASReader")
+        LASReader::from_read(c, false).expect("Failed to create LASReader")
     };
 
-    renderer.load_points(&mut reader);
+    renderer.load_points(&mut reader, true);
     drop(reader);
 
     event_loop.run(move |event, _, control_flow| {

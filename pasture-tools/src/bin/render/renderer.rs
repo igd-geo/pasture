@@ -27,10 +27,6 @@ pub struct Camera {
     // camera position and orientation in world space
     pos: Point3<f32>,
     rot: UnitQuaternion<f32>,
-
-    // perspective projection parameters
-    aspect: f32,
-    fovy: f32,
 }
 
 impl Camera {
@@ -38,8 +34,6 @@ impl Camera {
         Camera {
             pos: Point3::new(0.0, 0.0, 0.0),
             rot: UnitQuaternion::identity(),
-            aspect: 1.0,
-            fovy: 1.5f32, // 90 degrees
         }
     }
 
@@ -88,9 +82,8 @@ pub struct ArcballCameraController {
 }
 
 // TODO: we only need a Vec here because gpu_point_buffer needs it
-const POINT_ATTRIB_3D_F32: PointAttributeDefinition = PointAttributeDefinition::custom(
-    "Position3D", PointAttributeDataType::Vec3f32
-);
+const POINT_ATTRIB_3D_F32: PointAttributeDefinition =
+    attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32);
 
 const POINT_ATTRIBS: [pgpu::BufferInfoPerAttribute; 2] = [
     pgpu::BufferInfoPerAttribute {
@@ -546,7 +539,9 @@ impl Renderer {
         depth_texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
-    pub fn load_points(&mut self, reader: &mut LASReader) {
+    // z-up: Whether the z-axis is the up-direction for the given point cloud.
+    //   If this is false, the y-axis will be treated as up-direction.
+    pub fn load_points(&mut self, reader: &mut LASReader, z_up: bool) {
         let default_layout = reader.get_default_point_layout();
         println!("point layout: {}", default_layout);
 
@@ -570,12 +565,7 @@ impl Renderer {
         println!("computing aabb...");
 
         for position in point_buffer.iter_attribute::<Vector3<f32>>(&POINT_ATTRIB_3D_F32) {
-            let mut pos = position;
-            let swizzle_yz = true;
-            if swizzle_yz {
-                pos = Vector3::new(pos.x, pos.z, pos.y);
-            }
-
+            let pos = position;
             aabb_min = nalgebra::Matrix::inf(&pos, &aabb_min);
             aabb_max = nalgebra::Matrix::sup(&pos, &aabb_max);
         }
@@ -605,10 +595,18 @@ impl Renderer {
         let extent = aabb_max - aabb_min;
         let max_ext = f32::max(extent.x, f32::max(extent.y, extent.z));
 
+        if z_up {
+            self.model_mat = self.model_mat * Matrix4::<f32>::new(
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 1.0);
+        }
+
         self.model_mat = self.model_mat * Matrix4::new_scaling(10.0 / max_ext);
         self.model_mat = self.model_mat * Matrix4::new_translation(&(-center));
 
-        self.gpu_point_buffer.malloc(point_count as u64, &POINT_ATTRIBS, &mut self.device);
+        self.gpu_point_buffer.malloc(point_count as u64, &POINT_ATTRIBS, &mut self.device, false);
         self.gpu_point_buffer.upload(&mut point_buffer, 0..point_count, &POINT_ATTRIBS, &mut self.device, &self.queue);
     }
 

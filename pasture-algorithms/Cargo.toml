@@ -20,6 +20,7 @@ rayon = "1.5"
 typenum = "1.13.0"
 kd-tree = "0.3.0"
 num-traits = "0.2.14"
+getrandom = {version = "0.2.5", features = ["js"]}
 
 # Some algorithms/dependencies are not supported on wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
