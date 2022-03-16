@@ -475,14 +475,18 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let position = centroid_average_vec(v, buffer, &attributes::POSITION_3D, a.datatype());
             let pos_slice = unsafe { view_raw_bytes(&position) };
-            &centroid.set_raw_attribute(&attributes::POSITION_3D, pos_slice);
+            centroid
+                .set_raw_attribute(&attributes::POSITION_3D, pos_slice)
+                .unwrap();
         } else if &a.name() == &attributes::INTENSITY.name()
             && a.datatype() == attributes::INTENSITY.datatype()
         {
             let average =
                 centroid_average_num::<PB>(v, buffer, &attributes::INTENSITY, a.datatype()) as u16;
             let avg_slice = unsafe { view_raw_bytes(&average) };
-            &centroid.set_raw_attribute(&attributes::INTENSITY, avg_slice);
+            centroid
+                .set_raw_attribute(&attributes::INTENSITY, avg_slice)
+                .unwrap();
         } else if &a.name() == &attributes::RETURN_NUMBER.name()
             && a.datatype() == attributes::RETURN_NUMBER.datatype()
         {
@@ -490,7 +494,9 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 centroid_most_common::<PB>(v, buffer, &attributes::RETURN_NUMBER, a.datatype())
                     as u8;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::RETURN_NUMBER, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::RETURN_NUMBER, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::NUMBER_OF_RETURNS.name()
             && a.datatype() == attributes::NUMBER_OF_RETURNS.datatype()
         {
@@ -498,7 +504,9 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 centroid_most_common::<PB>(v, buffer, &attributes::NUMBER_OF_RETURNS, a.datatype())
                     as u8;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::NUMBER_OF_RETURNS, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::NUMBER_OF_RETURNS, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::CLASSIFICATION_FLAGS.name()
             && a.datatype() == attributes::CLASSIFICATION_FLAGS.datatype()
         {
@@ -506,7 +514,9 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 centroid_max_pool::<PB>(v, buffer, &attributes::CLASSIFICATION_FLAGS, a.datatype())
                     as u8;
             let m_slice = unsafe { view_raw_bytes(&max) };
-            &centroid.set_raw_attribute(&attributes::CLASSIFICATION_FLAGS, m_slice);
+            centroid
+                .set_raw_attribute(&attributes::CLASSIFICATION_FLAGS, m_slice)
+                .unwrap();
         } else if &a.name() == &attributes::SCANNER_CHANNEL.name()
             && a.datatype() == attributes::SCANNER_CHANNEL.datatype()
         {
@@ -514,7 +524,9 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 centroid_most_common::<PB>(v, buffer, &attributes::SCANNER_CHANNEL, a.datatype())
                     as u8;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::SCANNER_CHANNEL, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::SCANNER_CHANNEL, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::SCAN_DIRECTION_FLAG.name()
             && a.datatype() == attributes::SCAN_DIRECTION_FLAG.datatype()
         {
@@ -525,7 +537,9 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 a.datatype(),
             ) != 0;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::SCAN_DIRECTION_FLAG, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::SCAN_DIRECTION_FLAG, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::EDGE_OF_FLIGHT_LINE.name()
             && a.datatype() == attributes::EDGE_OF_FLIGHT_LINE.datatype()
         {
@@ -536,7 +550,9 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 a.datatype(),
             ) != 0;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::EDGE_OF_FLIGHT_LINE, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::EDGE_OF_FLIGHT_LINE, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::CLASSIFICATION.name()
             && a.datatype() == attributes::CLASSIFICATION.datatype()
         {
@@ -544,7 +560,9 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 centroid_most_common::<PB>(v, buffer, &attributes::CLASSIFICATION, a.datatype())
                     as u8;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::CLASSIFICATION, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::CLASSIFICATION, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::SCAN_ANGLE_RANK.name()
             && a.datatype() == attributes::SCAN_ANGLE_RANK.datatype()
         {
@@ -552,21 +570,27 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 centroid_most_common::<PB>(v, buffer, &attributes::SCAN_ANGLE_RANK, a.datatype())
                     as i8;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::SCAN_ANGLE_RANK, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::SCAN_ANGLE_RANK, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::SCAN_ANGLE.name()
             && a.datatype() == attributes::SCAN_ANGLE.datatype()
         {
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::SCAN_ANGLE, a.datatype()) as i16;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::SCAN_ANGLE, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::SCAN_ANGLE, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::USER_DATA.name()
             && a.datatype() == attributes::USER_DATA.datatype()
         {
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::USER_DATA, a.datatype()) as u8;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::USER_DATA, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::USER_DATA, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::POINT_SOURCE_ID.name()
             && a.datatype() == attributes::POINT_SOURCE_ID.datatype()
         {
@@ -574,27 +598,35 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 centroid_most_common::<PB>(v, buffer, &attributes::POINT_SOURCE_ID, a.datatype())
                     as u16;
             let mc_slice = unsafe { view_raw_bytes(&most_common) };
-            &centroid.set_raw_attribute(&attributes::POINT_SOURCE_ID, mc_slice);
+            centroid
+                .set_raw_attribute(&attributes::POINT_SOURCE_ID, mc_slice)
+                .unwrap();
         } else if &a.name() == &attributes::COLOR_RGB.name()
             && a.datatype() == attributes::COLOR_RGB.datatype()
         {
             let color = centroid_average_vec(v, buffer, &attributes::COLOR_RGB, a.datatype());
             let color_u16 = Vector3::new(color.x as u16, color.y as u16, color.z as u16);
             let col_slice = unsafe { view_raw_bytes(&color_u16) };
-            &centroid.set_raw_attribute(&attributes::COLOR_RGB, col_slice);
+            centroid
+                .set_raw_attribute(&attributes::COLOR_RGB, col_slice)
+                .unwrap();
         } else if &a.name() == &attributes::GPS_TIME.name()
             && a.datatype() == attributes::GPS_TIME.datatype()
         {
             let max =
                 centroid_max_pool::<PB>(v, buffer, &attributes::GPS_TIME, a.datatype()) as f64;
             let m_slice = unsafe { view_raw_bytes(&max) };
-            &centroid.set_raw_attribute(&attributes::GPS_TIME, m_slice);
+            centroid
+                .set_raw_attribute(&attributes::GPS_TIME, m_slice)
+                .unwrap();
         } else if &a.name() == &attributes::NIR.name() && a.datatype() == attributes::NIR.datatype()
         {
             let average =
                 centroid_average_num::<PB>(v, buffer, &attributes::NIR, a.datatype()) as u16;
             let avg_slice = unsafe { view_raw_bytes(&average) };
-            &centroid.set_raw_attribute(&attributes::NIR, avg_slice);
+            centroid
+                .set_raw_attribute(&attributes::NIR, avg_slice)
+                .unwrap();
 
         // The waveform-data attributes are implemented in the following lines, but there is no use-case for it currently.
         /* } else if &a.name() == &attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name() {
@@ -645,14 +677,18 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let max =
                 centroid_max_pool::<PB>(v, buffer, &attributes::POINT_ID, a.datatype()) as u64;
             let m_slice = unsafe { view_raw_bytes(&max) };
-            &centroid.set_raw_attribute(&attributes::POINT_ID, m_slice);
+            centroid
+                .set_raw_attribute(&attributes::POINT_ID, m_slice)
+                .unwrap();
         } else if &a.name() == &attributes::NORMAL.name()
             && a.datatype() == attributes::NORMAL.datatype()
         {
             let normal = centroid_average_vec(v, buffer, &attributes::NORMAL, a.datatype());
             let normal_f32 = Vector3::new(normal.x as f32, normal.y as f32, normal.z as f32);
             let nor_slice = unsafe { view_raw_bytes(&normal_f32) };
-            &centroid.set_raw_attribute(&attributes::NORMAL, nor_slice);
+            centroid
+                .set_raw_attribute(&attributes::NORMAL, nor_slice)
+                .unwrap();
         }
         // we have a non-standard attribute -> use max-pooling for numbers and average for vec
         // currently, only f64 and Vec3f64 is supported
