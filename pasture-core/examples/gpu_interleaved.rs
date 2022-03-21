@@ -1,4 +1,4 @@
-#[cfg(feature = "gpu")]
+#[cfg(feature = "core_gpu_examples")]
 mod ex {
 
     use pasture_core::containers::{InterleavedVecPointStorage, PointBuffer, PointBufferExt};
@@ -159,7 +159,7 @@ mod ex {
         };
 
         let mut gpu_point_buffer = GpuPointBufferInterleaved::new();
-        gpu_point_buffer.malloc(3, &buffer_info_interleaved, &mut device.wgpu_device);
+        gpu_point_buffer.malloc(3, &buffer_info_interleaved, &mut device.wgpu_device, true);
         gpu_point_buffer.upload(
             &point_buffer,
             0..point_buffer.len(),
@@ -167,13 +167,25 @@ mod ex {
             &mut device.wgpu_device,
             &device.wgpu_queue,
         );
+        gpu_point_buffer.create_bind_group(&mut device.wgpu_device);
 
         device.set_bind_group(
             0,
             gpu_point_buffer.bind_group_layout.as_ref().unwrap(),
             gpu_point_buffer.bind_group.as_ref().unwrap(),
         );
-        device.set_compute_shader_glsl(include_str!("shaders/interleaved.comp"));
+
+        let mut compiler = shaderc::Compiler::new().unwrap();
+        let comp_spirv = compiler
+            .compile_into_spirv(
+                include_str!("shaders/interleaved.comp"),
+                shaderc::ShaderKind::Compute,
+                "interleaved.comp",
+                "main",
+                None,
+            )
+            .unwrap();
+        device.set_compute_shader_spirv(comp_spirv.as_binary());
         device.compute(1, 1, 1);
 
         println!("\n===== COMPUTE =====\n");
@@ -200,10 +212,10 @@ mod ex {
     }
 }
 
-#[cfg(feature = "gpu")]
+#[cfg(feature = "core_gpu_examples")]
 fn main() {
     ex::main();
 }
 
-#[cfg(not(feature = "gpu"))]
+#[cfg(not(feature = "core_gpu_examples"))]
 fn main() {}

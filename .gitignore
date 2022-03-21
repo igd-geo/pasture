@@ -1,5 +1,4 @@
 /target
-
 Cargo.lock
 
 .vscode
@@ -9,3 +8,9 @@ Cargo.lock
 .DS_Store
 
 /pasture-io/examples/out/test_output.las
+/pasture-tools/src/bin/render/*.spv
+
+render.d.ts
+render.js
+render_bg.wasm
+render_bg.wasm.d.ts

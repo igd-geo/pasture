@@ -24,10 +24,10 @@ itertools = "0.10.0"
 byteorder = "1.4.2"
 
 # GPU related
-wgpu = { version = "0.11.0", features = ["spirv"], optional = true }
-shaderc = { version = "0.7.2", optional = true }
+wgpu = { version = "0.12.0", features = ["spirv"], optional = true }
 futures = { version = "0.3", optional = true }
 bytemuck = { version = "1.5.1", optional = true }
+shaderc = { version = "0.7.2", optional = true }
 
 [dev-dependencies]
 rand = "0.8.2"
@@ -38,4 +38,5 @@ name = "point_buffer_iterators_bench"
 harness = false
 
 [features]
-gpu = ["wgpu", "shaderc", "futures", "bytemuck"]
+gpu = ["wgpu", "futures", "bytemuck"] 
+core_gpu_examples = ["gpu", "shaderc"]

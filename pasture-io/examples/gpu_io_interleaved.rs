@@ -120,7 +120,7 @@ mod ex {
 
         // Allocate memory for point buffer and queue it for upload onto the GPU
         let mut gpu_point_buffer = GpuPointBufferInterleaved::new();
-        gpu_point_buffer.malloc(point_count as u64, &buffer_info, &mut device.wgpu_device);
+        gpu_point_buffer.malloc(point_count as u64, &buffer_info, &mut device.wgpu_device, true);
         gpu_point_buffer.upload(
             &mut point_buffer,
             0..point_count,
@@ -128,6 +128,7 @@ mod ex {
             &mut device.wgpu_device,
             &device.wgpu_queue,
         );
+        gpu_point_buffer.create_bind_group(&mut device.wgpu_device);
 
         // Here: GpuPointBuffer -> "set=0",
         //       PointUniform   -> "set=1"

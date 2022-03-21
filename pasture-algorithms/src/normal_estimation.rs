@@ -96,7 +96,7 @@ where
     let mut points_with_normals_curvature = vec![];
 
     // transform point cloud in vector of points
-    let mut points = vec![];
+    let mut points : Vec<[f64; 3]> = vec![];
     for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
         points.push(*point.as_ref());
     }
@@ -106,7 +106,8 @@ where
 
     // iterate over all points in the point cloud and and calculate the k nearest neighbors with the constructed kd tree
     for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
-        let nearest_points = cloud_as_kd_tree.nearests(point.as_ref(), k_nn);
+        let r : &[f64; 3] = point.as_ref();
+        let nearest_points = cloud_as_kd_tree.nearests(r, k_nn);
 
         // stores the k nearest neighbors in a PointStorage
         let mut k_nn_buffer = PerAttributeVecPointStorage::with_capacity(

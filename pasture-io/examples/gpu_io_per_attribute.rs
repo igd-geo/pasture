@@ -102,15 +102,26 @@ mod ex {
 
         // Allocate memory for point buffer and queue it for upload onto the GPU
         let mut gpu_point_buffer = GpuPointBufferPerAttribute::new();
-        gpu_point_buffer.malloc(point_count as u64, &buffer_infos, &mut device.wgpu_device);
+        gpu_point_buffer.malloc(point_count as u64, &buffer_infos, &mut device.wgpu_device, true);
         gpu_point_buffer.upload(&mut point_buffer, 0..point_count, &buffer_infos, &mut device.wgpu_device, &device.wgpu_queue);
+        gpu_point_buffer.create_bind_group(&mut device.wgpu_device);
 
         // Here: GpuPointBuffer -> "set=0",
         //       PointUniform   -> "set=1"
         device.set_bind_group(0, gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
         device.set_bind_group(1, &uniform_bind_group_layout, &uniform_bind_group);
 
-        device.set_compute_shader_glsl(include_str!("shaders/io_per_attribute.comp"));
+        let mut compiler = shaderc::Compiler::new().unwrap();
+        let comp_spirv = compiler
+            .compile_into_spirv(
+                include_str!("shaders/io_per_attribute.comp"),
+                shaderc::ShaderKind::Compute,
+                "io_per_attribute.comp",
+                "main",
+                None,
+            )
+            .unwrap();
+        device.set_compute_shader_spirv(&comp_spirv.as_binary());
         device.compute(((point_count / 128) + 1) as u32, 1, 1);
 
         gpu_point_buffer.download_into_per_attribute(&mut point_buffer, 0..point_count, &buffer_infos, &device.wgpu_device).await;

@@ -1,3 +1,8 @@
 [workspace]
 members = ["pasture-core", "pasture-io", "pasture-tools", "pasture-derive", "pasture-algorithms"]
 resolver = "2"
+
+[patch.crates-io]
+# needed for emscripten fix
+# https://github.com/chronotope/chrono/pull/568
+chrono = { git = 'https://github.com/chronotope/chrono', branch = 'main' }
