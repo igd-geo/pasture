@@ -1,9 +1,10 @@
 use std::{fs::File, io::BufWriter, io::Seek, io::Write, path::Path};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use las_rs::Builder;
 use pasture_core::{containers::PointBuffer, layout::PointLayout};
 
-use crate::base::PointWriter;
+use crate::{base::PointWriter, las::las_point_format_from_point_layout};
 
 use super::{path_is_compressed_las_file, RawLASWriter, RawLAZWriter};
 
@@ -22,7 +23,40 @@ pub struct LASWriter<T: Write + Seek + Send + 'static> {
 }
 
 impl<T: Write + Seek + Send + 'static> LASWriter<T> {
-    /// Creates a new 'LASWriter` from the given writer and LAS header
+    /// Creates a new `LASWriter` from the given `writer`. This uses a default-created LAS header for writing,
+    /// with an appropriate point format determined from the given `point_layout`. The LAS header uses a scale
+    /// of 0.001, which yields 1mm precision. LAS version 1.4 is used.
+    /// If `is_compressed` is set, the writer will write compressed `LAZ` files instead of `LAS` files.
+    pub fn from_writer_and_point_layout(
+        writer: T,
+        point_layout: &PointLayout,
+        is_compressed: bool,
+    ) -> Result<Self> {
+        let point_format = las_point_format_from_point_layout(point_layout);
+        let mut header_builder = Builder::from((1, 4));
+        header_builder.point_format = point_format;
+        header_builder.transforms = las_rs::Vector {
+            x: las_rs::Transform {
+                offset: 0.0,
+                scale: 0.001,
+            },
+            y: las_rs::Transform {
+                offset: 0.0,
+                scale: 0.001,
+            },
+            z: las_rs::Transform {
+                offset: 0.0,
+                scale: 0.001,
+            },
+        };
+        let las_header = header_builder
+            .into_header()
+            .context("Could not default-create LAS header")?;
+        Self::from_writer_and_header(writer, las_header, is_compressed)
+    }
+
+    /// Creates a new `LASWriter` from the given writer and LAS header. If `is_compressed` is set,
+    /// the writer will write compressed `LAZ` files instead of `LAS` files.
     pub fn from_writer_and_header(
         writer: T,
         header: las::Header,
@@ -47,11 +81,21 @@ impl<T: Write + Seek + Send + 'static> LASWriter<T> {
 }
 
 impl LASWriter<BufWriter<File>> {
-    /// Creates a new 'LASWriter` from the given path and LAS header
+    /// Creates a new `LASWriter` from the given path and LAS header
     pub fn from_path_and_header<P: AsRef<Path>>(path: P, header: las::Header) -> Result<Self> {
         let is_compressed = path_is_compressed_las_file(path.as_ref())?;
         let writer = BufWriter::new(File::create(path)?);
         Self::from_writer_and_header(writer, header, is_compressed)
+    }
+
+    /// Creates a new `LASWriter` from the given `path` and `point_layout`
+    pub fn from_path_and_point_layout<P: AsRef<Path>>(
+        path: P,
+        point_layout: &PointLayout,
+    ) -> Result<Self> {
+        let is_compressed = path_is_compressed_las_file(path.as_ref())?;
+        let writer = BufWriter::new(File::create(path)?);
+        Self::from_writer_and_point_layout(writer, point_layout, is_compressed)
     }
 }
 

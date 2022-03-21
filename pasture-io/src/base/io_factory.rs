@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use anyhow::{anyhow, Result};
-use las_rs::Builder;
+use pasture_core::layout::PointLayout;
 
 use crate::las::{LASReader, LASWriter};
 
@@ -12,7 +12,7 @@ pub trait PointReadAndSeek: PointReader + SeekToPoint {}
 impl<T: PointReader + SeekToPoint> PointReadAndSeek for T {}
 
 type ReaderFactoryFn = dyn Fn(&Path) -> Result<Box<dyn PointReadAndSeek>>;
-type WriterFactoryFn = dyn Fn(&Path) -> Result<Box<dyn PointWriter>>;
+type WriterFactoryFn = dyn Fn(&Path, &PointLayout) -> Result<Box<dyn PointWriter>>;
 
 /// Factory that can create `PointReader` and `PointWriter` objects based on file extensions. Use this if you have a file path
 /// and just want to create a `PointReader` or `PointWriter` from this path, without knowing the type of file. The `Default`
@@ -53,9 +53,14 @@ impl IOFactory {
         factory(file)
     }
 
-    /// Try to create a `PointWriter` for writing into the given `file`. This function will fail if `file` has
-    /// a format that is unsupported by Pasture, or if there are any I/O errors while trying to access `file`.
-    pub fn make_writer(&self, file: &Path) -> Result<Box<dyn PointWriter>> {
+    /// Try to create a `PointWriter` for writing into the given `file` with the given `point_layout`. This function
+    /// will fail if `file` has a format that is unsupported by pasture, or if there are any I/O errors while trying
+    /// to access `file`.
+    pub fn make_writer(
+        &self,
+        file: &Path,
+        point_layout: &PointLayout,
+    ) -> Result<Box<dyn PointWriter>> {
         let extension = file.extension().ok_or_else(|| {
             anyhow!(
                 "File extension could not be determined from path {}",
@@ -79,7 +84,7 @@ impl IOFactory {
                 )
             })?;
 
-        factory(file)
+        factory(file, point_layout)
     }
 
     /// Returns `true` if the associated `IOFactory` supports creating `PointReader` objects for the given
@@ -116,7 +121,9 @@ impl IOFactory {
     /// `extension` is encountered as a file extension in `make_writer`. Returns the previous writer factory function that
     /// was registered for `extension`, if there was any. File extensions are treated as lower-case internally, so if the
     /// extension `.FOO` is registered here, it will match `file.foo` and `file.FOO` (and all case-variations thereof).
-    pub fn register_writer_for_extension<F: Fn(&Path) -> Result<Box<dyn PointWriter>> + 'static>(
+    pub fn register_writer_for_extension<
+        F: Fn(&Path, &PointLayout) -> Result<Box<dyn PointWriter>> + 'static,
+    >(
         &mut self,
         extension: &str,
         writer_factory: F,
@@ -138,9 +145,8 @@ impl Default for IOFactory {
             let reader = LASReader::from_path(path)?;
             Ok(Box::new(reader))
         });
-        factory.register_writer_for_extension("las", |path| {
-            let header = Builder::from((1, 4)).into_header()?;
-            let writer = LASWriter::from_path_and_header(path, header)?;
+        factory.register_writer_for_extension("las", |path, point_layout| {
+            let writer = LASWriter::from_path_and_point_layout(path, point_layout)?;
             Ok(Box::new(writer))
         });
 
@@ -148,9 +154,8 @@ impl Default for IOFactory {
             let reader = LASReader::from_path(path)?;
             Ok(Box::new(reader))
         });
-        factory.register_writer_for_extension("laz", |path| {
-            let header = Builder::from((1, 4)).into_header()?;
-            let writer = LASWriter::from_path_and_header(path, header)?;
+        factory.register_writer_for_extension("laz", |path, point_layout| {
+            let writer = LASWriter::from_path_and_point_layout(path, point_layout)?;
             Ok(Box::new(writer))
         });
 
@@ -172,7 +177,7 @@ mod tests {
         assert!(factory.supports_writing_to("LAS"));
 
         factory.register_reader_for_extension("FOO", |_path| unimplemented!());
-        factory.register_writer_for_extension("FOO", |_path| unimplemented!());
+        factory.register_writer_for_extension("FOO", |_path, _point_layout| unimplemented!());
 
         assert!(factory.supports_reading_from("foo"));
         assert!(factory.supports_reading_from("FOO"));
