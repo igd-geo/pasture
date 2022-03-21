@@ -22,6 +22,7 @@ log = "0.4"
 pretty_env_logger = "0.4.0"
 plotters = "^0.3.0"
 rand = {version = "0.8.3", features = ["small_rng"] }
+morton-index = "^0.1.0"
 
 # GPU related
 winit = "0.26"

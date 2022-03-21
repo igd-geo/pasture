@@ -1,6 +1,7 @@
 #![warn(clippy::all)]
 
 use std::{
+    convert::TryFrom,
     fs::read_dir,
     path::{Path, PathBuf},
 };
@@ -8,6 +9,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use clap::{value_t, App, Arg};
 use log::{info, warn};
+use morton_index::{dimensions::OctantOrdering, FixedDepthMortonIndex3D64};
 use pasture_algorithms::bounds::calculate_bounds;
 use pasture_core::{
     containers::PointBuffer,
@@ -16,8 +18,7 @@ use pasture_core::{
         PointBufferWriteable,
     },
     layout::attributes::POSITION_3D,
-    math::reverse_bits,
-    math::{expand_bits_by_3, MortonIndex64, AABB},
+    math::AABB,
     nalgebra::{Point3, Vector3},
 };
 use pasture_io::las::LASReader;
@@ -112,7 +113,7 @@ fn get_args() -> Result<Args> {
     })
 }
 
-fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> MortonIndex64 {
+fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> FixedDepthMortonIndex3D64 {
     let normalized_extent = (2.0_f64.powf(21 as f64)) / bounds.extent().x;
     let normalized_point = (point - bounds.min()).component_mul(&Vector3::new(
         normalized_extent,
@@ -125,12 +126,19 @@ fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> MortonIndex
     let grid_index_y = u64::min(normalized_point.y as u64, max_index);
     let grid_index_z = u64::min(normalized_point.z as u64, max_index);
 
-    let x_bits = expand_bits_by_3(grid_index_x);
-    let y_bits = expand_bits_by_3(grid_index_y);
-    let z_bits = expand_bits_by_3(grid_index_z);
-
-    let index = (z_bits << 2) | (y_bits << 1) | x_bits;
-    MortonIndex64::from_raw(reverse_bits(index))
+    // Inefficient implementation...
+    let mut rev_cells = FixedDepthMortonIndex3D64::from_grid_index(
+        Vector3::new(
+            grid_index_x as usize,
+            grid_index_y as usize,
+            grid_index_z as usize,
+        ),
+        OctantOrdering::XYZ,
+    )
+    .cells()
+    .collect::<Vec<_>>();
+    rev_cells.reverse();
+    FixedDepthMortonIndex3D64::try_from(rev_cells.as_slice()).unwrap()
 }
 
 fn hilbertize_chunk(

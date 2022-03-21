@@ -1,15 +1,11 @@
-use pasture_core::{
-    math::expand_bits_by_3,
-    math::reverse_bits,
-    math::{MortonIndex64, AABB},
-    nalgebra::Point3,
-    nalgebra::Vector3,
-};
+use morton_index::{dimensions::OctantOrdering, FixedDepthMortonIndex3D64};
+use pasture_core::{math::AABB, nalgebra::Point3, nalgebra::Vector3};
 use plotters::coord::types::RangedCoordf32;
 use plotters::prelude::*;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
+use std::convert::TryFrom;
 
-fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> MortonIndex64 {
+fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> FixedDepthMortonIndex3D64 {
     let normalized_extent = (2.0_f64.powf(21 as f64)) / bounds.extent().x;
     let normalized_point = (point - bounds.min()).component_mul(&Vector3::new(
         normalized_extent,
@@ -22,13 +18,19 @@ fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> MortonIndex
     let grid_index_y = u64::min(normalized_point.y as u64, max_index);
     let grid_index_z = u64::min(normalized_point.z as u64, max_index);
 
-    let x_bits = expand_bits_by_3(grid_index_x);
-    let y_bits = expand_bits_by_3(grid_index_y);
-    let z_bits = expand_bits_by_3(grid_index_z);
-
-    let index = (z_bits << 2) | (y_bits << 1) | x_bits;
-    // reverse the bits of the index, so that the LSB becomes the MSB and vice versa
-    MortonIndex64::from_raw(reverse_bits(index))
+    // Inefficient implementation...
+    let mut rev_cells = FixedDepthMortonIndex3D64::from_grid_index(
+        Vector3::new(
+            grid_index_x as usize,
+            grid_index_y as usize,
+            grid_index_z as usize,
+        ),
+        OctantOrdering::XYZ,
+    )
+    .cells()
+    .collect::<Vec<_>>();
+    rev_cells.reverse();
+    FixedDepthMortonIndex3D64::try_from(rev_cells.as_slice()).unwrap()
 }
 
 fn gen_random_points(count: usize) -> Vec<Point3<f64>> {
@@ -40,7 +42,7 @@ fn gen_random_points(count: usize) -> Vec<Point3<f64>> {
         .collect()
 }
 
-fn sample_points() -> Vec<(Point3<f64>, MortonIndex64)> {
+fn sample_points() -> Vec<(Point3<f64>, FixedDepthMortonIndex3D64)> {
     let points = gen_random_points(64);
     let bounds =
         AABB::from_min_max_unchecked(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));

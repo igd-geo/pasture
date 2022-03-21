@@ -20,4 +20,6 @@ jobs:
       run: cargo build --verbose --features gpu,io_gpu_examples,core_gpu_examples
     - name: Run tests
       run: cargo test --verbose --features gpu,io_gpu_examples,core_gpu_examples
+    - name: Run tests with default features
+      run: cargo test --verbose
 

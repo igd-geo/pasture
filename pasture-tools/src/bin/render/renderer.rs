@@ -3,19 +3,14 @@ use pasture_io::base::PointReader;
 use pasture_io::las::LASReader;
 
 use pasture_core::{
-    containers::{
-        InterleavedVecPointStorage,
-        PointBufferExt,
-    },
-    layout::{
-        attributes, PointLayout, PointAttributeDefinition, PointAttributeDataType
-    },
+    containers::{InterleavedVecPointStorage, PointBufferExt},
+    layout::{attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout},
 };
 
-use winit::window::Window;
-use nalgebra::{Vector2, Vector3, Point3, UnitQuaternion, Matrix4};
 use crevice::std140::AsStd140;
 use instant::Instant;
+use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector2, Vector3};
+use winit::window::Window;
 
 #[repr(C)]
 #[derive(Debug, AsStd140)]
@@ -37,11 +32,11 @@ impl Camera {
         }
     }
 
-    pub fn view_dir(&self) -> Vector3::<f32> {
+    pub fn view_dir(&self) -> Vector3<f32> {
         self.rot * Vector3::new(0.0f32, 0.0f32, -1.0f32)
     }
 
-    pub fn view_mat(&self) -> nalgebra::Matrix4::<f32> {
+    pub fn view_mat(&self) -> nalgebra::Matrix4<f32> {
         let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
         let target = self.pos + self.view_dir();
 
@@ -51,9 +46,21 @@ impl Camera {
 
 pub trait CameraController {
     fn update(&mut self, _cam: &mut Camera, _dt: f32) {}
-    fn process_mouse_move(&mut self, _cam: &mut Camera, _pos: Vector2::<f32>) {}
-    fn process_keyboard_input(&mut self, _cam: &mut Camera, _key: winit::event::VirtualKeyCode, _pressed: bool) {}
-    fn process_mouse_button(&mut self, _cam: &mut Camera, _key: winit::event::MouseButton, _pressed: bool) {}
+    fn process_mouse_move(&mut self, _cam: &mut Camera, _pos: Vector2<f32>) {}
+    fn process_keyboard_input(
+        &mut self,
+        _cam: &mut Camera,
+        _key: winit::event::VirtualKeyCode,
+        _pressed: bool,
+    ) {
+    }
+    fn process_mouse_button(
+        &mut self,
+        _cam: &mut Camera,
+        _key: winit::event::MouseButton,
+        _pressed: bool,
+    ) {
+    }
     fn process_mouse_wheel(&mut self, _cam: &mut Camera, _delta: f32) {}
 }
 
@@ -69,16 +76,16 @@ pub struct FPSCameraController {
     pub q_down: bool,
     pub e_down: bool,
     pub rotating: bool,
-    pub mouse_pos: Option<Vector2::<f32>>,
+    pub mouse_pos: Option<Vector2<f32>>,
 }
 
 pub struct ArcballCameraController {
-	// Describes how far the rotation center is in front of the camera.
-	offset: f32,
+    // Describes how far the rotation center is in front of the camera.
+    offset: f32,
 
-	rotating: bool,
-	panning: bool,
-    mouse_pos: Option<Vector2::<f32>>,
+    rotating: bool,
+    panning: bool,
+    mouse_pos: Option<Vector2<f32>>,
 }
 
 // TODO: we only need a Vec here because gpu_point_buffer needs it
@@ -142,10 +149,10 @@ impl CameraController for FPSCameraController {
         }
     }
 
-    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2::<f32>) {
+    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2<f32>) {
         if self.rotating {
             if let Some(mpos) = self.mouse_pos {
-                let delta : Vector2::<f32> = pos - mpos;
+                let delta: Vector2<f32> = pos - mpos;
                 let fac = 0.01f32;
                 let limit_pitch = true;
                 let pitch_eps = 0.001;
@@ -155,8 +162,9 @@ impl CameraController for FPSCameraController {
 
                 if limit_pitch {
                     let pi = std::f32::consts::PI;
-                    self.pitch = self.pitch.clamp(
-                        -0.5 * pi + pitch_eps, 0.5 * pi - pitch_eps);
+                    self.pitch = self
+                        .pitch
+                        .clamp(-0.5 * pi + pitch_eps, 0.5 * pi - pitch_eps);
                 }
 
                 // NOTE: pitch, yaw, roll order seems to be switched
@@ -169,31 +177,29 @@ impl CameraController for FPSCameraController {
         self.mouse_pos = Some(pos)
     }
 
-    fn process_keyboard_input(&mut self, _cam: &mut Camera, key: winit::event::VirtualKeyCode, pressed: bool) {
+    fn process_keyboard_input(
+        &mut self,
+        _cam: &mut Camera,
+        key: winit::event::VirtualKeyCode,
+        pressed: bool,
+    ) {
         match key {
-            winit::event::VirtualKeyCode::W => {
-                self.w_down = pressed
-            }
-            winit::event::VirtualKeyCode::S => {
-                self.s_down = pressed
-            }
-            winit::event::VirtualKeyCode::A => {
-                self.a_down = pressed
-            }
-            winit::event::VirtualKeyCode::D => {
-                self.d_down = pressed
-            }
-            winit::event::VirtualKeyCode::Q => {
-                self.q_down = pressed
-            }
-            winit::event::VirtualKeyCode::E => {
-                self.e_down = pressed
-            }
+            winit::event::VirtualKeyCode::W => self.w_down = pressed,
+            winit::event::VirtualKeyCode::S => self.s_down = pressed,
+            winit::event::VirtualKeyCode::A => self.a_down = pressed,
+            winit::event::VirtualKeyCode::D => self.d_down = pressed,
+            winit::event::VirtualKeyCode::Q => self.q_down = pressed,
+            winit::event::VirtualKeyCode::E => self.e_down = pressed,
             _ => {}
         }
     }
 
-    fn process_mouse_button(&mut self, _cam: &mut Camera, button: winit::event::MouseButton, pressed: bool) {
+    fn process_mouse_button(
+        &mut self,
+        _cam: &mut Camera,
+        button: winit::event::MouseButton,
+        pressed: bool,
+    ) {
         if button == winit::event::MouseButton::Left {
             self.rotating = pressed
         }
@@ -210,7 +216,7 @@ impl ArcballCameraController {
         }
     }
 
-    pub fn center(&self, cam: &Camera) -> Point3::<f32> {
+    pub fn center(&self, cam: &Camera) -> Point3<f32> {
         cam.pos + self.offset * cam.view_dir()
     }
 
@@ -222,9 +228,9 @@ impl ArcballCameraController {
 }
 
 impl CameraController for ArcballCameraController {
-    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2::<f32>) {
+    fn process_mouse_move(&mut self, cam: &mut Camera, pos: Vector2<f32>) {
         if let Some(mpos) = self.mouse_pos {
-            let delta : Vector2::<f32> = pos - mpos;
+            let delta: Vector2<f32> = pos - mpos;
 
             let right = cam.rot * Vector3::new(1.0f32, 0.0f32, 0.0f32);
             // let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
@@ -234,14 +240,14 @@ impl CameraController for ArcballCameraController {
                 // reversed in y direction to account for different orientations
                 // of rendering and input coords
                 // TODO: make pan fac dependent on offset and used projection
-                const PAN_FAC : f32 = 0.01;
+                const PAN_FAC: f32 = 0.01;
                 let x = -PAN_FAC * delta.x * right;
                 let y = PAN_FAC * delta.y * up;
                 cam.pos += x + y;
             }
 
             if self.rotating {
-                const ROT_FAC : f32 = 0.005;
+                const ROT_FAC: f32 = 0.005;
                 let c = self.center(cam);
 
                 let yaw = ROT_FAC * delta.x;
@@ -262,7 +268,12 @@ impl CameraController for ArcballCameraController {
         self.mouse_pos = Some(pos)
     }
 
-    fn process_mouse_button(&mut self, _cam: &mut Camera, button: winit::event::MouseButton, pressed: bool) {
+    fn process_mouse_button(
+        &mut self,
+        _cam: &mut Camera,
+        button: winit::event::MouseButton,
+        pressed: bool,
+    ) {
         if button == winit::event::MouseButton::Left {
             self.panning = pressed
         } else if button == winit::event::MouseButton::Middle {
@@ -271,13 +282,18 @@ impl CameraController for ArcballCameraController {
     }
 
     fn process_mouse_wheel(&mut self, cam: &mut Camera, delta: f32) {
-        const ZOOM_FAC : f32 = 1.1;
+        const ZOOM_FAC: f32 = 1.1;
         self.zoom(cam, f32::powf(ZOOM_FAC, -delta));
     }
 
     // NOTE: mostly for web, mouse wheel input does not seem to work there
-    fn process_keyboard_input(&mut self, cam: &mut Camera, key: winit::event::VirtualKeyCode, pressed: bool) {
-        const ZOOM_FAC : f32 = 1.1;
+    fn process_keyboard_input(
+        &mut self,
+        cam: &mut Camera,
+        key: winit::event::VirtualKeyCode,
+        pressed: bool,
+    ) {
+        const ZOOM_FAC: f32 = 1.1;
         if key == winit::event::VirtualKeyCode::I && pressed {
             println!("zoom in");
             self.zoom(cam, 1.0 / ZOOM_FAC);
@@ -287,7 +303,6 @@ impl CameraController for ArcballCameraController {
         }
     }
 }
-
 
 pub struct Renderer {
     device: wgpu::Device,
@@ -354,7 +369,7 @@ impl Renderer {
                     features: adapter.features(),
                     // TODO: wasm workaround
                     // limits: wgpu::Limits::default(),
-                    limits
+                    limits,
                 },
                 None,
             )
@@ -367,7 +382,7 @@ impl Renderer {
             source: wgpu::util::make_spirv(vert_spirv),
         });
 
-       let frag_spirv = include_bytes!("tri.frag.spv");
+        let frag_spirv = include_bytes!("tri.frag.spv");
         let frag_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::util::make_spirv(frag_spirv),
@@ -379,45 +394,36 @@ impl Renderer {
         sizer.add::<UboData>();
 
         // bind groups
-        let ubo = device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("uniform_buffer"),
-                size: sizer.len() as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }
-        );
+        let ubo = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("uniform_buffer"),
+            size: sizer.len() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
-        let uniform_bind_group_layout = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("uniform_bind_group_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None
-                        },
-                        count: None
-                    }
-                ],
-            }
-        );
-
-        let uniform_bind_group = device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("uniform_bind_group"),
-                layout: &uniform_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: ubo.as_entire_binding(),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                ],
-            }
-        );
+                    count: None,
+                }],
+            });
+
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("uniform_bind_group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: ubo.as_entire_binding(),
+            }],
+        });
 
         let bind_group_layouts = [&uniform_bind_group_layout];
 
@@ -432,21 +438,17 @@ impl Renderer {
         primitive_state.topology = wgpu::PrimitiveTopology::TriangleList;
         primitive_state.polygon_mode = wgpu::PolygonMode::Fill;
 
-        let pos_vertex_attrib_desc = [
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x4,
-                offset: 0,
-                shader_location: 0
-            },
-        ];
+        let pos_vertex_attrib_desc = [wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 0,
+            shader_location: 0,
+        }];
 
-        let color_vertex_attrib_desc = [
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Uint32x4,
-                offset: 0,
-                shader_location: 1
-            },
-        ];
+        let color_vertex_attrib_desc = [wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Uint32x4,
+            offset: 0,
+            shader_location: 1,
+        }];
 
         let pos_vertex_buf_desc = wgpu::VertexBufferLayout {
             array_stride: 4 * 4, // vec3 but aligned as vec4 by pasture/gpu
@@ -546,15 +548,15 @@ impl Renderer {
         println!("point layout: {}", default_layout);
 
         let point_count = reader.remaining_points();
-        let layout = PointLayout::from_attributes(&[
-            POINT_ATTRIB_3D_F32,
-            attributes::COLOR_RGB,
-        ]);
+        let layout = PointLayout::from_attributes(&[POINT_ATTRIB_3D_F32, attributes::COLOR_RGB]);
 
         self.point_count = point_count as u32;
         let mut point_buffer = InterleavedVecPointStorage::with_capacity(point_count, layout);
 
-        println!("Reading {} points (this can take a while for large point clouds)", point_count);
+        println!(
+            "Reading {} points (this can take a while for large point clouds)",
+            point_count
+        );
         reader.read_into(&mut point_buffer, point_count).unwrap();
         println!("Done!");
 
@@ -596,18 +598,24 @@ impl Renderer {
         let max_ext = f32::max(extent.x, f32::max(extent.y, extent.z));
 
         if z_up {
-            self.model_mat = self.model_mat * Matrix4::<f32>::new(
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 1.0);
+            self.model_mat = self.model_mat
+                * Matrix4::<f32>::new(
+                    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                );
         }
 
         self.model_mat = self.model_mat * Matrix4::new_scaling(10.0 / max_ext);
         self.model_mat = self.model_mat * Matrix4::new_translation(&(-center));
 
-        self.gpu_point_buffer.malloc(point_count as u64, &POINT_ATTRIBS, &mut self.device, false);
-        self.gpu_point_buffer.upload(&mut point_buffer, 0..point_count, &POINT_ATTRIBS, &mut self.device, &self.queue);
+        self.gpu_point_buffer
+            .malloc(point_count as u64, &POINT_ATTRIBS, &mut self.device, false);
+        self.gpu_point_buffer.upload(
+            &mut point_buffer,
+            0..point_count,
+            &POINT_ATTRIBS,
+            &mut self.device,
+            &self.queue,
+        );
     }
 
     pub fn resize(&mut self, size: winit::dpi::PhysicalSize<u32>) {
@@ -618,15 +626,17 @@ impl Renderer {
     }
 
     pub fn render(&mut self, window: &Window) {
-        let frame = self.surface
+        let frame = self
+            .surface
             .get_current_texture()
             .expect("Failed to acquire next swap chain texture");
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.device.
-            create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -651,8 +661,16 @@ impl Renderer {
             rpass.set_bind_group(0, &self.uniform_bind_group, &[]);
             rpass.set_pipeline(&self.pipeline);
 
-            let pos_buf = &self.gpu_point_buffer.buffers.get(POINT_ATTRIB_3D_F32.name()).unwrap();
-            let color_buf = &self.gpu_point_buffer.buffers.get(attributes::COLOR_RGB.name()).unwrap();
+            let pos_buf = &self
+                .gpu_point_buffer
+                .buffers
+                .get(POINT_ATTRIB_3D_F32.name())
+                .unwrap();
+            let color_buf = &self
+                .gpu_point_buffer
+                .buffers
+                .get(attributes::COLOR_RGB.name())
+                .unwrap();
 
             rpass.set_vertex_buffer(0, pos_buf.slice(..));
             rpass.set_vertex_buffer(1, color_buf.slice(..));
@@ -677,9 +695,11 @@ impl Renderer {
 
         let gpu_data = UboData {
             view_proj_matrix: (proj_mat * view_mat * self.model_mat).into(),
-        }.as_std140();
+        }
+        .as_std140();
 
-        self.queue.write_buffer(&self.ubo, 0, bytemuck::bytes_of(&gpu_data));
+        self.queue
+            .write_buffer(&self.ubo, 0, bytemuck::bytes_of(&gpu_data));
 
         self.queue.submit(Some(encoder.finish()));
         frame.present();
