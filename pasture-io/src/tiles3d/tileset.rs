@@ -278,8 +278,7 @@ pub struct TilesetProperty {
 #[derive(Clone, Serialize, Deserialize, Default, PartialEq, Debug)]
 pub struct RootTileset {
     pub asset: TilesetAssetInfo,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub properties: HashMap<String, TilesetProperty>,
+    pub properties: Option<HashMap<String, TilesetProperty>>,
     #[serde(rename = "geometricError")]
     pub geometric_error: f64,
     pub root: Tileset,
@@ -304,7 +303,8 @@ mod tests {
             version: "1.0".into(),
             tileset_version: Some("e575c6f1-a45b-420a-b172-6449fa6e0a59".into()),
         };
-        tileset.properties.insert(
+        tileset.properties = Some(HashMap::new());
+        tileset.properties.as_mut().unwrap().insert(
             "Height".into(),
             TilesetProperty {
                 minimum: 1.0,
