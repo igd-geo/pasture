@@ -1,7 +1,7 @@
 #[cfg(feature = "core_gpu_examples")]
 mod ex {
 
-    use pasture_core::containers::{PerAttributeVecPointStorage, PointBufferExt};
+    use pasture_core::containers::*;
     use pasture_core::gpu;
     use pasture_core::gpu::GpuPointBufferPerAttribute;
     use pasture_core::layout::PointType;
