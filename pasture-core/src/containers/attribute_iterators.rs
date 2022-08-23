@@ -11,6 +11,11 @@ use std::mem::MaybeUninit;
 
 /// Contains iterators over a single point attribute
 pub mod attr1 {
+    use rayon::{
+        iter::plumbing::bridge,
+        prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
+    };
+
     use super::*;
 
     /// Iterator over a `PointBuffer` that yields strongly typed data by value for a specific attribute for each point
@@ -100,6 +105,57 @@ pub mod attr1 {
             self.current_index += 1;
 
             Some(ret)
+        }
+    }
+
+    pub struct ParAttributeIteratorByValue<
+        'a,
+        T: PrimitiveType + Send + Sync,
+        B: PointBuffer + Send + Sync,
+    > {
+        buffer: &'a B,
+        attribute: &'a PointAttributeDefinition,
+        current_index: usize,
+        buffer_length: usize,
+        internal_buffer: Vec<T>,
+        index_in_internal_buffer: usize,
+        _unused: PhantomData<T>,
+    }
+
+    impl<'a, T: PrimitiveType + Send + Sync, B: PointBuffer + Send + Sync> ParallelIterator
+        for ParAttributeIteratorByValue<'a, T, B>
+    {
+        type Item = T;
+
+        fn drive_unindexed<C>(self, consumer: C) -> C::Result
+        where
+            C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>,
+        {
+            bridge(self, consumer)
+        }
+
+        fn opt_len(&self) -> Option<usize> {
+            Some(self.len())
+        }
+    }
+
+    impl<'a, T: PrimitiveType + Send + Sync, B: PointBuffer + Send + Sync> IndexedParallelIterator
+        for ParAttributeIteratorByValue<'a, T, B>
+    {
+        fn len(&self) -> usize {
+            self.buffer_length
+        }
+
+        fn drive<C: rayon::iter::plumbing::Consumer<Self::Item>>(self, consumer: C) -> C::Result {
+            bridge(self, consumer)
+        }
+
+        fn with_producer<CB: rayon::iter::plumbing::ProducerCallback<Self::Item>>(
+            self,
+            callback: CB,
+        ) -> CB::Output {
+            //(0..self.buffer_length).into_par_iter().
+            todo!()
         }
     }
 
