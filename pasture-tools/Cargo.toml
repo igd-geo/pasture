@@ -30,7 +30,7 @@ wgpu = {version = "0.12.0", features = ["spirv", "webgl"], optional = true }
 async-executor = {version = "1.0", optional = true }
 pollster = {version = "0.2", optional = true }
 env_logger = {version = "0.8", optional = true }
-nalgebra = {version = "0.23.1", features = ["serde-serialize", "mint"] }
+nalgebra = {version = "0.31", features = ["serde-serialize", "mint"] }
 crevice = { version = "0.7.1", optional = true }
 mint = {version = "0.5.6" , optional = true }
 bytemuck = {version = "1.5.1", optional = true }

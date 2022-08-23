@@ -1,4 +1,4 @@
-use pasture_core::gpu as pgpu;
+use pasture_core::{containers::OwningPointBuffer, gpu as pgpu};
 use pasture_io::base::PointReader;
 use pasture_io::las::LASReader;
 
@@ -9,7 +9,7 @@ use pasture_core::{
 
 use crevice::std140::AsStd140;
 use instant::Instant;
-use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector2, Vector3};
+use pasture_core::nalgebra::{Matrix, Matrix4, Point3, UnitQuaternion, Vector2, Vector3};
 use winit::window::Window;
 
 #[repr(C)]
@@ -36,11 +36,11 @@ impl Camera {
         self.rot * Vector3::new(0.0f32, 0.0f32, -1.0f32)
     }
 
-    pub fn view_mat(&self) -> nalgebra::Matrix4<f32> {
+    pub fn view_mat(&self) -> Matrix4<f32> {
         let up = Vector3::new(0.0f32, 1.0f32, 0.0f32);
         let target = self.pos + self.view_dir();
 
-        nalgebra::Matrix4::look_at_rh(&self.pos, &target, &up)
+        Matrix4::look_at_rh(&self.pos, &target, &up)
     }
 }
 
@@ -568,8 +568,8 @@ impl Renderer {
 
         for position in point_buffer.iter_attribute::<Vector3<f32>>(&POINT_ATTRIB_3D_F32) {
             let pos = position;
-            aabb_min = nalgebra::Matrix::inf(&pos, &aabb_min);
-            aabb_max = nalgebra::Matrix::sup(&pos, &aabb_max);
+            aabb_min = Matrix::inf(&pos, &aabb_min);
+            aabb_max = Matrix::sup(&pos, &aabb_max);
         }
 
         println!("aabb min: {:?}", aabb_min);
@@ -586,8 +586,8 @@ impl Renderer {
             let mut color_max = Vector3::<u16>::new(0, 0, 0);
 
             for color in point_buffer.iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB) {
-                color_min = nalgebra::Matrix::inf(&color, &color_min);
-                color_max = nalgebra::Matrix::sup(&color, &color_max);
+                color_min = Matrix::inf(&color, &color_min);
+                color_max = Matrix::sup(&color, &color_max);
             }
 
             println!("color min: {:?}", color_min);
@@ -691,7 +691,7 @@ impl Renderer {
         let fovy = 1.2f32;
         let near = 0.1f32;
         let far = 20.0f32;
-        let proj_mat = nalgebra::Matrix4::<f32>::new_perspective(aspect, fovy, near, far);
+        let proj_mat = Matrix4::<f32>::new_perspective(aspect, fovy, near, far);
 
         let gpu_data = UboData {
             view_proj_matrix: (proj_mat * view_mat * self.model_mat).into(),

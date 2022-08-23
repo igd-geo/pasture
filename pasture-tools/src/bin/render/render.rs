@@ -8,7 +8,7 @@ use winit::{
     window::Window,
 };
 
-use nalgebra::Vector2;
+use pasture_core::nalgebra::Vector2;
 
 mod renderer;
 
