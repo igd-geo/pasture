@@ -3,7 +3,7 @@ use pasture_algorithms::segmentation::{
 };
 use pasture_core::{
     attributes_mut,
-    containers::PerAttributeVecPointStorage,
+    containers::{PerAttributeVecPointStorage, OwningPointBuffer},
     layout::{
         attributes::{INTENSITY, POSITION_3D},
         PointType,

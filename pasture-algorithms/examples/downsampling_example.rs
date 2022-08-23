@@ -1,6 +1,6 @@
 use pasture_algorithms::voxel_grid::voxelgrid_filter;
 use pasture_core::{
-    containers::{PerAttributeVecPointStorage, PointBuffer},
+    containers::{PerAttributeVecPointStorage, PointBuffer, OwningPointBuffer},
     layout::PointType,
     nalgebra::Vector3,
 };

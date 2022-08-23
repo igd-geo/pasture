@@ -92,6 +92,10 @@ impl<'p> InterleavedPointBuffer for InterleavedPointBufferSlice<'p> {
             ..index_range.end + self.range_in_buffer.start;
         self.buffer.get_raw_points_ref(range_in_buffer)
     }
+
+    fn slice(&self, range: Range<usize>) -> InterleavedPointBufferSlice<'_> {
+        InterleavedPointBufferSlice::new(self, range)
+    }
 }
 
 /// Non-owning, read-only slice of the data of a `PerAttributePointBuffer`
@@ -198,7 +202,7 @@ impl<'p> PerAttributePointBuffer for PerAttributePointBufferSlice<'p> {
 
 /// Non-owning, mutable slice of the data of a `PerAttributePointBufferMut`
 pub struct PerAttributePointBufferSliceMut<'p> {
-    buffer: &'p mut (dyn PerAttributePointBufferMut<'p> + 'p),
+    buffer: &'p mut dyn PerAttributePointBufferMut<'p>,
     range_in_buffer: Range<usize>,
 }
 
@@ -352,16 +356,20 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributePointBufferSliceMut<'p> 
             .get_raw_attribute_range_mut(range_in_buffer, attribute)
     }
 
+    fn set_raw_attribute_range(&mut self, index_range: Range<usize>, attribute: &PointAttributeDefinition, buf: &[u8]) {
+        let range_in_buffer = index_range.start + self.range_in_buffer.start
+            ..index_range.end + self.range_in_buffer.start;
+        self.buffer.set_raw_attribute_range(range_in_buffer, attribute, buf)
+    }
+
     fn slice_mut(&'p mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'p> {
         PerAttributePointBufferSliceMut::new(self, range)
     }
 
-    fn disjunct_slices_mut<'b>(
-        &'b mut self,
+    fn disjunct_slices_mut(
+        &'p mut self,
         ranges: &[Range<usize>],
     ) -> Vec<PerAttributePointBufferSliceMut<'p>>
-    where
-        'p: 'b,
     {
         let self_ptr = self as *mut PerAttributePointBufferSliceMut<'p>;
 

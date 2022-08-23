@@ -1206,6 +1206,7 @@ mod tests {
     };
     use pasture_derive::PointType;
     use scopeguard::defer;
+    use pasture_core::containers::OwningPointBuffer;
 
     use super::*;
 

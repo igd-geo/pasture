@@ -10,7 +10,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
     containers::{
         PerAttributePointBufferMut, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable,
-        PointBufferWriteableExt,
+        PointBufferWriteableExt, OwningPointBuffer,
     },
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},

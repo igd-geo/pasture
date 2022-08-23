@@ -147,7 +147,7 @@ fn generate_plane_model<T: PointBuffer>(
 ///
 /// ```
 /// # use pasture_core::nalgebra::Vector3;
-/// # use pasture_core::containers::PerAttributeVecPointStorage;
+/// # use pasture_core::containers::*;
 /// # use pasture_core::layout::PointType;
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_plane_par;
@@ -208,7 +208,7 @@ pub fn ransac_plane_par<T: PointBuffer + Sync>(
 ///
 /// ```
 /// # use pasture_core::nalgebra::Vector3;
-/// # use pasture_core::containers::PerAttributeVecPointStorage;
+/// # use pasture_core::containers::*;
 /// # use pasture_core::layout::PointType;
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_plane_serial;
@@ -267,7 +267,7 @@ pub fn ransac_plane_serial<T: PointBuffer>(
 ///
 /// ```
 /// # use pasture_core::nalgebra::Vector3;
-/// # use pasture_core::containers::PerAttributeVecPointStorage;
+/// # use pasture_core::containers::*;
 /// # use pasture_core::layout::PointType;
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_line_par;
@@ -327,7 +327,7 @@ pub fn ransac_line_par<T: PointBuffer + Sync>(
 ///
 /// ```
 /// # use pasture_core::nalgebra::Vector3;
-/// # use pasture_core::containers::PerAttributeVecPointStorage;
+/// # use pasture_core::containers::*;
 /// # use pasture_core::layout::PointType;
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_line_serial;
@@ -382,7 +382,7 @@ pub fn ransac_line_serial<T: PointBuffer>(
 mod tests {
 
     use pasture_core::{
-        containers::PerAttributeVecPointStorage, layout::PointType, nalgebra::Vector3,
+        containers::{PerAttributeVecPointStorage, OwningPointBuffer}, layout::PointType, nalgebra::Vector3,
     };
     use pasture_derive::PointType;
 

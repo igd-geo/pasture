@@ -403,7 +403,7 @@ fn calc_normal(a: Vector3<f64>, b: Vector3<f64>, c: Vector3<f64>) -> Vector3<f64
 
 #[cfg(test)]
 mod tests {
-    use pasture_core::{containers::PerAttributeVecPointStorage, containers::{PointBuffer, PointBufferExt}, layout::PointType, layout::attributes::POSITION_3D, nalgebra::Vector3};
+    use pasture_core::{containers::PerAttributeVecPointStorage, containers::{PointBuffer, PointBufferExt, OwningPointBuffer}, layout::PointType, layout::attributes::POSITION_3D, nalgebra::Vector3};
     use crate::convexhull;
     use pasture_derive::PointType;
     use anyhow::Result;

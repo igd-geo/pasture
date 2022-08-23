@@ -86,7 +86,7 @@ fn create_markers_for_axis(
 /// # Examples
 /// ```
 /// # use pasture_algorithms::voxel_grid::voxelgrid_filter;
-/// # use pasture_core::{containers::{PerAttributeVecPointStorage, PointBuffer, PointBufferExt}, layout::{attributes, PointType}, nalgebra::{Scalar, Vector3}};
+/// # use pasture_core::{containers::*, layout::{attributes, PointType}, nalgebra::{Scalar, Vector3}};
 /// # use pasture_derive::PointType;
 /// # #[repr(C)]
 /// # #[derive(PointType)]
@@ -715,7 +715,7 @@ mod tests {
 
     use crate::voxel_grid::voxelgrid_filter;
     use pasture_core::{
-        containers::{PerAttributeVecPointStorage, PointBuffer, PointBufferExt},
+        containers::{PerAttributeVecPointStorage, PointBuffer, PointBufferExt, OwningPointBuffer},
         layout::{attributes, PointType},
         nalgebra::Vector3,
     };

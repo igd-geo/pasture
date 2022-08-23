@@ -229,7 +229,7 @@ mod tests {
     use anyhow::Result;
     use itertools::Itertools;
     use pasture_core::containers::{
-        InterleavedVecPointStorage, PointBufferWriteable, UntypedPointBuffer,
+        InterleavedVecPointStorage, PointBufferWriteable, UntypedPointBuffer, OwningPointBuffer,
     };
     use scopeguard::defer;
 

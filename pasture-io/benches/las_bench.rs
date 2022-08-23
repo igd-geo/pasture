@@ -3,7 +3,7 @@ use std::{fs::File, io::BufWriter};
 use criterion::{criterion_group, criterion_main, Criterion};
 use las::Builder;
 use pasture_core::{
-    containers::{InterleavedVecPointStorage, PointBuffer, PointBufferWriteable},
+    containers::{InterleavedVecPointStorage, PointBuffer, PointBufferWriteable, OwningPointBuffer},
     layout::PointType,
     nalgebra::Vector3,
 };
@@ -87,10 +87,12 @@ fn create_dummy_files() {
     {
         let mut writer = LASWriter::from_path_and_header(LAS_PATH, header.clone()).unwrap();
         writer.write(&buffer).unwrap();
+        writer.flush().unwrap();
     }
     {
         let mut writer = LASWriter::from_path_and_header(LAZ_PATH, header).unwrap();
         writer.write(&buffer).unwrap();
+        writer.flush().unwrap();
     }
 }
 
@@ -118,6 +120,7 @@ fn write_performance(points: &dyn PointBuffer, compressed: bool) {
     let header = Builder::from((1, 4)).into_header().unwrap();
     let mut writer = LASWriter::from_writer_and_header(writer, header, compressed).unwrap();
     writer.write(points).unwrap();
+    writer.flush().unwrap();
 }
 
 fn bench(c: &mut Criterion) {

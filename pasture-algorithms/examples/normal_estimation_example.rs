@@ -1,5 +1,6 @@
 use kd_tree::{self, KdPoint};
 use pasture_algorithms::normal_estimation::compute_normals;
+use pasture_core::containers::OwningPointBuffer;
 use pasture_core::nalgebra::Vector3;
 use pasture_core::{containers::InterleavedVecPointStorage, layout::PointType};
 use pasture_derive::PointType;

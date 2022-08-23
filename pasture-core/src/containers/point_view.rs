@@ -5,7 +5,7 @@ use crate::layout::{
 };
 
 use super::{
-    InterleavedPointBuffer, PerAttributePointBuffer, PerAttributePointBufferSlice, PointBuffer,
+    InterleavedPointBuffer, PerAttributePointBuffer, PerAttributePointBufferSlice, PointBuffer, InterleavedPointBufferSlice,
 };
 
 /// A non-owning view for a contiguous slice of interleaved point data. This is like `InterleavedVecPointBuffer`, but it
@@ -216,6 +216,10 @@ impl<'d> InterleavedPointBuffer for InterleavedPointView<'d> {
         let total_bytes_of_range =
             (index_range.end - index_range.start) * self.size_of_point_entry as usize;
         &self.point_data[offset_to_point..offset_to_point + total_bytes_of_range]
+    }
+
+    fn slice(&self, range: Range<usize>) -> InterleavedPointBufferSlice<'_> {
+        InterleavedPointBufferSlice::new(self, range)
     }
 }
 

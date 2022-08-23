@@ -1,5 +1,5 @@
 use pasture_core::{
-    containers::{PerAttributeVecPointStorage, PointBuffer},
+    containers::{PerAttributeVecPointStorage, PointBuffer, OwningPointBuffer},
     layout::{attributes, PointLayout},
     nalgebra::Vector3,
 };

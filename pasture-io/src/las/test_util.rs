@@ -4,7 +4,7 @@ use anyhow::Result;
 use las_rs::point::Format;
 use pasture_core::{
     containers::PointBuffer,
-    containers::{PerAttributeVecPointStorage, PointBufferExt},
+    containers::{PerAttributeVecPointStorage, PointBufferExt, OwningPointBuffer},
     layout::attributes,
     math::AABB,
     nalgebra::{Point3, Vector3},

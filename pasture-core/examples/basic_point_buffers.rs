@@ -1,7 +1,7 @@
 use pasture_core::{
     containers::{
         InterleavedPointBufferMutExt, PerAttributePointBufferMutExt, PerAttributeVecPointStorage,
-        PointBufferExt,
+        PointBufferExt, OwningPointBuffer,
     },
     nalgebra::Vector3,
 };

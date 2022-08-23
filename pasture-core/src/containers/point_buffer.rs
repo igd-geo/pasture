@@ -16,7 +16,7 @@ use super::{
     iterators::PointIteratorByMut,
     iterators::PointIteratorByRef,
     iterators::PointIteratorByValue,
-    PerAttributePointBufferSlice, PerAttributePointBufferSliceMut,
+    PerAttributePointBufferSlice, PerAttributePointBufferSliceMut, InterleavedPointBufferSlice,
 };
 
 // TODO Can we maybe impl<T: PointBufferWriteable> &T and provide some push<U> methods?
@@ -76,6 +76,12 @@ pub trait PointBuffer {
     }
 }
 
+pub trait InterleavedMutableWriteablePointBuffer : InterleavedPointBufferMut + PointBufferWriteable {}
+impl <T: InterleavedPointBufferMut + PointBufferWriteable> InterleavedMutableWriteablePointBuffer for T {}
+
+pub trait PerAttributeMutableWriteablePointBuffer<'a> : PerAttributePointBufferMut<'a> + PointBufferWriteable {}
+impl <'a, T: PerAttributePointBufferMut<'a> + PointBufferWriteable> PerAttributeMutableWriteablePointBuffer<'a> for T {}
+
 /// Trait for all mutable `PointBuffer`s, that is all `PointBuffer`s where it is possible to push points into. Distinguishing between
 /// read-only `PointBuffer` and mutable `PointBufferMut` traits enables read-only, non-owning views of a `PointBuffer` with the same interface
 /// as an owning `PointBuffer`!
@@ -124,6 +130,16 @@ pub trait PointBufferWriteable: PointBuffer {
     /// Resizes this buffer to the given number of `new_points`. This will trim the buffer if `new_points` is smaller
     /// than the current number of points, or create default-initialized points if `new_points` is larger.
     fn resize(&mut self, new_points: usize);
+
+    /// Try to downcast the associated `PointBuffer` into an `InterleavedPointBufferMut`
+    fn as_interleaved_mut(&mut self) -> Option<&mut dyn InterleavedMutableWriteablePointBuffer> {
+        None
+    }
+
+    /// Try to downcast the associated `PointBuffer` into an `PerAttributePointBufferMut`
+    fn as_per_attribute_mut(&mut self) -> Option<&mut dyn PerAttributeMutableWriteablePointBuffer> {
+        None
+    }
 }
 
 /// Trait for `PointBuffer` types that store point data in Interleaved memory layout. In an `InterleavedPointBuffer`, all attributes
@@ -141,6 +157,8 @@ pub trait InterleavedPointBuffer: PointBuffer {
     /// [get_raw_point](PointBuffer::get_raw_point), this function performs no copy operations and thus can
     /// yield better performance. Panics if any index in index_range is out of bounds.
     fn get_raw_points_ref(&self, index_range: Range<usize>) -> &[u8];
+    /// Returns a read-only slice of the associated `InterleavedPointBuffer`
+    fn slice(&self, range: Range<usize>) -> InterleavedPointBufferSlice<'_>;
 }
 
 /// Trait for `InterleavedPointBuffer` types that provide mutable access to the point data
@@ -183,7 +201,7 @@ pub trait PerAttributePointBuffer: PointBuffer {
 }
 
 /// Trait for `PerAttributePointBuffer` types that provide mutable access to specific attributes
-pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
+pub trait PerAttributePointBufferMut<'a>: PerAttributePointBuffer {
     /// Mutable version of [get_raw_attribute_ref](PerAttributePointBuffer::get_raw_attribute_ref)
     fn get_raw_attribute_mut(
         &mut self,
@@ -196,8 +214,16 @@ pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
         index_range: Range<usize>,
         attribute: &PointAttributeDefinition,
     ) -> &mut [u8];
+
+    /// Sets the data for an attribute a range of points within the associated `PointBufferWriteable` to the data in `buf`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index_range` is out of bounds, `attribute` is not part of the `PointLayout`, or the length of `buf` does not
+    /// match the size of the range of attributes in the `PointLayout`
+    fn set_raw_attribute_range(&mut self, index_range: Range<usize>, attribute: &PointAttributeDefinition, buf: &[u8]);
     /// Returns a mutable slice of the associated `PerAttributePointBufferMut`
-    fn slice_mut(&'b mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'b>;
+    fn slice_mut(&'a mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'a>;
 
     /// Splits the associated `PerAttributePointBufferMut` into multiple disjoint mutable slices, based on the given disjoint `ranges`. This
     /// function is similar to Vec::split_as_mut, but can split into more than two regions.
@@ -234,15 +260,22 @@ pub trait PerAttributePointBufferMut<'b>: PerAttributePointBuffer {
     /// # Panics
     ///
     /// If any two ranges in `ranges` overlap, or if any range in `ranges` is out of bounds
-    fn disjunct_slices_mut<'p>(
-        &'p mut self,
+    fn disjunct_slices_mut(
+        &'a mut self,
         ranges: &[Range<usize>],
-    ) -> Vec<PerAttributePointBufferSliceMut<'b>>
-    where
-        'b: 'p;
+    ) -> Vec<PerAttributePointBufferSliceMut<'a>>;
 
     /// Helper method to access this `PerAttributePointBufferMut` as a `PerAttributePointBuffer`
     fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer;
+}
+
+/// Trait for all point buffers that own their memory and hence can be constructed using a `PointLayout` and potentially a capacity. This 
+/// trait enables writing generic code that creates new `PointBuffer`s without knowing their specific type
+pub trait OwningPointBuffer : PointBuffer + Sized {
+    /// Creates a new empty `PointBuffer` with the given `PointLayout`
+    fn new(point_layout: PointLayout) -> Self;
+    /// Creates a new empty `PointBuffer` with enough pre-allocated memory to store `capacity` points with the given `PointLayout`
+    fn with_capacity(capacity: usize, point_layout: PointLayout) -> Self;
 }
 
 /// Extension trait that provides generic methods for accessing point data in a `PointBuffer`

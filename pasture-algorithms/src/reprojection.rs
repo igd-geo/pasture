@@ -83,8 +83,7 @@ impl Drop for Projection {
 ///
 /// ```
 /// # use pasture_algorithms::reprojection::reproject_point_cloud_within;
-/// # use pasture_core::containers::InterleavedVecPointStorage;
-/// # use pasture_core::containers::PointBufferExt;
+/// # use pasture_core::containers::*;
 /// # use pasture_core::layout::PointType;
 /// # use pasture_core::nalgebra::Vector3;
 /// # use pasture_derive::PointType;
@@ -182,11 +181,7 @@ pub fn reproject_point_cloud_within<T: PointBuffer + PointBufferWriteable>(
 ///
 /// ```
 /// # use pasture_algorithms::reprojection::reproject_point_cloud_between;
-/// # use pasture_core::containers::InterleavedVecPointStorage;
-/// # use pasture_core::containers::PerAttributeVecPointStorage;
-/// # use pasture_core::containers::PointBuffer;
-/// # use pasture_core::containers::PointBufferExt;
-/// # use pasture_core::containers::PointBufferWriteable;
+/// # use pasture_core::containers::*;
 /// # use pasture_core::layout::PointType;
 /// # use pasture_core::nalgebra::Vector3;
 /// # use pasture_derive::PointType;
@@ -285,7 +280,7 @@ pub fn reproject_point_cloud_between<
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use pasture_core::{
-        containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage},
+        containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage, OwningPointBuffer},
         layout::PointType,
         nalgebra::Vector3,
     };

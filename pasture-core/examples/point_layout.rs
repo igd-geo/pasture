@@ -1,3 +1,4 @@
+use pasture_core::containers::OwningPointBuffer;
 use pasture_core::nalgebra::Vector3;
 use pasture_core::{
     containers::InterleavedVecPointStorage,

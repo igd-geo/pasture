@@ -15,7 +15,7 @@ use pasture_core::{
     containers::PointBuffer,
     containers::{
         InterleavedVecPointStorage, PerAttributeVecPointStorage, PointBufferExt,
-        PointBufferWriteable,
+        PointBufferWriteable, OwningPointBuffer,
     },
     layout::attributes::POSITION_3D,
     math::AABB,

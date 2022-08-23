@@ -2,6 +2,7 @@
 mod ex {
     use pasture_algorithms::reprojection::reproject_point_cloud_within;
     use pasture_core::containers::InterleavedVecPointStorage;
+    use pasture_core::containers::OwningPointBuffer;
     use pasture_core::containers::PointBufferExt;
     use pasture_core::layout::PointType;
     use pasture_core::nalgebra::Vector3;

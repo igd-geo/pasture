@@ -3,7 +3,7 @@ use pasture_core::{
     containers::{
         InterleavedPointBuffer, InterleavedPointBufferExt, InterleavedVecPointStorage,
         PerAttributePointBuffer, PerAttributePointBufferExt, PerAttributeVecPointStorage,
-        PointBuffer, PointBufferExt,
+        PointBuffer, PointBufferExt, OwningPointBuffer,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,

@@ -4,7 +4,7 @@ use pasture_core::{
     containers::{
         InterleavedPointBufferExt, InterleavedPointBufferMut, InterleavedPointBufferMutExt,
         InterleavedPointView, PerAttributePointBufferMut, PerAttributeVecPointStorage,
-        PointBufferExt, PointBufferWriteable,
+        PointBufferExt, PointBufferWriteable, OwningPointBuffer,
     },
     layout::attributes::COLOR_RGB,
     nalgebra::Vector3,

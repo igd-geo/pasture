@@ -128,7 +128,7 @@ mod tests {
 
     use las::{point::Format, Builder};
     use pasture_core::{
-        containers::InterleavedVecPointStorage, containers::PointBufferExt, layout::PointType,
+        containers::InterleavedVecPointStorage, containers::{PointBufferExt, OwningPointBuffer}, layout::PointType,
         nalgebra::Vector3,
     };
     use scopeguard::defer;

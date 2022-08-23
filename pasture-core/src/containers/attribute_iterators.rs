@@ -678,6 +678,7 @@ macro_rules! attributes_mut {
 #[cfg(test)]
 mod tests {
 
+    use crate::containers::OwningPointBuffer;
     use crate::{containers::PointBufferExt, layout::attributes};
     use crate::{
         containers::{

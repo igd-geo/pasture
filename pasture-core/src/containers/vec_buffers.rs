@@ -8,7 +8,7 @@ use crate::{
 use super::{
     InterleavedPointBuffer, InterleavedPointBufferMut, InterleavedPointBufferSlice,
     PerAttributePointBuffer, PerAttributePointBufferMut, PerAttributePointBufferSlice,
-    PerAttributePointBufferSliceMut, PointBuffer, PointBufferWriteable,
+    PerAttributePointBufferSliceMut, PointBuffer, PointBufferWriteable, OwningPointBuffer, InterleavedMutableWriteablePointBuffer, PerAttributeMutableWriteablePointBuffer,
 };
 use rayon::prelude::*;
 
@@ -21,49 +21,6 @@ pub struct InterleavedVecPointStorage {
 }
 
 impl InterleavedVecPointStorage {
-    /// Creates a new empty `InterleavedVecPointStorage` with the given `PointLayout`
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
-    /// let storage = InterleavedVecPointStorage::new(layout);
-    /// # assert_eq!(0, storage.len());
-    /// ```
-    pub fn new(layout: PointLayout) -> Self {
-        let size_of_point_entry = layout.size_of_point_entry();
-        Self {
-            layout,
-            points: vec![],
-            size_of_point_entry,
-        }
-    }
-
-    /// Creates a new `InterleavedVecPointStorage` with enough capacity to store `capacity` points using
-    /// the given `PointLayout`. Calling this method is similar to `Vec::with_capacity`: Internal memory
-    /// is reserved but the `len()` is not affected.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
-    /// let storage = InterleavedVecPointStorage::with_capacity(16, layout);
-    /// # assert_eq!(0, storage.len());
-    /// ```
-    pub fn with_capacity(capacity: usize, layout: PointLayout) -> Self {
-        let size_of_point_entry = layout.size_of_point_entry();
-        let bytes_to_reserve = capacity * size_of_point_entry as usize;
-        Self {
-            layout,
-            points: Vec::with_capacity(bytes_to_reserve),
-            size_of_point_entry,
-        }
-    }
-
     /// Pushes a single point into the associated `InterleavedVecPointStorage`. *Note:* For safety
     /// reasons this function performs a `PointLayout` check. If you want to add many points quickly, either use
     /// the `push_points` variant which takes a range, or use the `push_point_unchecked` variant to circumvent checks.
@@ -328,6 +285,52 @@ impl InterleavedVecPointStorage {
     }
 }
 
+impl OwningPointBuffer for InterleavedVecPointStorage {
+    /// Creates a new empty `InterleavedVecPointStorage` with the given `PointLayout`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
+    /// let storage = InterleavedVecPointStorage::new(layout);
+    /// # assert_eq!(0, storage.len());
+    /// ```
+    fn new(layout: PointLayout) -> Self {
+        let size_of_point_entry = layout.size_of_point_entry();
+        Self {
+            layout,
+            points: vec![],
+            size_of_point_entry,
+        }
+    }
+
+    /// Creates a new `InterleavedVecPointStorage` with enough capacity to store `capacity` points using
+    /// the given `PointLayout`. Calling this method is similar to `Vec::with_capacity`: Internal memory
+    /// is reserved but the `len()` is not affected.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
+    /// let storage = InterleavedVecPointStorage::with_capacity(16, layout);
+    /// # assert_eq!(0, storage.len());
+    /// ```
+    fn with_capacity(capacity: usize, layout: PointLayout) -> Self {
+        let size_of_point_entry = layout.size_of_point_entry();
+        let bytes_to_reserve = capacity * size_of_point_entry as usize;
+        Self {
+            layout,
+            points: Vec::with_capacity(bytes_to_reserve),
+            size_of_point_entry,
+        }
+    }
+
+}
+
 impl PointBuffer for InterleavedVecPointStorage {
     fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         if point_index >= self.len() {
@@ -495,6 +498,10 @@ impl PointBufferWriteable for InterleavedVecPointStorage {
         let target_attribute_slice = &mut self.points[attribute_data_start..attribute_data_end];
         target_attribute_slice.copy_from_slice(buf);
     }
+
+    fn as_interleaved_mut(&mut self) -> Option<&mut dyn InterleavedMutableWriteablePointBuffer> {
+        Some(self)
+    }
 }
 
 impl InterleavedPointBuffer for InterleavedVecPointStorage {
@@ -522,6 +529,10 @@ impl InterleavedPointBuffer for InterleavedVecPointStorage {
         let total_bytes_of_range =
             (index_range.end - index_range.start) * self.size_of_point_entry as usize;
         &self.points[offset_to_point..offset_to_point + total_bytes_of_range]
+    }
+
+    fn slice(&self, range: Range<usize>) -> InterleavedPointBufferSlice<'_> {
+        InterleavedPointBufferSlice::new(self, range)
     }
 }
 
@@ -596,49 +607,6 @@ pub struct PerAttributeVecPointStorage {
 }
 
 impl PerAttributeVecPointStorage {
-    /// Creates a new empty `PerAttributeVecPointStorage` with the given `PointLayout`
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
-    /// let storage = PerAttributeVecPointStorage::new(layout);
-    /// # assert_eq!(0, storage.len());
-    /// ```
-    pub fn new(layout: PointLayout) -> Self {
-        let attributes = layout
-            .attributes()
-            .map(|attribute| (attribute.name(), vec![]))
-            .collect::<HashMap<_, _>>();
-        Self { layout, attributes }
-    }
-
-    /// Creates a new `PerAttributeVecPointStorage` with enough capacity to store `capacity` points using
-    /// the given `PointLayout`. Calling this method is similar to `Vec::with_capacity`: Internal memory
-    /// is reserved but the `len()` is not affected.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
-    /// let storage = PerAttributeVecPointStorage::with_capacity(16, layout);
-    /// # assert_eq!(0, storage.len());
-    /// ```
-    pub fn with_capacity(capacity: usize, layout: PointLayout) -> Self {
-        let attributes = layout
-            .attributes()
-            .map(|attribute| {
-                let attribute_bytes = capacity * attribute.size() as usize;
-                (attribute.name(), Vec::with_capacity(attribute_bytes))
-            })
-            .collect::<HashMap<_, _>>();
-        Self { layout, attributes }
-    }
-
     /// Pushes a single point into the associated `PerAttributeVecPointStorage`.
     ///
     /// # Examples
@@ -924,6 +892,52 @@ impl PerAttributeVecPointStorage {
     }
 }
 
+impl OwningPointBuffer for PerAttributeVecPointStorage {
+    /// Creates a new empty `PerAttributeVecPointStorage` with the given `PointLayout`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
+    /// let storage = PerAttributeVecPointStorage::new(layout);
+    /// # assert_eq!(0, storage.len());
+    /// ```
+    fn new(layout: PointLayout) -> Self {
+        let attributes = layout
+            .attributes()
+            .map(|attribute| (attribute.name(), vec![]))
+            .collect::<HashMap<_, _>>();
+        Self { layout, attributes }
+    }
+
+    /// Creates a new `PerAttributeVecPointStorage` with enough capacity to store `capacity` points using
+    /// the given `PointLayout`. Calling this method is similar to `Vec::with_capacity`: Internal memory
+    /// is reserved but the `len()` is not affected.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use pasture_core::containers::*;
+    /// # use pasture_core::layout::*;
+    /// let layout = PointLayout::from_attributes(&[attributes::POSITION_3D]);
+    /// let storage = PerAttributeVecPointStorage::with_capacity(16, layout);
+    /// # assert_eq!(0, storage.len());
+    /// ```
+    fn with_capacity(capacity: usize, layout: PointLayout) -> Self {
+        let attributes = layout
+            .attributes()
+            .map(|attribute| {
+                let attribute_bytes = capacity * attribute.size() as usize;
+                (attribute.name(), Vec::with_capacity(attribute_bytes))
+            })
+            .collect::<HashMap<_, _>>();
+        Self { layout, attributes }
+    }
+
+}
+
 impl PointBuffer for PerAttributeVecPointStorage {
     fn get_raw_point(&self, point_index: usize, buf: &mut [u8]) {
         if point_index >= self.len() {
@@ -1095,6 +1109,10 @@ impl PointBufferWriteable for PerAttributeVecPointStorage {
             &mut self.attributes.get_mut(attribute.name()).unwrap()[attribute_start..attribute_end];
         target_slice.copy_from_slice(buf);
     }
+
+    fn as_per_attribute_mut(&mut self) -> Option<&mut dyn PerAttributeMutableWriteablePointBuffer> {
+        Some(self)
+    }
 }
 
 impl PerAttributePointBuffer for PerAttributeVecPointStorage {
@@ -1148,7 +1166,7 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
     }
 }
 
-impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
+impl <'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
     fn get_raw_attribute_mut(
         &mut self,
         point_index: usize,
@@ -1195,18 +1213,20 @@ impl<'p> PerAttributePointBufferMut<'p> for PerAttributeVecPointStorage {
         &mut attribute_buffer[start_offset_in_attribute_buffer..end_offset_in_attribute_buffer]
     }
 
-    fn slice_mut(&'p mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'p> {
+    fn set_raw_attribute_range(&mut self, index_range: Range<usize>, attribute: &PointAttributeDefinition, buf: &[u8]) {
+        self.get_raw_attribute_range_mut(index_range, attribute).copy_from_slice(buf)
+    }
+
+    fn slice_mut(&mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'_> {
         PerAttributePointBufferSliceMut::new(self, range)
     }
 
-    fn disjunct_slices_mut<'b>(
-        &'b mut self,
+    fn disjunct_slices_mut(
+        &mut self,
         ranges: &[Range<usize>],
-    ) -> Vec<PerAttributePointBufferSliceMut<'p>>
-    where
-        'p: 'b,
+    ) -> Vec<PerAttributePointBufferSliceMut<'_>>
     {
-        let self_ptr = self as *mut dyn PerAttributePointBufferMut<'p>;
+        let self_ptr = self as *mut dyn PerAttributePointBufferMut;
 
         ranges
             .iter()
@@ -1435,8 +1455,8 @@ mod tests {
     trait OpqaueInterleavedBuffer: InterleavedPointBufferMut + PointBufferWriteable {}
     impl OpqaueInterleavedBuffer for InterleavedVecPointStorage {}
 
-    trait OpqauePerAttributeBuffer<'b>: PerAttributePointBufferMut<'b> + PointBufferWriteable {}
-    impl<'b> OpqauePerAttributeBuffer<'b> for PerAttributeVecPointStorage {}
+    trait OpqauePerAttributeBuffer<'a>: PerAttributePointBufferMut<'a> + PointBufferWriteable {}
+    impl <'a> OpqauePerAttributeBuffer<'a> for PerAttributeVecPointStorage {}
 
     fn get_empty_interleaved_point_buffer(layout: PointLayout) -> Box<dyn OpqaueInterleavedBuffer> {
         Box::new(InterleavedVecPointStorage::new(layout))

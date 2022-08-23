@@ -2,7 +2,7 @@
 use core::panic;
 use kd_tree::{self, KdPoint, KdTree};
 use num_traits::{self};
-use pasture_core::containers::{PointBufferWriteable, PointBufferWriteableExt};
+use pasture_core::containers::{PointBufferWriteable, PointBufferWriteableExt, OwningPointBuffer};
 use pasture_core::layout::{attributes::POSITION_3D, PointType};
 use pasture_core::{
     containers::{PerAttributeVecPointStorage, PointBuffer, PointBufferExt},
@@ -24,7 +24,7 @@ use std::result::Result;
 /// ```
 /// # use kd_tree::{self, KdPoint};
 /// # use pasture_core::nalgebra::Vector3;
-/// # use pasture_core::{containers::InterleavedVecPointStorage, layout::PointType};
+/// # use pasture_core::{containers::*, layout::PointType};
 /// # use pasture_algorithms::normal_estimation::compute_normals;
 /// # use pasture_derive::PointType;
 /// # use typenum;
@@ -163,7 +163,7 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 /// # Examples
 ///
 /// ```
-/// # use pasture_core::{containers::InterleavedVecPointStorage, layout::PointType};
+/// # use pasture_core::{containers::*, layout::PointType};
 /// # use pasture_core::nalgebra::Vector3;
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::normal_estimation::compute_centroid;
@@ -486,7 +486,7 @@ fn normal_estimation<T: PointBuffer>(point_cloud: &T) -> (Vector3<f64>, f64) {
 mod tests {
 
     use pasture_core::{
-        containers::InterleavedVecPointStorage, layout::PointType, nalgebra::Matrix3,
+        containers::{InterleavedVecPointStorage, OwningPointBuffer}, layout::PointType, nalgebra::Matrix3,
         nalgebra::Vector3,
     };
     use pasture_derive::PointType;

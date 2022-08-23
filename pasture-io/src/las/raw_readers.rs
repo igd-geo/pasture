@@ -5,6 +5,7 @@ use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use las_rs::{point::Format, Header};
 use las_rs::{raw, Builder, Vlr};
 use laz::LasZipDecompressor;
+use pasture_core::containers::OwningPointBuffer;
 use pasture_core::layout::PointAttributeDefinition;
 use pasture_core::{
     containers::InterleavedPointView,
@@ -1437,26 +1438,47 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         let point_size = self.layout.size_of_point_entry() as usize;
         let chunk_bytes = point_size as usize * chunk_size;
         let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
 
         let decompression_chunk_size = self.size_of_point_in_file as usize * chunk_size;
         let mut decompression_chunk: Vec<u8> = vec![0; decompression_chunk_size];
 
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
+        // If the buffer is interleaved, we can directly read into the memory of the buffer and save one memcpy per chunk
+        if point_buffer.as_interleaved_mut().is_some() {
+            let first_new_point_index = point_buffer.len();
+            point_buffer.resize(num_points_to_read);
 
-            self.read_chunk_default_layout(
-                &mut points_chunk[..],
-                &mut decompression_chunk[..],
-                points_in_chunk,
-            )?;
+            let interleaved_buffer = point_buffer.as_interleaved_mut().unwrap();
 
-            point_buffer.push(&InterleavedPointView::from_raw_slice(
-                &points_chunk[0..bytes_in_chunk],
-                self.layout.clone(),
-            ));
+            for chunk_index in 0..num_chunks {
+                let points_in_chunk =
+                    std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
+                    let first_point_index = first_new_point_index + chunk_index * chunk_size;
+                    let end_of_chunk_index = first_point_index + points_in_chunk;
+
+                self.read_chunk_default_layout(
+                    interleaved_buffer.get_raw_points_mut(first_point_index..end_of_chunk_index)
+                    , &mut decompression_chunk, points_in_chunk)?;
+            }
+
+        } else {
+            let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
+
+            for chunk_index in 0..num_chunks {
+                let points_in_chunk =
+                    std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
+                let bytes_in_chunk = points_in_chunk * point_size;
+    
+                self.read_chunk_default_layout(
+                    &mut points_chunk[..],
+                    &mut decompression_chunk[..],
+                    points_in_chunk,
+                )?;
+    
+                point_buffer.push(&InterleavedPointView::from_raw_slice(
+                    &points_chunk[0..bytes_in_chunk],
+                    self.layout.clone(),
+                ));
+            }
         }
 
         self.current_point_index += num_points_to_read;

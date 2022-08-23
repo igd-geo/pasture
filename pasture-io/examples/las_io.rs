@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use pasture_core::{
     containers::{
-        PerAttributePointBufferExt, PerAttributeVecPointStorage, PointBuffer, PointBufferExt,
+        PerAttributePointBufferExt, PerAttributeVecPointStorage, PointBuffer, PointBufferExt, OwningPointBuffer,
     },
     layout::{attributes::POSITION_3D, PointLayout},
     nalgebra::Vector3,

@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use pasture_core::{
     containers::{
-        PerAttributePointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable,
+        PerAttributePointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable, OwningPointBuffer,
     },
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},

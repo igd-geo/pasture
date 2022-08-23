@@ -8,7 +8,7 @@ use clap::{App, Arg};
 use pasture_algorithms::minmax::minmax_attribute;
 use pasture_core::{
     containers::InterleavedVecPointStorage,
-    containers::PointBuffer,
+    containers::{PointBuffer, OwningPointBuffer},
     containers::PointBufferWriteable,
     layout::attributes::NIR,
     layout::attributes::NUMBER_OF_RETURNS,

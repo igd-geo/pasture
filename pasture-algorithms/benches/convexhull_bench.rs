@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_core::{
     containers::{
-        InterleavedVecPointStorage, PerAttributeVecPointStorage,
+        InterleavedVecPointStorage, PerAttributeVecPointStorage, OwningPointBuffer,
     },
     layout::PointType,
     nalgebra::Vector3,

@@ -16,7 +16,7 @@ use std::str::FromStr;
 use super::AsciiMetadata;
 use super::PointDataType;
 use crate::base::PointReader;
-use pasture_core::containers::{UntypedPoint, UntypedPointBuffer};
+use pasture_core::containers::{UntypedPoint, UntypedPointBuffer, OwningPointBuffer};
 
 pub(crate) struct RawAsciiReader<T: Read + BufRead> {
     reader: T,
