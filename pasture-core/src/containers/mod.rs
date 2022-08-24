@@ -24,6 +24,9 @@ pub use self::point_view::*;
 mod attribute_iterators;
 pub use self::attribute_iterators::*;
 
+mod attribute_range;
+pub use self::attribute_range::*;
+
 mod point_iterators;
 pub use self::point_iterators::*;
 

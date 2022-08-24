@@ -16,7 +16,8 @@ use super::{
     iterators::PointIteratorByMut,
     iterators::PointIteratorByRef,
     iterators::PointIteratorByValue,
-    PerAttributePointBufferSlice, PerAttributePointBufferSliceMut, InterleavedPointBufferSlice,
+    AttributeRange, InterleavedPointBufferSlice, PerAttributePointBufferSlice,
+    PerAttributePointBufferSliceMut,
 };
 
 // TODO Can we maybe impl<T: PointBufferWriteable> &T and provide some push<U> methods?
@@ -76,11 +77,23 @@ pub trait PointBuffer {
     }
 }
 
-pub trait InterleavedMutableWriteablePointBuffer : InterleavedPointBufferMut + PointBufferWriteable {}
-impl <T: InterleavedPointBufferMut + PointBufferWriteable> InterleavedMutableWriteablePointBuffer for T {}
+pub trait InterleavedMutableWriteablePointBuffer:
+    InterleavedPointBufferMut + PointBufferWriteable
+{
+}
+impl<T: InterleavedPointBufferMut + PointBufferWriteable> InterleavedMutableWriteablePointBuffer
+    for T
+{
+}
 
-pub trait PerAttributeMutableWriteablePointBuffer<'a> : PerAttributePointBufferMut<'a> + PointBufferWriteable {}
-impl <'a, T: PerAttributePointBufferMut<'a> + PointBufferWriteable> PerAttributeMutableWriteablePointBuffer<'a> for T {}
+pub trait PerAttributeMutableWriteablePointBuffer<'a>:
+    PerAttributePointBufferMut<'a> + PointBufferWriteable
+{
+}
+impl<'a, T: PerAttributePointBufferMut<'a> + PointBufferWriteable>
+    PerAttributeMutableWriteablePointBuffer<'a> for T
+{
+}
 
 /// Trait for all mutable `PointBuffer`s, that is all `PointBuffer`s where it is possible to push points into. Distinguishing between
 /// read-only `PointBuffer` and mutable `PointBufferMut` traits enables read-only, non-owning views of a `PointBuffer` with the same interface
@@ -221,7 +234,12 @@ pub trait PerAttributePointBufferMut<'a>: PerAttributePointBuffer {
     ///
     /// Panics if `index_range` is out of bounds, `attribute` is not part of the `PointLayout`, or the length of `buf` does not
     /// match the size of the range of attributes in the `PointLayout`
-    fn set_raw_attribute_range(&mut self, index_range: Range<usize>, attribute: &PointAttributeDefinition, buf: &[u8]);
+    fn set_raw_attribute_range(
+        &mut self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &[u8],
+    );
     /// Returns a mutable slice of the associated `PerAttributePointBufferMut`
     fn slice_mut(&'a mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'a>;
 
@@ -269,9 +287,9 @@ pub trait PerAttributePointBufferMut<'a>: PerAttributePointBuffer {
     fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer;
 }
 
-/// Trait for all point buffers that own their memory and hence can be constructed using a `PointLayout` and potentially a capacity. This 
+/// Trait for all point buffers that own their memory and hence can be constructed using a `PointLayout` and potentially a capacity. This
 /// trait enables writing generic code that creates new `PointBuffer`s without knowing their specific type
-pub trait OwningPointBuffer : PointBuffer + Sized {
+pub trait OwningPointBuffer: PointBuffer + Sized {
     /// Creates a new empty `PointBuffer` with the given `PointLayout`
     fn new(point_layout: PointLayout) -> Self;
     /// Creates a new empty `PointBuffer` with enough pre-allocated memory to store `capacity` points with the given `PointLayout`
@@ -288,6 +306,14 @@ pub trait PointBufferExt<B: PointBuffer + ?Sized> {
         attribute: &PointAttributeDefinition,
         index: usize,
     ) -> T;
+
+    /// Returns only the data for the given `attribute` as a slice-like type
+    fn attribute_range<T: PrimitiveType + Send>(
+        &self,
+        attribute: &PointAttributeDefinition,
+    ) -> AttributeRange<T>
+    where
+        Self: Sized;
 
     /// Returns an iterator over all points in the associated `PointBuffer`, strongly typed to the `PointType` `T`
     fn iter_point<T: PointType>(&self) -> PointIteratorByValue<'_, T, B>;
@@ -351,6 +377,16 @@ impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
             );
             attribute_data.assume_init()
         }
+    }
+
+    fn attribute_range<T: PrimitiveType + Send>(
+        &self,
+        attribute: &PointAttributeDefinition,
+    ) -> AttributeRange<T>
+    where
+        Self: Sized,
+    {
+        AttributeRange::new(self, attribute)
     }
 
     fn iter_point<T: PointType>(&self) -> PointIteratorByValue<'_, T, B> {
