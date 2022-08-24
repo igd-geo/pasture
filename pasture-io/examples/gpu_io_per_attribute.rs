@@ -1,13 +1,13 @@
 #[cfg(feature = "io_gpu_examples")]
 mod ex {
+    use crevice::std140::AsStd140;
+    use pasture_core::containers::*;
+    use pasture_core::gpu;
+    use pasture_core::gpu::GpuPointBufferPerAttribute;
+    use pasture_core::layout::attributes;
+    use pasture_io::base::{PointReader, PointWriter, SeekToPoint};
     use pasture_io::las::{LASReader, LASWriter};
     use std::path::Path;
-    use pasture_io::base::{SeekToPoint, PointReader, PointWriter};
-    use pasture_core::containers::{PerAttributeVecPointStorage, PointBuffer};
-    use pasture_core::gpu;
-    use pasture_core::layout::attributes;
-    use pasture_core::gpu::GpuPointBufferPerAttribute;
-    use crevice::std140::AsStd140;
 
     // To run this example you have to enable a feature flag: --features="io_gpu_examples"
 
@@ -33,14 +33,20 @@ mod ex {
         // If you decide to try out your own point cloud data, remember to adjust the shaders and the attributes.
         let path = Path::new("pasture-io/examples/in/10_points_format_1.las");
         let mut las_reader = match LASReader::from_path(path) {
-            Ok(reader) => { println!("Ok {:?}", reader.header()); reader}
-            Err(e) => { println!("Error: {}", e); return; }
+            Ok(reader) => {
+                println!("Ok {:?}", reader.header());
+                reader
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                return;
+            }
         };
 
         let count = las_reader.point_count().unwrap();
         let mut point_buffer = PerAttributeVecPointStorage::with_capacity(
             count,
-            las_reader.get_default_point_layout().clone()
+            las_reader.get_default_point_layout().clone(),
         );
         las_reader.read_into(&mut point_buffer, count).unwrap();
 
@@ -52,17 +58,16 @@ mod ex {
 
         let duration_start = chrono::Utc::now().timestamp_millis();
 
-        let device = gpu::Device::new(
-            gpu::DeviceOptions {
-                device_power: gpu::DevicePower::High,
-                device_backend: gpu::DeviceBackend::Vulkan,
-                use_adapter_features: true,
-                use_adapter_limits: true,
-            }
-        ).await;
+        let device = gpu::Device::new(gpu::DeviceOptions {
+            device_power: gpu::DevicePower::High,
+            device_backend: gpu::DeviceBackend::Vulkan,
+            use_adapter_features: true,
+            use_adapter_limits: true,
+        })
+        .await;
 
         let mut device = match device {
-            Ok(d) => d ,
+            Ok(d) => d,
             Err(_) => {
                 println!("Failed to request device. Aborting.");
                 return;
@@ -95,20 +100,37 @@ mod ex {
                 [0.0, 0.0, 1.0, 0.0],
                 [0.0, 0.0, 0.0, 1.0],
             ]),
-        }.as_std140();
+        }
+        .as_std140();
 
         let uniform_as_bytes: &[u8] = bytemuck::bytes_of(&point_uniform);
-        let (uniform_bind_group_layout, uniform_bind_group) = device.create_uniform_bind_group(uniform_as_bytes, 0);
+        let (uniform_bind_group_layout, uniform_bind_group) =
+            device.create_uniform_bind_group(uniform_as_bytes, 0);
 
         // Allocate memory for point buffer and queue it for upload onto the GPU
         let mut gpu_point_buffer = GpuPointBufferPerAttribute::new();
-        gpu_point_buffer.malloc(point_count as u64, &buffer_infos, &mut device.wgpu_device, true);
-        gpu_point_buffer.upload(&mut point_buffer, 0..point_count, &buffer_infos, &mut device.wgpu_device, &device.wgpu_queue);
+        gpu_point_buffer.malloc(
+            point_count as u64,
+            &buffer_infos,
+            &mut device.wgpu_device,
+            true,
+        );
+        gpu_point_buffer.upload(
+            &mut point_buffer,
+            0..point_count,
+            &buffer_infos,
+            &mut device.wgpu_device,
+            &device.wgpu_queue,
+        );
         gpu_point_buffer.create_bind_group(&mut device.wgpu_device);
 
         // Here: GpuPointBuffer -> "set=0",
         //       PointUniform   -> "set=1"
-        device.set_bind_group(0, gpu_point_buffer.bind_group_layout.as_ref().unwrap(), gpu_point_buffer.bind_group.as_ref().unwrap());
+        device.set_bind_group(
+            0,
+            gpu_point_buffer.bind_group_layout.as_ref().unwrap(),
+            gpu_point_buffer.bind_group.as_ref().unwrap(),
+        );
         device.set_bind_group(1, &uniform_bind_group_layout, &uniform_bind_group);
 
         let mut compiler = shaderc::Compiler::new().unwrap();
@@ -124,7 +146,14 @@ mod ex {
         device.set_compute_shader_spirv(&comp_spirv.as_binary());
         device.compute(((point_count / 128) + 1) as u32, 1, 1);
 
-        gpu_point_buffer.download_into_per_attribute(&mut point_buffer, 0..point_count, &buffer_infos, &device.wgpu_device).await;
+        gpu_point_buffer
+            .download_into_per_attribute(
+                &mut point_buffer,
+                0..point_count,
+                &buffer_infos,
+                &device.wgpu_device,
+            )
+            .await;
 
         let duration_end = chrono::Utc::now().timestamp_millis();
         let elapsed_time = (duration_end - duration_start) as f32 / 1000.0;

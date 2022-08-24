@@ -2,7 +2,7 @@
 mod ex {
 
     use crevice::std140::AsStd140;
-    use pasture_core::containers::{InterleavedVecPointStorage, PointBuffer};
+    use pasture_core::containers::*;
     use pasture_core::gpu;
     use pasture_core::gpu::GpuPointBufferInterleaved;
     use pasture_core::layout::attributes;
@@ -120,7 +120,12 @@ mod ex {
 
         // Allocate memory for point buffer and queue it for upload onto the GPU
         let mut gpu_point_buffer = GpuPointBufferInterleaved::new();
-        gpu_point_buffer.malloc(point_count as u64, &buffer_info, &mut device.wgpu_device, true);
+        gpu_point_buffer.malloc(
+            point_count as u64,
+            &buffer_info,
+            &mut device.wgpu_device,
+            true,
+        );
         gpu_point_buffer.upload(
             &mut point_buffer,
             0..point_count,
