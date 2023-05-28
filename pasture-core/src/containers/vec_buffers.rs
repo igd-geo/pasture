@@ -6,9 +6,10 @@ use crate::{
 };
 
 use super::{
-    InterleavedPointBuffer, InterleavedPointBufferMut, InterleavedPointBufferSlice,
+    InterleavedMutableWriteablePointBuffer, InterleavedPointBuffer, InterleavedPointBufferMut,
+    InterleavedPointBufferSlice, OwningPointBuffer, PerAttributeMutableWriteablePointBuffer,
     PerAttributePointBuffer, PerAttributePointBufferMut, PerAttributePointBufferSlice,
-    PerAttributePointBufferSliceMut, PointBuffer, PointBufferWriteable, OwningPointBuffer, InterleavedMutableWriteablePointBuffer, PerAttributeMutableWriteablePointBuffer,
+    PerAttributePointBufferSliceMut, PointBuffer, PointBufferWriteable,
 };
 use rayon::prelude::*;
 
@@ -329,6 +330,23 @@ impl OwningPointBuffer for InterleavedVecPointStorage {
         }
     }
 
+    fn gather_from_indices<I: ExactSizeIterator<Item = usize> + Clone>(&self, indices: I) -> Self {
+        let mut ret = Self::with_capacity(indices.len(), self.point_layout().clone());
+        ret.resize(indices.len());
+        let point_size = self.point_layout().size_of_point_entry() as usize;
+
+        for (new_index, old_index) in indices.enumerate() {
+            let old_point_data_start = old_index * point_size;
+            let old_point_data_end = old_point_data_start + point_size;
+            let source_point_slice = &self.points[old_point_data_start..old_point_data_end];
+
+            let new_point_data_start = new_index * point_size;
+            let new_point_data_end = new_point_data_start + point_size;
+            let target_point_slice = &mut ret.points[new_point_data_start..new_point_data_end];
+            target_point_slice.copy_from_slice(source_point_slice);
+        }
+        ret
+    }
 }
 
 impl PointBuffer for InterleavedVecPointStorage {
@@ -936,6 +954,30 @@ impl OwningPointBuffer for PerAttributeVecPointStorage {
         Self { layout, attributes }
     }
 
+    fn gather_from_indices<I: ExactSizeIterator<Item = usize> + Clone>(&self, indices: I) -> Self {
+        let mut ret =
+            PerAttributeVecPointStorage::with_capacity(indices.len(), self.point_layout().clone());
+        ret.resize(indices.len());
+        for attribute in self.point_layout().attributes() {
+            let source_attribute_slice = self.attributes.get(attribute.name()).unwrap();
+            let target_attribute_slice = ret.attributes.get_mut(attribute.name()).unwrap();
+            let attribute_size = attribute.size() as usize;
+
+            for (new_index, old_index) in indices.clone().enumerate() {
+                let old_point_data_start = old_index * attribute_size;
+                let old_point_data_end = old_point_data_start + attribute_size;
+                let source_point_slice =
+                    &source_attribute_slice[old_point_data_start..old_point_data_end];
+
+                let new_point_data_start = new_index * attribute_size;
+                let new_point_data_end = new_point_data_start + attribute_size;
+                let target_point_slice =
+                    &mut target_attribute_slice[new_point_data_start..new_point_data_end];
+                target_point_slice.copy_from_slice(source_point_slice);
+            }
+        }
+        ret
+    }
 }
 
 impl PointBuffer for PerAttributeVecPointStorage {
@@ -1166,7 +1208,7 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
     }
 }
 
-impl <'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
+impl<'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
     fn get_raw_attribute_mut(
         &mut self,
         point_index: usize,
@@ -1213,8 +1255,14 @@ impl <'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
         &mut attribute_buffer[start_offset_in_attribute_buffer..end_offset_in_attribute_buffer]
     }
 
-    fn set_raw_attribute_range(&mut self, index_range: Range<usize>, attribute: &PointAttributeDefinition, buf: &[u8]) {
-        self.get_raw_attribute_range_mut(index_range, attribute).copy_from_slice(buf)
+    fn set_raw_attribute_range(
+        &mut self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &[u8],
+    ) {
+        self.get_raw_attribute_range_mut(index_range, attribute)
+            .copy_from_slice(buf)
     }
 
     fn slice_mut(&mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'_> {
@@ -1224,8 +1272,7 @@ impl <'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
     fn disjunct_slices_mut(
         &mut self,
         ranges: &[Range<usize>],
-    ) -> Vec<PerAttributePointBufferSliceMut<'_>>
-    {
+    ) -> Vec<PerAttributePointBufferSliceMut<'_>> {
         let self_ptr = self as *mut dyn PerAttributePointBufferMut;
 
         ranges
@@ -1456,7 +1503,7 @@ mod tests {
     impl OpqaueInterleavedBuffer for InterleavedVecPointStorage {}
 
     trait OpqauePerAttributeBuffer<'a>: PerAttributePointBufferMut<'a> + PointBufferWriteable {}
-    impl <'a> OpqauePerAttributeBuffer<'a> for PerAttributeVecPointStorage {}
+    impl<'a> OpqauePerAttributeBuffer<'a> for PerAttributeVecPointStorage {}
 
     fn get_empty_interleaved_point_buffer(layout: PointLayout) -> Box<dyn OpqaueInterleavedBuffer> {
         Box::new(InterleavedVecPointStorage::new(layout))

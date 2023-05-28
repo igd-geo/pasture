@@ -294,6 +294,9 @@ pub trait OwningPointBuffer: PointBuffer + Sized {
     fn new(point_layout: PointLayout) -> Self;
     /// Creates a new empty `PointBuffer` with enough pre-allocated memory to store `capacity` points with the given `PointLayout`
     fn with_capacity(capacity: usize, point_layout: PointLayout) -> Self;
+    /// Returns a new `PointBuffer` containing all points at the given `indices`. If you work with indexed points and have to
+    /// extract a non-contiguous subset of points from a `PointBuffer`, this is the fastest way to do it
+    fn gather_from_indices<I: ExactSizeIterator<Item = usize> + Clone>(&self, indices: I) -> Self;
 }
 
 /// Extension trait that provides generic methods for accessing point data in a `PointBuffer`
