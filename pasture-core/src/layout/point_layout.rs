@@ -633,7 +633,7 @@ pub enum FieldAlignment {
 /// To support the different memory layouts, Pasture buffers store point data as raw binary buffers internally. To work with the data,
 /// you will want to use strongly typed Rust structures. Any type `T` that you want to use for accessing point data in a strongly typed manner
 /// must implement the `PointType` trait and thus provide Pasture with a way of figuring out the attributes and memory layout of this type `T`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PointLayout {
     attributes: Vec<PointAttributeMember>,
     memory_layout: Layout,

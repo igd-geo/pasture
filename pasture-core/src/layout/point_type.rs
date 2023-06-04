@@ -4,7 +4,7 @@ use super::point_layout::*;
 /// This trait allows the mapping between Rust types at compile time and the dynamic `PointLayout`
 /// type.
 /// **You will almost never want to implement `PointType` manually! Prefer to use the `#[derive(PointType)]` procedural macro!**
-pub trait PointType {
+pub trait PointType: Sized {
     /// Returns the associated `PointLayout` that describes the type implementing this trait.
     ///
     /// *Note:* This
