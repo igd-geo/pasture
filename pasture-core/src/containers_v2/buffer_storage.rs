@@ -625,6 +625,7 @@ impl<'a> IndexBufferMut<'a> for VectorStorage {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SliceStorage<'a, S: BufferStorage> {
     storage: &'a S,
     range: Range<usize>,
@@ -642,14 +643,14 @@ impl<'a, S: BufferStorage> BufferStorage for SliceStorage<'a, S> {
     }
 
     fn get(&self, index: usize, data: &mut [u8]) {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get(index + self.range.start, data);
     }
 
     fn get_attribute(&self, attribute: &PointAttributeMember, index: usize, data: &mut [u8]) {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -659,14 +660,14 @@ impl<'a, S: BufferStorage> BufferStorage for SliceStorage<'a, S> {
 
 impl<'a, S: BufferStorageContiguous> BufferStorageContiguous for SliceStorage<'a, S> {
     fn get_ref(&self, index: usize) -> &[u8] {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get_ref(index + self.range.start)
     }
 
     fn get_range_ref(&self, indices: Range<usize>) -> &[u8] {
-        if indices.end >= self.len() {
+        if indices.end > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -676,7 +677,7 @@ impl<'a, S: BufferStorageContiguous> BufferStorageContiguous for SliceStorage<'a
 
 impl<'a, S: BufferStorageColumnar> BufferStorageColumnar for SliceStorage<'a, S> {
     fn get_attribute_ref(&self, attribute: &PointAttributeMember, index: usize) -> &[u8] {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -688,7 +689,7 @@ impl<'a, S: BufferStorageColumnar> BufferStorageColumnar for SliceStorage<'a, S>
         attribute: &PointAttributeMember,
         indices: Range<usize>,
     ) -> &[u8] {
-        if indices.end >= self.len() {
+        if indices.end > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get_attribute_range_ref(
@@ -714,6 +715,7 @@ impl<'a, S: BufferStorage + 'a> IndexBuffer<'a> for SliceStorage<'a, S> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct SliceStorageMut<'a, S: BufferStorage> {
     storage: &'a mut S,
     range: Range<usize>,
@@ -731,14 +733,14 @@ impl<'a, S: BufferStorage> BufferStorage for SliceStorageMut<'a, S> {
     }
 
     fn get(&self, index: usize, data: &mut [u8]) {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get(index + self.range.start, data);
     }
 
     fn get_attribute(&self, attribute: &PointAttributeMember, index: usize, data: &mut [u8]) {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -748,14 +750,14 @@ impl<'a, S: BufferStorage> BufferStorage for SliceStorageMut<'a, S> {
 
 impl<'a, S: BufferStorageContiguous> BufferStorageContiguous for SliceStorageMut<'a, S> {
     fn get_ref(&self, index: usize) -> &[u8] {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get_ref(index + self.range.start)
     }
 
     fn get_range_ref(&self, indices: Range<usize>) -> &[u8] {
-        if indices.end >= self.len() {
+        if indices.end > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -765,14 +767,14 @@ impl<'a, S: BufferStorageContiguous> BufferStorageContiguous for SliceStorageMut
 
 impl<'a, S: BufferStorageContiguousMut> BufferStorageContiguousMut for SliceStorageMut<'a, S> {
     fn get_mut(&mut self, index: usize) -> &mut [u8] {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get_mut(index + self.range.start)
     }
 
     fn get_range_mut(&mut self, indices: Range<usize>) -> &mut [u8] {
-        if indices.end >= self.len() {
+        if indices.end > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -793,7 +795,7 @@ impl<'a, S: BufferStorageContiguousMut> BufferStorageContiguousMut for SliceStor
 
 impl<'a, S: BufferStorageColumnar> BufferStorageColumnar for SliceStorageMut<'a, S> {
     fn get_attribute_ref(&self, attribute: &PointAttributeMember, index: usize) -> &[u8] {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -805,7 +807,7 @@ impl<'a, S: BufferStorageColumnar> BufferStorageColumnar for SliceStorageMut<'a,
         attribute: &PointAttributeMember,
         indices: Range<usize>,
     ) -> &[u8] {
-        if indices.end >= self.len() {
+        if indices.end > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get_attribute_range_ref(
@@ -821,7 +823,7 @@ impl<'a, S: BufferStorageColumnar> BufferStorageColumnar for SliceStorageMut<'a,
 
 impl<'a, S: BufferStorageColumnarMut> BufferStorageColumnarMut for SliceStorageMut<'a, S> {
     fn get_attribute_mut(&mut self, attribute: &PointAttributeMember, index: usize) -> &mut [u8] {
-        if index >= self.len() {
+        if index > self.len() {
             panic!("Index out of bounds");
         }
         self.storage
@@ -833,7 +835,7 @@ impl<'a, S: BufferStorageColumnarMut> BufferStorageColumnarMut for SliceStorageM
         attribute: &PointAttributeMember,
         indices: Range<usize>,
     ) -> &mut [u8] {
-        if indices.end >= self.len() {
+        if indices.end > self.len() {
             panic!("Index out of bounds");
         }
         self.storage.get_attribute_range_mut(
@@ -1063,31 +1065,31 @@ mod tests {
     }
 
     unsafe fn test_buffer_storage_contiguous_mut<
-        T: BufferStorageContiguousMut + Clone + PartialEq + std::fmt::Debug,
+        T: BufferStorageContiguousMut + PartialEq + std::fmt::Debug,
         U: PointType + Clone + PartialEq + PartialOrd + std::fmt::Debug,
     >(
-        storage: &T,
+        storage: &mut T,
     ) where
         Standard: Distribution<U>,
     {
-        let mut cloned_storage = storage.clone();
-        assert_eq!(*storage, cloned_storage);
+        // let mut cloned_storage = storage.clone();
+        // assert_eq!(*storage, cloned_storage);
 
         let two_new_points = reference_data::<U>(2);
         for index in 0..storage.len() {
-            let point = &mut byte_slice_cast_mut::<U>(cloned_storage.get_mut(index))[0];
+            let point = &mut byte_slice_cast_mut::<U>(storage.get_mut(index))[0];
             *point = two_new_points[0].clone();
         }
 
         let mut expected_data = std::iter::repeat(two_new_points[0].clone())
             .take(storage.len())
             .collect::<Vec<_>>();
-        let mut actual_data = BufferViewRef::from_storage_and_layout(&cloned_storage, &U::layout())
+        let mut actual_data = BufferViewRef::from_storage_and_layout(storage, &U::layout())
             .into_iter()
             .collect::<Vec<U>>();
         assert_eq!(expected_data, actual_data);
 
-        let points_mut = byte_slice_cast_mut::<U>(cloned_storage.get_range_mut(0..storage.len()));
+        let points_mut = byte_slice_cast_mut::<U>(storage.get_range_mut(0..storage.len()));
         for point in points_mut {
             *point = two_new_points[1].clone();
         }
@@ -1095,13 +1097,13 @@ mod tests {
         expected_data = std::iter::repeat(two_new_points[1].clone())
             .take(storage.len())
             .collect::<Vec<_>>();
-        actual_data = BufferViewRef::from_storage_and_layout(&cloned_storage, &U::layout())
+        actual_data = BufferViewRef::from_storage_and_layout(storage, &U::layout())
             .into_iter()
             .collect::<Vec<U>>();
         assert_eq!(expected_data, actual_data);
 
-        cloned_storage.sort_by(|a: &U, b: &U| a.partial_cmp(b).unwrap());
-        actual_data = BufferViewRef::from_storage_and_layout(&cloned_storage, &U::layout())
+        storage.sort_by(|a: &U, b: &U| a.partial_cmp(b).unwrap());
+        actual_data = BufferViewRef::from_storage_and_layout(storage, &U::layout())
             .into_iter()
             .collect::<Vec<U>>();
         assert_sorted_by(&actual_data, |a, b| a.partial_cmp(b).unwrap());
@@ -1136,15 +1138,16 @@ mod tests {
     }
 
     unsafe fn test_buffer_storage_columnar_mut<
-        T: BufferStorageColumnarMut + Clone + PartialEq + std::fmt::Debug,
+        T: BufferStorageColumnarMut + PartialEq + std::fmt::Debug,
         U: PointType + Clone + PartialEq + std::fmt::Debug,
     >(
         storage: &T,
+        mut cloned_storage: T,
     ) where
         Standard: Distribution<U>,
     {
-        let mut cloned_storage = storage.clone();
-        assert_eq!(*storage, cloned_storage);
+        // let mut cloned_storage = storage.clone();
+        // assert_eq!(*storage, cloned_storage);
 
         // Overwrite all attributes of each point with new data
         let new_data = reference_data::<U>(cloned_storage.len());
@@ -1191,7 +1194,7 @@ mod tests {
             test_buffer_storage(&empty_storage, empty_data);
             test_buffer_storage_mut(&empty_storage, empty_data);
             test_buffer_storage_contiguous(&empty_storage, empty_data);
-            test_buffer_storage_contiguous_mut(&empty_storage);
+            test_buffer_storage_contiguous_mut(&mut empty_storage.clone());
         }
 
         {
@@ -1201,7 +1204,44 @@ mod tests {
             test_buffer_storage(&storage, &expected_data);
             test_buffer_storage_mut(&storage, &expected_data);
             test_buffer_storage_contiguous(&storage, &expected_data);
-            test_buffer_storage_contiguous_mut(&storage);
+            test_buffer_storage_contiguous_mut(&mut storage.clone());
+
+            let slice_all = SliceStorage::new(&storage, 0..COUNT);
+            test_buffer_storage(&slice_all, &expected_data);
+            test_buffer_storage_contiguous(&slice_all, &expected_data);
+
+            let slice_some = SliceStorage::new(&storage, 3..(COUNT - 3));
+            test_buffer_storage(&slice_some, &expected_data[3..(COUNT - 3)]);
+            test_buffer_storage_contiguous(&slice_some, &expected_data[3..(COUNT - 3)]);
+
+            let slice_empty = SliceStorage::new(&storage, 0..0);
+            test_buffer_storage(&slice_empty, &expected_data[0..0]);
+            test_buffer_storage_contiguous(&slice_empty, &expected_data[0..0]);
+
+            {
+                let mut mut_storage = storage.clone();
+                let mut mut_slice_all = SliceStorageMut::new(&mut mut_storage, 0..COUNT);
+                test_buffer_storage(&mut_slice_all, &expected_data);
+                test_buffer_storage_contiguous(&mut_slice_all, &expected_data);
+                test_buffer_storage_contiguous_mut(&mut mut_slice_all);
+            }
+
+            {
+                let mut mut_storage = storage.clone();
+                let range = 3..(COUNT - 3);
+                let mut mut_slice_some = SliceStorageMut::new(&mut mut_storage, range.clone());
+                test_buffer_storage(&mut_slice_some, &expected_data[range.clone()]);
+                test_buffer_storage_contiguous(&mut_slice_some, &expected_data[range.clone()]);
+                test_buffer_storage_contiguous_mut(&mut mut_slice_some);
+            }
+
+            {
+                let mut mut_storage = storage.clone();
+                let mut mut_slice_none = SliceStorageMut::new(&mut mut_storage, 0..0);
+                test_buffer_storage(&mut_slice_none, &expected_data[0..0]);
+                test_buffer_storage_contiguous(&mut_slice_none, &expected_data[0..0]);
+                test_buffer_storage_contiguous_mut(&mut mut_slice_none);
+            }
         }
     }
 
@@ -1217,7 +1257,7 @@ mod tests {
             test_buffer_storage(&empty_storage, empty_data);
             test_buffer_storage_mut(&empty_storage, empty_data);
             test_buffer_storage_columnar(&empty_storage, empty_data);
-            test_buffer_storage_columnar_mut(&empty_storage);
+            test_buffer_storage_columnar_mut(&empty_storage, empty_storage.clone());
         }
 
         {
@@ -1227,7 +1267,55 @@ mod tests {
             test_buffer_storage(&storage, &expected_data);
             test_buffer_storage_mut(&storage, &expected_data);
             test_buffer_storage_columnar(&storage, &expected_data);
-            test_buffer_storage_columnar_mut(&storage);
+            test_buffer_storage_columnar_mut(&storage, storage.clone());
+
+            let slice_all = SliceStorage::new(&storage, 0..COUNT);
+            test_buffer_storage(&slice_all, &expected_data);
+            test_buffer_storage_columnar(&slice_all, &expected_data);
+
+            let slice_some = SliceStorage::new(&storage, 3..(COUNT - 3));
+            test_buffer_storage(&slice_some, &expected_data[3..(COUNT - 3)]);
+            test_buffer_storage_columnar(&slice_some, &expected_data[3..(COUNT - 3)]);
+
+            let slice_empty = SliceStorage::new(&storage, 0..0);
+            test_buffer_storage(&slice_empty, &expected_data[0..0]);
+            test_buffer_storage_columnar(&slice_empty, &expected_data[0..0]);
+
+            {
+                let mut mut_storage = storage.clone();
+                let mut_slice_all = SliceStorageMut::new(&mut mut_storage, 0..COUNT);
+                test_buffer_storage(&mut_slice_all, &expected_data);
+                test_buffer_storage_columnar(&mut_slice_all, &expected_data);
+
+                // Have to clone the underlying storage to create a second SliceStorageMut because of mutable borrowing rules
+                test_buffer_storage_columnar_mut(
+                    &mut_slice_all,
+                    SliceStorageMut::new(&mut storage.clone(), 0..COUNT),
+                );
+            }
+
+            {
+                let mut mut_storage = storage.clone();
+                let range = 3..(COUNT - 3);
+                let mut_slice_some = SliceStorageMut::new(&mut mut_storage, range.clone());
+                test_buffer_storage(&mut_slice_some, &expected_data[range.clone()]);
+                test_buffer_storage_columnar(&mut_slice_some, &expected_data[range.clone()]);
+                test_buffer_storage_columnar_mut(
+                    &mut_slice_some,
+                    SliceStorageMut::new(&mut storage.clone(), range.clone()),
+                );
+            }
+
+            {
+                let mut mut_storage = storage.clone();
+                let mut_slice_none = SliceStorageMut::new(&mut mut_storage, 0..0);
+                test_buffer_storage(&mut_slice_none, &expected_data[0..0]);
+                test_buffer_storage_columnar(&mut_slice_none, &expected_data[0..0]);
+                test_buffer_storage_columnar_mut(
+                    &mut_slice_none,
+                    SliceStorageMut::new(&mut storage.clone(), 0..0),
+                );
+            }
         }
     }
 
