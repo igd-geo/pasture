@@ -24,6 +24,13 @@ unsafe fn byte_slice_cast_mut<T>(slice: &mut [u8]) -> &mut [T] {
     )
 }
 
+pub trait DefaultFromPointLayout: Sized {
+    fn from_point_layout(point_layout: &PointLayout) -> Self;
+    fn from_point_type<T: PointType>() -> Self {
+        Self::from_point_layout(&T::layout())
+    }
+}
+
 pub trait BufferStorage {
     fn len(&self) -> usize;
     fn get(&self, index: usize, data: &mut [u8]);
@@ -243,6 +250,12 @@ impl<P: PointType> FromIterator<P> for VectorStorage {
             num_points,
             stride: std::mem::size_of::<P>(),
         }
+    }
+}
+
+impl DefaultFromPointLayout for VectorStorage {
+    fn from_point_layout(point_layout: &PointLayout) -> Self {
+        VectorStorage::from_layout(point_layout)
     }
 }
 
@@ -594,6 +607,12 @@ impl<P: PointType> FromIterator<P> for ColumnarStorage {
             iter.for_each(|point| storage.push(view_raw_bytes(&point)));
         }
         storage
+    }
+}
+
+impl DefaultFromPointLayout for ColumnarStorage {
+    fn from_point_layout(point_layout: &PointLayout) -> Self {
+        ColumnarStorage::from_layout(point_layout)
     }
 }
 

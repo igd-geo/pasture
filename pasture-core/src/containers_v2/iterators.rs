@@ -83,7 +83,7 @@ impl<'a, T: PointType + 'a, S: PointSliceTypedByRef<T> + 'a> Iterator
             // we constrained the type S with lifetime 'a. The implicit lifetime of '&mut self' is not known,
             // but it can never exceed 'a
             unsafe {
-                let point_ref = PointSliceTypedByRef::at(&self.slice, index);
+                let point_ref = PointSliceTypedByRef::at_ref(&self.slice, index);
                 Some(&*(point_ref as *const T))
             }
         }

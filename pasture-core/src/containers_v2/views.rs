@@ -65,7 +65,7 @@ impl<'a, T: PointType, S: BufferStorage> PointSliceTyped<T> for BufferViewRef<'a
 impl<'a, T: PointType, S: BufferStorageContiguous> PointSliceTypedByRef<T>
     for BufferViewRef<'a, T, S>
 {
-    fn at(&self, index: usize) -> &T {
+    fn at_ref(&self, index: usize) -> &T {
         let raw_point = self.storage.get_ref(index);
         unsafe {
             let ptr = raw_point.as_ptr() as *const T;
@@ -152,7 +152,7 @@ impl<'a, T: PointType, S: BufferStorage> PointSliceTyped<T> for BufferViewMut<'a
 impl<'a, T: PointType, S: BufferStorageContiguous> PointSliceTypedByRef<T>
     for BufferViewMut<'a, T, S>
 {
-    fn at(&self, index: usize) -> &T {
+    fn at_ref(&self, index: usize) -> &T {
         let raw_point = self.storage.get_ref(index);
         unsafe {
             let ptr = raw_point.as_ptr() as *const T;
