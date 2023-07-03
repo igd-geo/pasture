@@ -108,11 +108,12 @@ pub type AttributeConversionFn = unsafe fn(&[u8], &mut [u8]) -> ();
 /// Returns a conversion function for converting from `from_attribute` into `to_attribute`. Both attributes must have the
 /// same name but can have different datatypes. Conversion functions operate on raw byte buffers, where the first argument
 /// is a buffer that represents a single value of `from_attribute` and the second buffer is a single mutable value of
-/// `to_attribute`. If both attributes are equal, `None` is returned.
+/// `to_attribute`. If both attributes are equal, the conversion function is just a `memcpy`. If the datatypes of the two
+/// attributes are incompatible (e.g. going from a vector type to a scalar type), `None` is returned
 ///
-/// # Panics
+/// # panics
 ///
-/// If no conversion from `from_attribute` into `to_attribute` is possible
+/// If `from_attribute` and `to_attribute` don't have the same name
 pub fn get_converter_for_attributes(
     from_attribute: &PointAttributeDefinition,
     to_attribute: &PointAttributeDefinition,
@@ -120,14 +121,28 @@ pub fn get_converter_for_attributes(
     if from_attribute.name() != to_attribute.name() {
         panic!("get_converter_for_attributes: from and to attributes must have the same name!");
     }
-    if from_attribute.datatype() == to_attribute.datatype() {
-        return None;
+
+    get_converter_for_datatype_and_target_attribute(
+        from_attribute.datatype(),
+        to_attribute.name(),
+        to_attribute.datatype(),
+    )
+}
+
+/// Like `get_converter_for_attributes`, but doesn't require a full `PointAttributeDefinition` for the source attribute
+pub fn get_converter_for_datatype_and_target_attribute(
+    from_attribute_datatype: PointAttributeDataType,
+    to_attribute_name: &'static str,
+    to_attribute_datatype: PointAttributeDataType,
+) -> Option<AttributeConversionFn> {
+    if from_attribute_datatype == to_attribute_datatype {
+        return Some(convert_unit);
     }
 
-    match from_attribute.name() {
-        "Position3D" => get_position_converter(from_attribute.datatype(), to_attribute.datatype()),
-        "ColorRGB" => get_color_rgb_converter(from_attribute.datatype(), to_attribute.datatype()),
-        _ => get_generic_converter(from_attribute.datatype(), to_attribute.datatype()),
+    match to_attribute_name {
+        "Position3D" => get_position_converter(from_attribute_datatype, to_attribute_datatype),
+        "ColorRGB" => get_color_rgb_converter(from_attribute_datatype, to_attribute_datatype),
+        _ => get_generic_converter(from_attribute_datatype, to_attribute_datatype),
     }
 }
 
@@ -289,7 +304,7 @@ fn get_generic_converter(
 /// assert_eq!(2.0, dest.y);
 /// assert_eq!(3.0, dest.z);
 /// ```
-unsafe fn _convert_unit(from: &[u8], to: &mut [u8]) {
+unsafe fn convert_unit(from: &[u8], to: &mut [u8]) {
     to.copy_from_slice(from)
 }
 

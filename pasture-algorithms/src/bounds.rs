@@ -1,5 +1,5 @@
 use pasture_core::{
-    containers::{PointBuffer, PointBufferExt},
+    containers::{BufferStorage, PointBuffer},
     layout::attributes::POSITION_3D,
     math::AABB,
     nalgebra::{Point3, Vector3},
@@ -7,17 +7,13 @@ use pasture_core::{
 
 /// Calculate the bounding box of the points in the given `buffer`. Returns `None` if the buffer contains zero
 /// points, or if the `PointLayout` of the buffer does not contain the `POSITION_3D` attribute
-pub fn calculate_bounds<T: PointBuffer>(buffer: &T) -> Option<AABB<f64>> {
+pub fn calculate_bounds<T: BufferStorage>(buffer: &PointBuffer<T>) -> Option<AABB<f64>> {
     if buffer.len() == 0 {
         return None;
     }
-    let position_attribute = match buffer
+    let position_attribute = buffer
         .point_layout()
-        .get_attribute_by_name(POSITION_3D.name())
-    {
-        Some(a) => a,
-        None => return None,
-    };
+        .get_attribute_by_name(POSITION_3D.name())?;
 
     if position_attribute.datatype() == POSITION_3D.datatype() {
         Some(calculate_bounds_from_default_positions(buffer))
@@ -26,10 +22,10 @@ pub fn calculate_bounds<T: PointBuffer>(buffer: &T) -> Option<AABB<f64>> {
     }
 }
 
-fn calculate_bounds_from_default_positions<T: PointBuffer>(buffer: &T) -> AABB<f64> {
+fn calculate_bounds_from_default_positions<T: BufferStorage>(buffer: &PointBuffer<T>) -> AABB<f64> {
     let mut pos_min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
     let mut pos_max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
-    for pos in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+    for pos in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D) {
         if pos.x < pos_min.x {
             pos_min.x = pos.x;
         }

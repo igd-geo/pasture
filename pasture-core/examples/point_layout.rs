@@ -1,11 +1,8 @@
-use pasture_core::containers::OwningPointBuffer;
-use pasture_core::nalgebra::Vector3;
-use pasture_core::{
-    containers::InterleavedVecPointStorage,
-    layout::{
-        attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
-    },
+use pasture_core::containers::{PointBuffer, VectorStorage};
+use pasture_core::layout::{
+    attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
 };
+use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;
 
 fn main() {
@@ -110,9 +107,10 @@ fn main() {
             layout
         );
 
-        //With this, we can create a `PointBuffer` that stores `CustomPointType`s
-        let mut buffer = InterleavedVecPointStorage::new(layout);
-        buffer.push_point(CustomPointType {
+        //With this, we can create a `PointBuffer` that stores `CustomPointType`s. Note that you could also use
+        //`PointBuffer::for_point_type::<CustomPointType>` here
+        let mut buffer = PointBuffer::<VectorStorage>::from_layout(layout);
+        buffer.push(CustomPointType {
             position: Vector3::new(1.0, 2.0, 3.0),
             intensity: 42,
             custom_attribute: 3.14,

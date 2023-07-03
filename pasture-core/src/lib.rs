@@ -20,5 +20,3 @@ pub mod math;
 pub mod meta;
 /// Utilities
 pub mod util;
-
-pub mod containers_v2;

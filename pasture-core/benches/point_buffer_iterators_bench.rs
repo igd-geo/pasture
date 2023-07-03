@@ -1,9 +1,10 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use std::iter::FromIterator;
+
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use pasture_core::{
     containers::{
-        InterleavedPointBuffer, InterleavedPointBufferExt, InterleavedVecPointStorage,
-        PerAttributePointBuffer, PerAttributePointBufferExt, PerAttributeVecPointStorage,
-        PointBuffer, PointBufferExt, OwningPointBuffer,
+        BufferStorage, BufferStorageColumnar, BufferStorageRowWise, ColumnarStorage, PointBuffer,
+        PolymorphicStorage, VectorStorage,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,
@@ -48,197 +49,174 @@ fn random_custom_point_small<R: Rng + ?Sized>(rng: &mut R) -> CustomPointTypeSma
     }
 }
 
-fn get_dummy_points_custom_format_small_interleaved() -> InterleavedVecPointStorage {
+fn get_dummy_points_custom_format_small<T: BufferStorage + FromIterator<CustomPointTypeSmall>>(
+) -> PointBuffer<T> {
     const NUM_POINTS: usize = 1_000;
-    let mut buffer =
-        InterleavedVecPointStorage::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
     let mut rng = thread_rng();
-    for _ in 0..NUM_POINTS {
-        buffer.push_point(random_custom_point_small(&mut rng));
-    }
-    buffer
+    (0..NUM_POINTS)
+        .map(|_| random_custom_point_small(&mut rng))
+        .collect::<PointBuffer<T>>()
 }
 
-fn get_dummy_points_custom_format_small_perattribute() -> PerAttributeVecPointStorage {
-    const NUM_POINTS: usize = 1_000;
-    let mut buffer =
-        PerAttributeVecPointStorage::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
-    let mut rng = thread_rng();
-    for _ in 0..NUM_POINTS {
-        buffer.push_point(random_custom_point_small(&mut rng));
+// fn get_dummy_points_custom_format_small_perattribute() -> PerAttributeVecPointStorage {
+//     const NUM_POINTS: usize = 1_000;
+//     let mut buffer =
+//         PerAttributeVecPointStorage::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
+//     let mut rng = thread_rng();
+//     for _ in 0..NUM_POINTS {
+//         buffer.push_point(random_custom_point_small(&mut rng));
+//     }
+//     buffer
+// }
+
+fn points_iterator_performance_polymorphic_storage<T: PointType + Default>(
+    buffer: &PointBuffer<PolymorphicStorage>,
+) {
+    for point in buffer.view::<T>() {
+        black_box(point);
     }
-    buffer
 }
 
-fn points_iterator_performance_opaque_buffer<T: PointType + Default>(
-    buffer: &dyn PointBuffer,
-) -> T {
-    let mut ret = Default::default();
-    for point in buffer.iter_point::<T>() {
-        ret = point;
+fn points_iterator_performance_rowwise_storage<T: PointType + Default, S: BufferStorageRowWise>(
+    buffer: &PointBuffer<S>,
+) {
+    for point in buffer.view::<T>().iter() {
+        black_box(point);
     }
-    ret
 }
 
-fn points_iterator_performance_interleaved_buffer<
+fn points_iterator_performance_columnar_storage<
     T: PointType + Default,
-    B: InterleavedPointBuffer,
+    S: BufferStorageColumnar,
 >(
-    buffer: &B,
-) -> T {
-    let mut ret = Default::default();
-    for point in buffer.iter_point::<T>() {
-        ret = point;
+    buffer: &PointBuffer<S>,
+) {
+    for point in buffer.view::<T>() {
+        black_box(point);
     }
-    ret
 }
 
-fn points_iterator_performance_per_attribute_buffer<
-    T: PointType + Default,
-    B: PerAttributePointBuffer,
->(
-    buffer: &B,
-) -> T {
-    let mut ret = Default::default();
-    for point in buffer.iter_point::<T>() {
-        ret = point;
-    }
-    ret
-}
-
-fn points_ref_iterator_performance_small_type(buffer: &dyn InterleavedPointBuffer) -> Vector3<f64> {
-    let mut position = Vector3::new(0.0, 0.0, 0.0);
-    for point in buffer.iter_point_ref::<CustomPointTypeSmall>() {
-        position = point.position.clone();
-    }
-    position
-}
-
-fn attribute_iterator_performance_opaque_buffer<T: PrimitiveType + Default>(
-    buffer: &dyn PointBuffer,
+fn attribute_iterator_performance_polymorphic_storage<T: PrimitiveType + Default>(
+    buffer: &PointBuffer<PolymorphicStorage>,
     attribute: &PointAttributeDefinition,
-) -> T {
-    let mut ret: T = Default::default();
-    for val in buffer.iter_attribute::<T>(attribute) {
-        ret = val;
+) {
+    for val in buffer.view_attribute::<T>(attribute) {
+        black_box(val);
     }
-    ret
 }
 
-fn attribute_iterator_performance_interleaved_buffer<
+fn attribute_iterator_performance_rowwise_storage<
     T: PrimitiveType + Default,
-    B: InterleavedPointBuffer,
+    B: BufferStorageRowWise,
 >(
-    buffer: &B,
+    buffer: &PointBuffer<B>,
     attribute: &PointAttributeDefinition,
-) -> T {
-    let mut ret: T = Default::default();
-    for val in buffer.iter_attribute::<T>(attribute) {
-        ret = val;
+) {
+    for val in buffer.view_attribute::<T>(attribute) {
+        black_box(val);
     }
-    ret
 }
 
-fn attribute_iterator_performance_perattribute_buffer<
+fn attribute_iterator_performance_columnar_storage<
     T: PrimitiveType + Default,
-    B: PerAttributePointBuffer,
+    B: BufferStorageColumnar,
 >(
-    buffer: &B,
+    buffer: &PointBuffer<B>,
     attribute: &PointAttributeDefinition,
-) -> T {
-    let mut ret: T = Default::default();
-    for val in buffer.iter_attribute::<T>(attribute) {
-        ret = val;
+) {
+    for val in buffer.view_attribute::<T>(attribute).iter() {
+        black_box(val);
     }
-    ret
-}
-
-fn attribute_ref_iterator_performance_small_type(
-    buffer: &dyn PerAttributePointBuffer,
-) -> Vector3<f64> {
-    let mut ret = Vector3::new(0.0, 0.0, 0.0);
-    for position in buffer.iter_attribute_ref::<Vector3<f64>>(&POSITION_3D) {
-        ret = position.clone();
-    }
-    ret
 }
 
 fn bench(c: &mut Criterion) {
-    let dummy_points_small_interleaved = get_dummy_points_custom_format_small_interleaved();
-    let dummy_points_small_perattribute = get_dummy_points_custom_format_small_perattribute();
+    let dummy_points_small_vector_storage = get_dummy_points_custom_format_small::<VectorStorage>();
+    let dummy_points_small_columnar_storage =
+        get_dummy_points_custom_format_small::<ColumnarStorage>();
 
     c.bench_function(
-        "points_iterator_interleaved_opaque_buffer_small_type",
+        "points_iterator_performance_polymorphic_storage vector storage",
         |b| {
+            let polymorphic_storage = dummy_points_small_vector_storage
+                .clone()
+                .into_polymorphic_buffer();
             b.iter(|| {
-                points_iterator_performance_opaque_buffer::<CustomPointTypeSmall>(
-                    &dummy_points_small_interleaved,
+                points_iterator_performance_polymorphic_storage::<CustomPointTypeSmall>(
+                    &polymorphic_storage,
                 )
             })
         },
     );
     c.bench_function(
-        "points_iterator_perattribute_opaque_buffer_small_type",
+        "points_iterator_performance_polymorphic_storage columnar storage",
         |b| {
+            let polymorphic_storage = dummy_points_small_columnar_storage
+                .clone()
+                .into_polymorphic_buffer();
             b.iter(|| {
-                points_iterator_performance_opaque_buffer::<CustomPointTypeSmall>(
-                    &dummy_points_small_perattribute,
+                points_iterator_performance_polymorphic_storage::<CustomPointTypeSmall>(
+                    &polymorphic_storage,
                 )
             })
         },
     );
-    c.bench_function("points_iterator_interleaved_typed_buffer_small_type", |b| {
-        b.iter(|| -> CustomPointTypeSmall {
-            points_iterator_performance_interleaved_buffer(&dummy_points_small_interleaved)
+    c.bench_function("points_iterator_performance_rowwise_storage", |b| {
+        b.iter(|| {
+            points_iterator_performance_rowwise_storage::<CustomPointTypeSmall, _>(
+                &dummy_points_small_vector_storage,
+            )
         })
     });
+    c.bench_function("points_iterator_performance_columnar_storage", |b| {
+        b.iter(|| {
+            points_iterator_performance_columnar_storage::<CustomPointTypeSmall, _>(
+                &dummy_points_small_columnar_storage,
+            )
+        })
+    });
+
     c.bench_function(
-        "points_iterator_perattribute_typed_buffer_small_type",
+        "attribute_iterator_performance_polymorphic_storage vector storage",
         |b| {
-            b.iter(|| -> CustomPointTypeSmall {
-                points_iterator_performance_per_attribute_buffer(&dummy_points_small_perattribute)
+            let polymorphic_storage = dummy_points_small_vector_storage
+                .clone()
+                .into_polymorphic_buffer();
+            b.iter(|| {
+                attribute_iterator_performance_polymorphic_storage::<Vector3<f64>>(
+                    &polymorphic_storage,
+                    &POSITION_3D,
+                )
             })
         },
     );
-    c.bench_function("points_ref_iterator_small_type", |b| {
-        b.iter(|| points_ref_iterator_performance_small_type(&dummy_points_small_interleaved))
-    });
-
-    c.bench_function("attribute_iterator_interleaved_opaque_buffer", |b| {
+    c.bench_function(
+        "attribute_iterator_performance_polymorphic_storage columnar storage",
+        |b| {
+            b.iter(|| {
+                let polymorphic_storage = dummy_points_small_columnar_storage
+                    .clone()
+                    .into_polymorphic_buffer();
+                attribute_iterator_performance_polymorphic_storage::<Vector3<f64>>(
+                    &polymorphic_storage,
+                    &POSITION_3D,
+                )
+            })
+        },
+    );
+    c.bench_function("attribute_iterator_performance_rowwise_storage", |b| {
         b.iter(|| {
-            attribute_iterator_performance_opaque_buffer::<Vector3<f64>>(
-                &dummy_points_small_interleaved,
+            attribute_iterator_performance_rowwise_storage::<Vector3<f64>, _>(
+                &dummy_points_small_vector_storage,
                 &POSITION_3D,
             )
         })
     });
-    c.bench_function("attribute_iterator_perattribute_opaque_buffer", |b| {
+    c.bench_function("attribute_iterator_performance_columnar_storage", |b| {
         b.iter(|| {
-            attribute_iterator_performance_opaque_buffer::<Vector3<f64>>(
-                &dummy_points_small_perattribute,
+            attribute_iterator_performance_columnar_storage::<Vector3<f64>, _>(
+                &dummy_points_small_columnar_storage,
                 &POSITION_3D,
             )
-        })
-    });
-    c.bench_function("attribute_iterator_interleaved_typed_buffer", |b| {
-        b.iter(|| -> Vector3<f64> {
-            attribute_iterator_performance_interleaved_buffer(
-                &dummy_points_small_interleaved,
-                &POSITION_3D,
-            )
-        })
-    });
-    c.bench_function("attribute_iterator_perattribute_typed_buffer", |b| {
-        b.iter(|| -> Vector3<f64> {
-            attribute_iterator_performance_perattribute_buffer(
-                &dummy_points_small_perattribute,
-                &POSITION_3D,
-            )
-        })
-    });
-    c.bench_function("attribute_ref_iterator_small_type", |b| {
-        b.iter(|| -> Vector3<f64> {
-            attribute_ref_iterator_performance_small_type(&dummy_points_small_perattribute)
         })
     });
 }

@@ -46,12 +46,12 @@ pub trait BufferStorageMut: BufferStorage {
     fn resize(&mut self, new_size: usize, value: &[u8]);
 }
 
-pub trait BufferStorageContiguous: BufferStorage {
+pub trait BufferStorageRowWise: BufferStorage {
     fn get_ref(&self, index: usize) -> &[u8];
     fn get_range_ref(&self, indices: Range<usize>) -> &[u8];
 }
 
-pub trait BufferStorageContiguousMut: BufferStorageContiguous {
+pub trait BufferStorageRowWiseMut: BufferStorageRowWise {
     fn get_mut(&mut self, index: usize) -> &mut [u8];
     fn get_range_mut(&mut self, indices: Range<usize>) -> &mut [u8];
     /// Sorts this buffer storage using the given comparator, as if the elements of this buffer were of type `T`
@@ -191,7 +191,7 @@ impl BufferStorageMut for VectorStorage {
     }
 }
 
-impl BufferStorageContiguous for VectorStorage {
+impl BufferStorageRowWise for VectorStorage {
     fn get_ref(&self, index: usize) -> &[u8] {
         let point_start = self.stride * index;
         let point_end = self.stride * (index + 1);
@@ -205,7 +205,7 @@ impl BufferStorageContiguous for VectorStorage {
     }
 }
 
-impl BufferStorageContiguousMut for VectorStorage {
+impl BufferStorageRowWiseMut for VectorStorage {
     fn get_mut(&mut self, index: usize) -> &mut [u8] {
         let point_start = self.stride * index;
         let point_end = self.stride * (index + 1);
@@ -644,6 +644,22 @@ impl<'a> IndexBufferMut<'a> for VectorStorage {
     }
 }
 
+impl<'a> IndexBuffer<'a> for ColumnarStorage {
+    type Output = SliceStorage<'a, ColumnarStorage>;
+
+    fn index(&'a self, range: Range<usize>) -> Self::Output {
+        SliceStorage::new(self, range)
+    }
+}
+
+impl<'a> IndexBufferMut<'a> for ColumnarStorage {
+    type OutputMut = SliceStorageMut<'a, ColumnarStorage>;
+
+    fn index_mut(&'a mut self, range: Range<usize>) -> Self::OutputMut {
+        SliceStorageMut::new(self, range)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SliceStorage<'a, S: BufferStorage> {
     storage: &'a S,
@@ -677,7 +693,7 @@ impl<'a, S: BufferStorage> BufferStorage for SliceStorage<'a, S> {
     }
 }
 
-impl<'a, S: BufferStorageContiguous> BufferStorageContiguous for SliceStorage<'a, S> {
+impl<'a, S: BufferStorageRowWise> BufferStorageRowWise for SliceStorage<'a, S> {
     fn get_ref(&self, index: usize) -> &[u8] {
         if index > self.len() {
             panic!("Index out of bounds");
@@ -767,7 +783,7 @@ impl<'a, S: BufferStorage> BufferStorage for SliceStorageMut<'a, S> {
     }
 }
 
-impl<'a, S: BufferStorageContiguous> BufferStorageContiguous for SliceStorageMut<'a, S> {
+impl<'a, S: BufferStorageRowWise> BufferStorageRowWise for SliceStorageMut<'a, S> {
     fn get_ref(&self, index: usize) -> &[u8] {
         if index > self.len() {
             panic!("Index out of bounds");
@@ -784,7 +800,7 @@ impl<'a, S: BufferStorageContiguous> BufferStorageContiguous for SliceStorageMut
     }
 }
 
-impl<'a, S: BufferStorageContiguousMut> BufferStorageContiguousMut for SliceStorageMut<'a, S> {
+impl<'a, S: BufferStorageRowWiseMut> BufferStorageRowWiseMut for SliceStorageMut<'a, S> {
     fn get_mut(&mut self, index: usize) -> &mut [u8] {
         if index > self.len() {
             panic!("Index out of bounds");
@@ -910,13 +926,110 @@ impl<'a, S: BufferStorage + 'a> IndexBufferMut<'a> for SliceStorageMut<'a, S> {
     }
 }
 
+pub struct PolymorphicStorage {
+    storage: Box<dyn BufferStorage>,
+}
+
+impl PolymorphicStorage {
+    // I want this function to be able to determine the 'aspects' of type 'T' and create a matching
+    // polymorphic point buffer type from it. There are a bunch of BufferStorageXYZ traits, and the
+    // PolymorphicStorage should implement the corresponding BufferStorageXYZ trait for each trait
+    // that 'T' implements! In pseudo-syntax something like this:
+    //   T: BufferStorage, BufferStorageMut, BufferStorageRowWise, BufferStorageRowWiseMut
+    // --> PolymorphicStorage<BufferStorage, BufferStorageMut, BufferStorageRowWise, BufferStorageRowWiseMut>
+    //
+    // The problem is that this gives an exponential number of potential trait combinations. Under the current
+    // rules of Rust trait objects (at least as far as I understand them), this would require one new trait
+    // definition for each of the COMBINATIONS of traits. We could then create a Box<dyn CombinedTrait> for
+    // each 'CombinedTrait' (e.g. CombinedTrait1: BufferStorage + BufferStorageMut, CombinedTrait2: BufferStorage + BufferStorageRowWise etc.)
+    // There is an open issue in the Rust language for this: https://github.com/rust-lang/rfcs/issues/2035
+    // We could kind of circumvent this if we had variadic generics and instead stored one 'Box<dyn BufferStorageXYZ>'
+    // member for each specific trait. Something like a composition of trait objects. But then we would have to
+    // deal with the situation where we potentially store two members of the same trait. Also, we couldn't use
+    // Box anymore, because the multiple members would all point to the same object on the heap
+    // Why is this so hard? :(
+    //
+    // TODO Would something like generic bit-flags work? e.g. PolymorphicStorage<false, true, false, false> where each
+    // flag indicates the presence of a specific trait implementation? Or even PolymorphicStorage<0b1001> where each
+    // bit selects one specific trait? The first case probably works better, as we can generically implement the required
+    // traits by specializing, like impl <const A: bool, const C: bool, const D: bool> BufferStorageMut for PolymorphicStorage<A, true, C, D> { ... }
+
+    pub fn from_storage<T: BufferStorage + 'static>(storage: T) -> Self {
+        Self {
+            storage: Box::new(storage),
+        }
+    }
+}
+
+impl BufferStorage for PolymorphicStorage {
+    fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    fn get(&self, index: usize, data: &mut [u8]) {
+        self.storage.get(index, data);
+    }
+
+    fn get_attribute(&self, attribute: &PointAttributeMember, index: usize, data: &mut [u8]) {
+        self.storage.get_attribute(attribute, index, data);
+    }
+}
+
+pub struct PolymorphicStorageMut {
+    storage: Box<dyn BufferStorageMut>,
+}
+
+impl PolymorphicStorageMut {
+    pub fn from_storage<T: BufferStorageMut + 'static>(storage: T) -> Self {
+        Self {
+            storage: Box::new(storage),
+        }
+    }
+}
+
+impl BufferStorage for PolymorphicStorageMut {
+    fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    fn get(&self, index: usize, data: &mut [u8]) {
+        self.storage.get(index, data);
+    }
+
+    fn get_attribute(&self, attribute: &PointAttributeMember, index: usize, data: &mut [u8]) {
+        self.storage.get_attribute(attribute, index, data);
+    }
+}
+
+impl BufferStorageMut for PolymorphicStorageMut {
+    fn push(&mut self, point: &[u8]) {
+        self.storage.push(point);
+    }
+
+    fn push_many(&mut self, points: &[u8]) {
+        self.storage.push_many(points);
+    }
+
+    fn swap(&mut self, from_index: usize, to_index: usize) {
+        self.storage.swap(from_index, to_index);
+    }
+
+    fn clear(&mut self) {
+        self.storage.clear();
+    }
+
+    fn resize(&mut self, new_size: usize, value: &[u8]) {
+        self.storage.resize(new_size, value);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pasture_derive::PointType;
     use rand::{distributions::Standard, prelude::Distribution, thread_rng, Rng};
 
     use crate::{
-        containers_v2::BufferViewRef,
+        containers::BufferViewRef,
         layout::attributes::{GPS_TIME, INTENSITY},
         util::view_raw_bytes,
     };
@@ -1068,7 +1181,7 @@ mod tests {
     }
 
     unsafe fn test_buffer_storage_contiguous<
-        T: BufferStorageContiguous,
+        T: BufferStorageRowWise,
         U: PointType + Clone + PartialEq + std::fmt::Debug,
     >(
         storage: &T,
@@ -1084,7 +1197,7 @@ mod tests {
     }
 
     unsafe fn test_buffer_storage_contiguous_mut<
-        T: BufferStorageContiguousMut + PartialEq + std::fmt::Debug,
+        T: BufferStorageRowWiseMut + PartialEq + std::fmt::Debug,
         U: PointType + Clone + PartialEq + PartialOrd + std::fmt::Debug,
     >(
         storage: &mut T,

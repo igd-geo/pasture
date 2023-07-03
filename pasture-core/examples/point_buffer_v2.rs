@@ -2,7 +2,7 @@
 
 use nalgebra::Vector3;
 use pasture_core::{
-    containers_v2::{BufferStorageMut, ColumnarStorage, PointBuffer, PointSlice, VectorStorage},
+    containers::{BufferStorageMut, ColumnarStorage, PointBuffer, PointSlice, VectorStorage},
     layout::{attributes::INTENSITY, PointLayout},
 };
 use pasture_derive::PointType;

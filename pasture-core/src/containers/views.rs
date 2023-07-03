@@ -1,13 +1,16 @@
-use std::{cmp::Ordering, marker::PhantomData, mem::MaybeUninit};
+use std::{cell::RefCell, cmp::Ordering, marker::PhantomData, mem::MaybeUninit};
 
-use crate::layout::{PointAttributeMember, PointLayout, PointType, PrimitiveType};
+use crate::layout::{
+    conversion::{get_converter_for_datatype_and_target_attribute, AttributeConversionFn},
+    PointAttributeMember, PointLayout, PointType, PrimitiveType,
+};
 
 use super::{
     AttributeIteratorByMut, AttributeIteratorByRef, AttributeIteratorByValue, AttributeSliceTyped,
     AttributeSliceTypedByMut, AttributeSliceTypedByRef, BufferStorage, BufferStorageColumnar,
-    BufferStorageColumnarMut, BufferStorageContiguous, BufferStorageContiguousMut,
-    PointIteratorByMut, PointIteratorByRef, PointIteratorByValue, PointSlice, PointSliceTyped,
-    PointSliceTypedByMut, PointSliceTypedByRef,
+    BufferStorageColumnarMut, BufferStorageRowWise, BufferStorageRowWiseMut, PointIteratorByMut,
+    PointIteratorByRef, PointIteratorByValue, PointSlice, PointSliceTyped, PointSliceTypedByMut,
+    PointSliceTypedByRef,
 };
 
 pub struct BufferViewRef<'a, T: PointType, S: BufferStorage> {
@@ -29,7 +32,7 @@ impl<'a, T: PointType, S: BufferStorage> BufferViewRef<'a, T, S> {
     }
 }
 
-impl<'a, T: PointType, S: BufferStorageContiguous> BufferViewRef<'a, T, S> {
+impl<'a, T: PointType, S: BufferStorageRowWise> BufferViewRef<'a, T, S> {
     pub fn iter(self) -> PointIteratorByRef<'a, T, Self> {
         self.into()
     }
@@ -62,7 +65,7 @@ impl<'a, T: PointType, S: BufferStorage> PointSliceTyped<T> for BufferViewRef<'a
     }
 }
 
-impl<'a, T: PointType, S: BufferStorageContiguous> PointSliceTypedByRef<T>
+impl<'a, T: PointType, S: BufferStorageRowWise> PointSliceTypedByRef<T>
     for BufferViewRef<'a, T, S>
 {
     fn at_ref(&self, index: usize) -> &T {
@@ -105,7 +108,7 @@ impl<'a, T: PointType, S: BufferStorage> BufferViewMut<'a, T, S> {
     }
 }
 
-impl<'a, T: PointType, S: BufferStorageContiguousMut> BufferViewMut<'a, T, S> {
+impl<'a, T: PointType, S: BufferStorageRowWiseMut> BufferViewMut<'a, T, S> {
     pub fn iter_mut(self) -> PointIteratorByMut<'a, T, BufferViewMut<'a, T, S>> {
         self.into()
     }
@@ -149,7 +152,7 @@ impl<'a, T: PointType, S: BufferStorage> PointSliceTyped<T> for BufferViewMut<'a
     }
 }
 
-impl<'a, T: PointType, S: BufferStorageContiguous> PointSliceTypedByRef<T>
+impl<'a, T: PointType, S: BufferStorageRowWise> PointSliceTypedByRef<T>
     for BufferViewMut<'a, T, S>
 {
     fn at_ref(&self, index: usize) -> &T {
@@ -161,7 +164,7 @@ impl<'a, T: PointType, S: BufferStorageContiguous> PointSliceTypedByRef<T>
     }
 }
 
-impl<'a, T: PointType, S: BufferStorageContiguousMut> PointSliceTypedByMut<T>
+impl<'a, T: PointType, S: BufferStorageRowWiseMut> PointSliceTypedByMut<T>
     for BufferViewMut<'a, T, S>
 {
     fn at_mut(&mut self, index: usize) -> &mut T {
@@ -330,6 +333,59 @@ impl<'a, T: PrimitiveType, B: BufferStorage> IntoIterator for AttributeViewMut<'
     }
 }
 
+pub struct AttributeViewConverting<'a, T: PrimitiveType, B: BufferStorage> {
+    storage: &'a mut B,
+    attribute: &'a PointAttributeMember,
+    converter: AttributeConversionFn,
+    copy_buffer: RefCell<Vec<u8>>,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, T: PrimitiveType, B: BufferStorage> AttributeViewConverting<'a, T, B> {
+    pub(crate) fn from_storage_and_attribute(
+        storage: &'a mut B,
+        attribute: &'a PointAttributeMember,
+    ) -> Option<Self> {
+        let converter = get_converter_for_datatype_and_target_attribute(
+            attribute.datatype(),
+            attribute.name(),
+            T::data_type(),
+        )?;
+        Some(Self {
+            storage,
+            attribute,
+            converter,
+            copy_buffer: RefCell::new(vec![0; attribute.size() as usize]),
+            _phantom: Default::default(),
+        })
+    }
+}
+
+impl<'a, T: PrimitiveType, B: BufferStorage> AttributeSliceTyped<T>
+    for AttributeViewConverting<'a, T, B>
+{
+    fn at(&self, index: usize) -> T {
+        let mut copy_buffer = self.copy_buffer.borrow_mut();
+        self.storage
+            .get_attribute(self.attribute, index, copy_buffer.as_mut_slice());
+        let mut attribute = MaybeUninit::<T>::uninit();
+        unsafe {
+            (self.converter)(
+                copy_buffer.as_slice(),
+                std::slice::from_raw_parts_mut(
+                    attribute.as_mut_ptr() as *mut u8,
+                    std::mem::size_of::<T>(),
+                ),
+            );
+            attribute.assume_init()
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.storage.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::iter::FromIterator;
@@ -338,7 +394,7 @@ mod tests {
     use pasture_derive::PointType;
     use rand::{thread_rng, Rng};
 
-    use crate::containers_v2::{PointBuffer, VectorStorage};
+    use crate::containers::{PointBuffer, VectorStorage};
 
     use super::*;
 
