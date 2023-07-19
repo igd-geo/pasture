@@ -60,5 +60,6 @@ pub fn write_all<P: AsRef<Path>>(buffer: &dyn PointBuffer, path: P) -> Result<()
             "Could not create appropriate writer for point cloud file {}",
             path.as_ref().display()
         ))?;
-    writer.write(buffer)
+    writer.write(buffer).context("Failed to write points")?;
+    writer.flush()
 }
