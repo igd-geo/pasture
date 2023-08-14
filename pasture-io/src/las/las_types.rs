@@ -1,9 +1,7 @@
 //! Contains types for each of the LAS point formats
 
 use las::{point::ScanDirection, Point};
-use pasture_core::{
-    nalgebra::Vector3,
-};
+use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;
 use static_assertions::const_assert_eq;
 use std::convert::From;
@@ -12,16 +10,26 @@ use std::convert::From;
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat0 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE_RANK)] pub scan_angle_rank: i8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
+    pub scan_angle_rank: i8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat0>(), 35);
@@ -50,17 +58,28 @@ impl From<Point> for LasPointFormat0 {
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat1 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE_RANK)] pub scan_angle_rank: i8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
+    pub scan_angle_rank: i8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat1>(), 43);
@@ -90,17 +109,28 @@ impl From<Point> for LasPointFormat1 {
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat2 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE_RANK)] pub scan_angle_rank: i8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_COLOR_RGB)] pub color_rgb: Vector3<u16>,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
+    pub scan_angle_rank: i8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_COLOR_RGB)]
+    pub color_rgb: Vector3<u16>,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat2>(), 41);
@@ -133,18 +163,30 @@ impl From<Point> for LasPointFormat2 {
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat3 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE_RANK)] pub scan_angle_rank: i8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
-    #[pasture(BUILTIN_COLOR_RGB)] pub color_rgb: Vector3<u16>,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
+    pub scan_angle_rank: i8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
+    #[pasture(BUILTIN_COLOR_RGB)]
+    pub color_rgb: Vector3<u16>,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat3>(), 49);
@@ -178,22 +220,38 @@ impl From<Point> for LasPointFormat3 {
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat4 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE_RANK)] pub scan_angle_rank: i8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
-    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)] pub wave_packet_descriptor_index: u8,
-    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)] pub byte_offset_to_waveform_data: u64,
-    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)] pub waveform_packet_size: u32,
-    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)] pub return_point_waveform_location: f32,
-    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)] pub waveform_parameters: Vector3<f32>,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
+    pub scan_angle_rank: i8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
+    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)]
+    pub wave_packet_descriptor_index: u8,
+    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)]
+    pub byte_offset_to_waveform_data: u64,
+    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)]
+    pub waveform_packet_size: u32,
+    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)]
+    pub return_point_waveform_location: f32,
+    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)]
+    pub waveform_parameters: Vector3<f32>,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat4>(), 72);
@@ -229,23 +287,40 @@ impl From<Point> for LasPointFormat4 {
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat5 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE_RANK)] pub scan_angle_rank: i8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
-    #[pasture(BUILTIN_COLOR_RGB)] pub color_rgb: Vector3<u16>,
-    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)] pub wave_packet_descriptor_index: u8,
-    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)] pub byte_offset_to_waveform_data: u64,
-    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)] pub waveform_packet_size: u32,
-    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)] pub return_point_waveform_location: f32,
-    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)] pub waveform_parameters: Vector3<f32>,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
+    pub scan_angle_rank: i8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
+    #[pasture(BUILTIN_COLOR_RGB)]
+    pub color_rgb: Vector3<u16>,
+    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)]
+    pub wave_packet_descriptor_index: u8,
+    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)]
+    pub byte_offset_to_waveform_data: u64,
+    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)]
+    pub waveform_packet_size: u32,
+    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)]
+    pub return_point_waveform_location: f32,
+    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)]
+    pub waveform_parameters: Vector3<f32>,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat5>(), 78);
@@ -283,19 +358,32 @@ impl From<Point> for LasPointFormat5 {
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat6 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)] pub classification_flags: u8,
-    #[pasture(BUILTIN_SCANNER_CHANNEL)] pub scanner_channel: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE)] pub scan_angle: i16,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)]
+    pub classification_flags: u8,
+    #[pasture(BUILTIN_SCANNER_CHANNEL)]
+    pub scanner_channel: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE)]
+    pub scan_angle: i16,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat6>(), 46);
@@ -304,20 +392,34 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat6>(), 46);
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat7 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)] pub classification_flags: u8,
-    #[pasture(BUILTIN_SCANNER_CHANNEL)] pub scanner_channel: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE)] pub scan_angle: i16,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
-    #[pasture(BUILTIN_COLOR_RGB)] pub color_rgb: Vector3<u16>,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)]
+    pub classification_flags: u8,
+    #[pasture(BUILTIN_SCANNER_CHANNEL)]
+    pub scanner_channel: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE)]
+    pub scan_angle: i16,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
+    #[pasture(BUILTIN_COLOR_RGB)]
+    pub color_rgb: Vector3<u16>,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat7>(), 52);
@@ -326,21 +428,36 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat7>(), 52);
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat8 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)] pub classification_flags: u8,
-    #[pasture(BUILTIN_SCANNER_CHANNEL)] pub scanner_channel: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE)] pub scan_angle: i16,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
-    #[pasture(BUILTIN_COLOR_RGB)] pub color_rgb: Vector3<u16>,
-    #[pasture(BUILTIN_NIR)] pub nir: u16,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)]
+    pub classification_flags: u8,
+    #[pasture(BUILTIN_SCANNER_CHANNEL)]
+    pub scanner_channel: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE)]
+    pub scan_angle: i16,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
+    #[pasture(BUILTIN_COLOR_RGB)]
+    pub color_rgb: Vector3<u16>,
+    #[pasture(BUILTIN_NIR)]
+    pub nir: u16,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat8>(), 54);
@@ -349,24 +466,42 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat8>(), 54);
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat9 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)] pub classification_flags: u8,
-    #[pasture(BUILTIN_SCANNER_CHANNEL)] pub scanner_channel: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE)] pub scan_angle: i16,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
-    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)] pub wave_packet_descriptor_index: u8,
-    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)] pub byte_offset_to_waveform_data: u64,
-    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)] pub waveform_packet_size: u32,
-    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)] pub return_point_waveform_location: f32,
-    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)] pub waveform_parameters: Vector3<f32>,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)]
+    pub classification_flags: u8,
+    #[pasture(BUILTIN_SCANNER_CHANNEL)]
+    pub scanner_channel: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE)]
+    pub scan_angle: i16,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
+    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)]
+    pub wave_packet_descriptor_index: u8,
+    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)]
+    pub byte_offset_to_waveform_data: u64,
+    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)]
+    pub waveform_packet_size: u32,
+    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)]
+    pub return_point_waveform_location: f32,
+    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)]
+    pub waveform_parameters: Vector3<f32>,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat9>(), 75);
@@ -375,26 +510,46 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat9>(), 75);
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
 pub struct LasPointFormat10 {
-    #[pasture(BUILTIN_POSITION_3D)] pub position: Vector3<f64>,
-    #[pasture(BUILTIN_INTENSITY)] pub intensity: u16,
-    #[pasture(BUILTIN_RETURN_NUMBER)] pub return_number: u8,
-    #[pasture(BUILTIN_NUMBER_OF_RETURNS)] pub number_of_returns: u8,
-    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)] pub classification_flags: u8,
-    #[pasture(BUILTIN_SCANNER_CHANNEL)] pub scanner_channel: u8,
-    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)] pub scan_direction_flag: bool,
-    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)] pub edge_of_flight_line: bool,
-    #[pasture(BUILTIN_CLASSIFICATION)] pub classification: u8,
-    #[pasture(BUILTIN_USER_DATA)] pub user_data: u8,
-    #[pasture(BUILTIN_SCAN_ANGLE)] pub scan_angle: i16,
-    #[pasture(BUILTIN_POINT_SOURCE_ID)] pub point_source_id: u16,
-    #[pasture(BUILTIN_GPS_TIME)] pub gps_time: f64,
-    #[pasture(BUILTIN_COLOR_RGB)] pub color_rgb: Vector3<u16>,
-    #[pasture(BUILTIN_NIR)] pub nir: u16,
-    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)] pub wave_packet_descriptor_index: u8,
-    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)] pub byte_offset_to_waveform_data: u64,
-    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)] pub waveform_packet_size: u32,
-    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)] pub return_point_waveform_location: f32,
-    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)] pub waveform_parameters: Vector3<f32>,
+    #[pasture(BUILTIN_POSITION_3D)]
+    pub position: Vector3<f64>,
+    #[pasture(BUILTIN_INTENSITY)]
+    pub intensity: u16,
+    #[pasture(BUILTIN_RETURN_NUMBER)]
+    pub return_number: u8,
+    #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
+    pub number_of_returns: u8,
+    #[pasture(BUILTIN_CLASSIFICATION_FLAGS)]
+    pub classification_flags: u8,
+    #[pasture(BUILTIN_SCANNER_CHANNEL)]
+    pub scanner_channel: u8,
+    #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
+    pub scan_direction_flag: bool,
+    #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
+    pub edge_of_flight_line: bool,
+    #[pasture(BUILTIN_CLASSIFICATION)]
+    pub classification: u8,
+    #[pasture(BUILTIN_USER_DATA)]
+    pub user_data: u8,
+    #[pasture(BUILTIN_SCAN_ANGLE)]
+    pub scan_angle: i16,
+    #[pasture(BUILTIN_POINT_SOURCE_ID)]
+    pub point_source_id: u16,
+    #[pasture(BUILTIN_GPS_TIME)]
+    pub gps_time: f64,
+    #[pasture(BUILTIN_COLOR_RGB)]
+    pub color_rgb: Vector3<u16>,
+    #[pasture(BUILTIN_NIR)]
+    pub nir: u16,
+    #[pasture(BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX)]
+    pub wave_packet_descriptor_index: u8,
+    #[pasture(BUILTIN_WAVEFORM_DATA_OFFSET)]
+    pub byte_offset_to_waveform_data: u64,
+    #[pasture(BUILTIN_WAVEFORM_PACKET_SIZE)]
+    pub waveform_packet_size: u32,
+    #[pasture(BUILTIN_RETURN_POINT_WAVEFORM_LOCATION)]
+    pub return_point_waveform_location: f32,
+    #[pasture(BUILTIN_WAVEFORM_PARAMETERS)]
+    pub waveform_parameters: Vector3<f32>,
 }
 
 const_assert_eq!(std::mem::size_of::<LasPointFormat10>(), 83);

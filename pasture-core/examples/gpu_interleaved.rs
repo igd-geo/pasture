@@ -109,8 +109,8 @@ mod ex {
         let device = gpu::Device::default().await;
         let device = match device {
             Ok(d) => d,
-            Err(_) => {
-                println!("Failed to request device. Aborting.");
+            Err(e) => {
+                println!("Failed to request device ({e}). Aborting.");
                 return;
             }
         };

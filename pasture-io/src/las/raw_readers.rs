@@ -1,6 +1,7 @@
+use std::convert::TryInto;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use las_rs::{point::Format, Header};
 use las_rs::{raw, Builder, Vlr};
@@ -67,8 +68,24 @@ impl<T: Read + Seek> RawLASReader<T> {
             raw_header.z_scale_factor,
         );
 
-        let header = Header::from_raw(raw_header)?;
-        let metadata: LASMetadata = header.clone().into();
+        // Manually read the VLRs
+        read.seek(SeekFrom::Start(raw_header.header_size as u64))?;
+        let vlrs = (0..raw_header.number_of_variable_length_records as usize)
+            .map(|_| {
+                las_rs::raw::Vlr::read_from(&mut read, false)
+                    .map(|raw_vlr| las_rs::Vlr::new(raw_vlr))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .context("Failed to read VLRs")?;
+
+        let mut builder = Builder::new(raw_header).context("Invalid LAS header")?;
+        builder.vlrs = vlrs;
+        let header = builder.into_header().context("Invalid LAS header")?;
+
+        let metadata: LASMetadata = header
+            .clone()
+            .try_into()
+            .context("Failed to parse LAS header")?;
         let point_layout = point_layout_from_las_point_format(header.point_format())?;
 
         read.seek(SeekFrom::Start(offset_to_first_point_in_file as u64))?;
@@ -863,7 +880,10 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             ));
         }
 
-        let metadata: LASMetadata = header.clone().into();
+        let metadata: LASMetadata = header
+            .clone()
+            .try_into()
+            .context("Could not parse LAS header")?;
         let point_layout = point_layout_from_las_point_format(header.point_format())?;
 
         read.seek(SeekFrom::Start(offset_to_first_point_in_file as u64))?;
@@ -1452,14 +1472,15 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             for chunk_index in 0..num_chunks {
                 let points_in_chunk =
                     std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-                    let first_point_index = first_new_point_index + chunk_index * chunk_size;
-                    let end_of_chunk_index = first_point_index + points_in_chunk;
+                let first_point_index = first_new_point_index + chunk_index * chunk_size;
+                let end_of_chunk_index = first_point_index + points_in_chunk;
 
                 self.read_chunk_default_layout(
-                    interleaved_buffer.get_raw_points_mut(first_point_index..end_of_chunk_index)
-                    , &mut decompression_chunk, points_in_chunk)?;
+                    interleaved_buffer.get_raw_points_mut(first_point_index..end_of_chunk_index),
+                    &mut decompression_chunk,
+                    points_in_chunk,
+                )?;
             }
-
         } else {
             let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
 
@@ -1467,13 +1488,13 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
                 let points_in_chunk =
                     std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
                 let bytes_in_chunk = points_in_chunk * point_size;
-    
+
                 self.read_chunk_default_layout(
                     &mut points_chunk[..],
                     &mut decompression_chunk[..],
                     points_in_chunk,
                 )?;
-    
+
                 point_buffer.push(&InterleavedPointView::from_raw_slice(
                     &points_chunk[0..bytes_in_chunk],
                     self.layout.clone(),

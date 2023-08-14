@@ -8,8 +8,8 @@ use clap::{App, Arg};
 use pasture_algorithms::minmax::minmax_attribute;
 use pasture_core::{
     containers::InterleavedVecPointStorage,
-    containers::{PointBuffer, OwningPointBuffer},
     containers::PointBufferWriteable,
+    containers::{OwningPointBuffer, PointBuffer},
     layout::attributes::NIR,
     layout::attributes::NUMBER_OF_RETURNS,
     layout::attributes::POINT_SOURCE_ID,
@@ -219,6 +219,7 @@ fn main() -> Result<()> {
     let args = get_args()?;
     let mut reader = open_file(&args.input_file)?;
     let meta = reader.get_metadata();
+    println!("pasture info report for {}", args.input_file.display());
     println!("{}", meta);
 
     if args.detailed {
