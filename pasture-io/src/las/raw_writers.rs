@@ -1,9 +1,10 @@
 use std::{
     collections::HashMap,
+    convert::TryInto,
     io::{Cursor, SeekFrom},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use las_rs::{point::Format, Builder, Vlr};
 use laz::{LasZipCompressor, LazItemRecordBuilder, LazVlr};
@@ -19,7 +20,7 @@ use super::{
     get_scan_angle_rank_reader, get_scan_direction_flag_reader, get_scanner_channel_reader,
     get_user_data_reader, get_wave_packet_descriptor_index_reader, get_waveform_data_offset_reader,
     get_waveform_packet_size_reader, get_waveform_parameters_reader, map_laz_err,
-    point_layout_from_las_point_format, write_las_bit_attributes, write_position_as_las_position,
+    point_layout_from_las_metadata, write_las_bit_attributes, write_position_as_las_position,
     BitAttributes, BitAttributesExtended, BitAttributesRegular,
 };
 
@@ -101,7 +102,9 @@ pub(crate) struct RawLASWriter<T: std::io::Write + std::io::Seek> {
 
 impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
     pub fn from_write_and_header(mut write: T, header: las::Header) -> Result<Self> {
-        let default_layout = point_layout_from_las_point_format(header.point_format())?;
+        let las_metadata = (&header).try_into().context("Could not parse LAS header")?;
+        let default_layout = point_layout_from_las_metadata(&las_metadata, false)
+            .context("Could not determine PointLayout from given LAS header")?;
 
         // Sanitize header, i.e. clear point counts and bounds
         // TODO Add flag to prevent recalculating bounds
@@ -630,7 +633,9 @@ pub(crate) struct RawLAZWriter<T: std::io::Write + std::io::Seek + Send + 'stati
 
 impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
     pub fn from_write_and_header(mut write: T, header: las::Header) -> Result<Self> {
-        let default_layout = point_layout_from_las_point_format(header.point_format())?;
+        let las_metadata = (&header).try_into().context("Could not parse LAS header")?;
+        let default_layout = point_layout_from_las_metadata(&las_metadata, false)
+            .context("Could not determine PointLayout from given LAS header")?;
 
         if header.point_format().extra_bytes != 0 {
             panic!("Extra bytes in LAZ point records are currently unsupported!");
@@ -1199,14 +1204,14 @@ mod tests {
         base::PointReader,
         las::{
             epsilon_compare_point3f64, epsilon_compare_vec3f64, get_test_points_in_las_format,
-            test_data_bounds, LASReader, LasPointFormat0, LasPointFormat1, LasPointFormat10,
-            LasPointFormat2, LasPointFormat3, LasPointFormat4, LasPointFormat5, LasPointFormat6,
-            LasPointFormat7, LasPointFormat8, LasPointFormat9,
+            point_layout_from_las_point_format, test_data_bounds, LASReader, LasPointFormat0,
+            LasPointFormat1, LasPointFormat10, LasPointFormat2, LasPointFormat3, LasPointFormat4,
+            LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8, LasPointFormat9,
         },
     };
+    use pasture_core::containers::OwningPointBuffer;
     use pasture_derive::PointType;
     use scopeguard::defer;
-    use pasture_core::containers::OwningPointBuffer;
 
     use super::*;
 
@@ -1233,7 +1238,7 @@ mod tests {
                             header_builder.into_header()?,
                         )?;
 
-                        let expected_format = point_layout_from_las_point_format(&format)?;
+                        let expected_format = point_layout_from_las_point_format(&format, false)?;
                         assert_eq!(expected_format, *writer.get_default_point_layout());
 
                         writer.write(test_data.as_ref())?;
@@ -1411,7 +1416,7 @@ mod tests {
                             header_builder.into_header()?,
                         )?;
 
-                        let expected_format = point_layout_from_las_point_format(&format)?;
+                        let expected_format = point_layout_from_las_point_format(&format, false)?;
                         assert_eq!(expected_format, *writer.get_default_point_layout());
 
                         writer.write(test_data.as_ref())?;

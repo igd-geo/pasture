@@ -9,8 +9,13 @@ use anyhow::{anyhow, bail, Context, Result};
 use bitfield::bitfield;
 use chrono::Datelike;
 use las::{Bounds, Header};
-use las_rs::{Vector, Vlr};
-use pasture_core::{layout::PointAttributeDataType, math::AABB, meta::Metadata, nalgebra::Point3};
+use las_rs::{point::Format, Vector, Vlr};
+use pasture_core::{
+    layout::{PointAttributeDataType, PointAttributeDefinition},
+    math::AABB,
+    meta::Metadata,
+    nalgebra::Point3,
+};
 use static_assertions::const_assert_eq;
 
 /// Contains constants for possible named fields in a `LASMetadata` structure
@@ -202,6 +207,25 @@ pub enum ExtraBytesDataType {
 }
 
 impl ExtraBytesDataType {
+    /// Returns the byte size of a single value of this `ExtraBytesDataType`. This value might be unspecified
+    /// if the data type is `Undocumented`, `Deprecated`, or `Reserved`
+    pub fn size(&self) -> Option<usize> {
+        match self {
+            ExtraBytesDataType::U8 => Some(1),
+            ExtraBytesDataType::I8 => Some(1),
+            ExtraBytesDataType::U16 => Some(2),
+            ExtraBytesDataType::I16 => Some(2),
+            ExtraBytesDataType::U32 => Some(4),
+            ExtraBytesDataType::I32 => Some(4),
+            ExtraBytesDataType::U64 => Some(8),
+            ExtraBytesDataType::I64 => Some(8),
+            ExtraBytesDataType::F32 => Some(4),
+            ExtraBytesDataType::F64 => Some(8),
+            ExtraBytesDataType::Undocumented
+            | ExtraBytesDataType::Deprecated
+            | ExtraBytesDataType::Reserved => todo!(),
+        }
+    }
     /// Does this data type represent an unsigned integer?
     pub fn is_unsigned(&self) -> bool {
         match self {
@@ -443,6 +467,11 @@ impl ExtraBytesEntry {
         let as_f64 = f64::from_le_bytes(self.no_data_value);
         Ok(as_f64)
     }
+
+    /// Returns a matching `PointAttributeDefinition` for the extra bytes described by this `ExtraBytesEntry`
+    pub fn get_point_attribute(&self) -> Result<PointAttributeDefinition> {
+        todo!()
+    }
 }
 
 impl Display for ExtraBytesEntry {
@@ -618,7 +647,7 @@ fn display_generic_vlr(vlr: &Vlr, f: &mut std::fmt::Formatter<'_>) -> std::fmt::
 pub struct LASMetadata {
     bounds: AABB<f64>,
     point_count: usize,
-    point_format: u8,
+    point_format: Format,
     classification_lookup_vlr: Option<ClassificationLookup>,
     text_area_description_vlr: Option<TextAreaDescription>,
     extra_bytes_vlr: Option<ExtraBytes>,
@@ -634,9 +663,10 @@ impl LASMetadata {
     ///
     /// let min = Point3::new(0.0, 0.0, 0.0);
     /// let max = Point3::new(1.0, 1.0, 1.0);
-    /// let metadata = LASMetadata::new(AABB::from_min_max(min, max), 1024, 0);
+    /// let format = pasture_io::las_rs::point::Format::new(0).unwrap();
+    /// let metadata = LASMetadata::new(AABB::from_min_max(min, max), 1024, format);
     /// ```
-    pub fn new(bounds: AABB<f64>, point_count: usize, point_format: u8) -> Self {
+    pub fn new(bounds: AABB<f64>, point_count: usize, point_format: Format) -> Self {
         Self {
             bounds,
             point_count,
@@ -654,7 +684,7 @@ impl LASMetadata {
     }
 
     /// Returns the LAS point format for the associated `LASMetadata`
-    pub fn point_format(&self) -> u8 {
+    pub fn point_format(&self) -> Format {
         self.point_format
     }
 
@@ -662,6 +692,21 @@ impl LASMetadata {
     /// associated `LASMetadata` was created from a raw LAS header
     pub fn raw_las_header(&self) -> Option<&Header> {
         self.raw_las_header.as_ref()
+    }
+
+    /// Returns the Classification Lookup VLR, if it exists
+    pub fn classification_lookup_vlr(&self) -> Option<&ClassificationLookup> {
+        self.classification_lookup_vlr.as_ref()
+    }
+
+    /// Returns the Text Area Description VLR, if it exists
+    pub fn text_area_description_vlr(&self) -> Option<&TextAreaDescription> {
+        self.text_area_description_vlr.as_ref()
+    }
+
+    /// Returns the Extra Bytes VLR, if it exists
+    pub fn extra_bytes_vlr(&self) -> Option<&ExtraBytes> {
+        self.extra_bytes_vlr.as_ref()
     }
 }
 
@@ -877,10 +922,7 @@ impl TryFrom<&las::Header> for LASMetadata {
         Ok(Self {
             bounds: las_bounds_to_pasture_bounds(header.bounds()),
             point_count: header.number_of_points() as usize,
-            point_format: header
-                .point_format()
-                .to_u8()
-                .expect("Invalid LAS point format"),
+            point_format: *header.point_format(),
             raw_las_header: Some(header.clone()),
             classification_lookup_vlr,
             extra_bytes_vlr,

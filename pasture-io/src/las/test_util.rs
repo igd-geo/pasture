@@ -4,13 +4,15 @@ use anyhow::Result;
 use las_rs::point::Format;
 use pasture_core::{
     containers::PointBuffer,
-    containers::{PerAttributeVecPointStorage, PointBufferExt, OwningPointBuffer},
+    containers::{OwningPointBuffer, PerAttributeVecPointStorage, PointBufferExt},
     layout::attributes,
     math::AABB,
     nalgebra::{Point3, Vector3},
 };
 
 use super::point_layout_from_las_point_format;
+
+//use super::point_layout_from_las_point_format;
 
 /// Returns the path to a LAS test file with the given `format`
 pub(crate) fn get_test_las_path(format: u8) -> PathBuf {
@@ -210,6 +212,33 @@ pub(crate) fn test_data_wavepacket_parameters() -> Vec<Vector3<f32>> {
         Vector3::new(9.0, 10.0, 11.0),
         Vector3::new(10.0, 11.0, 12.0),
     ]
+}
+
+pub(crate) fn test_data_extra_bytes_array() -> Vec<[u8; 4]> {
+    vec![
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [8, 9, 10, 11],
+        [12, 13, 14, 15],
+        [16, 17, 18, 19],
+        [20, 21, 22, 23],
+        [24, 25, 26, 27],
+        [28, 29, 30, 31],
+        [32, 33, 34, 35],
+        [36, 37, 38, 39],
+    ]
+}
+
+pub(crate) fn test_data_extra_bytes_signed() -> Vec<i32> {
+    vec![0, -1, -2, -3, -4, -5, -6, -7, -8, -9]
+}
+
+pub(crate) fn test_data_extra_bytes_unsigned() -> Vec<u32> {
+    vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+}
+
+pub(crate) fn test_data_extra_bytes_float() -> Vec<f32> {
+    vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 }
 
 pub(crate) fn compare_to_reference_data_range(
@@ -436,7 +465,7 @@ pub(crate) fn compare_to_reference_data(points: &dyn PointBuffer, point_format: 
 
 pub(crate) fn get_test_points_in_las_format(point_format: u8) -> Result<Box<dyn PointBuffer>> {
     let format = Format::new(point_format)?;
-    let layout = point_layout_from_las_point_format(&format)?;
+    let layout = point_layout_from_las_point_format(&format, false)?;
     let mut buffer = PerAttributeVecPointStorage::with_capacity(10, layout);
     let mut pusher = buffer.begin_push_attributes();
     pusher.push_attribute_range(&attributes::POSITION_3D, test_data_positions().as_slice());

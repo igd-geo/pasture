@@ -1,4 +1,4 @@
-use std::{alloc::Layout, fmt::Display};
+use std::{alloc::Layout, fmt::Display, ops::Range};
 
 use itertools::Itertools;
 use nalgebra::{Vector3, Vector4};
@@ -60,13 +60,24 @@ pub enum PointAttributeDataType {
     Vec3u16,
     /// A 3-component vector storing single-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3f32,
+    /// A 3-component vector storing singed 32-bit integer values. Corresponding to the `Vector3<i32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    Vec3i32,
     /// A 3-component vector storing double-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3f64,
     /// A 4-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector4<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec4u8,
-    //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
-    //TODO Instead of representing each VecN<T> type as a separate literal, might it be possible to do: Vec3(PointAttributeDataType)?
-    //Not in that way of course, because of recursive datastructures, but something like that?
+    /// A raw byte array of a given size determined at runtime. This corresponds to the Rust type `[u8; N]`
+    ByteArray(u64),
+    /// A custom data type. This makes pasture extensible to types that it does not know. To use a custom type `T` with
+    /// pasture, implement the `PrimitiveType` trait for this type and have it return `PointAttributeDataType::Custom`
+    /// with the correct size and alignment
+    Custom {
+        size: u64,
+        min_alignment: u64,
+        name: &'static str,
+    }, //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
+       //TODO Instead of representing each VecN<T> type as a separate literal, might it be possible to do: Vec3(PointAttributeDataType)?
+       //Not in that way of course, because of recursive datastructures, but something like that?
 }
 
 impl PointAttributeDataType {
@@ -86,9 +97,16 @@ impl PointAttributeDataType {
             PointAttributeDataType::Bool => 1,
             PointAttributeDataType::Vec3u8 => 3,
             PointAttributeDataType::Vec3u16 => 6,
+            PointAttributeDataType::Vec3i32 => 12,
             PointAttributeDataType::Vec3f32 => 12,
             PointAttributeDataType::Vec3f64 => 24,
             PointAttributeDataType::Vec4u8 => 4,
+            PointAttributeDataType::ByteArray(length) => *length,
+            PointAttributeDataType::Custom {
+                size,
+                min_alignment: _,
+                name: _,
+            } => *size,
         }
     }
 
@@ -108,9 +126,16 @@ impl PointAttributeDataType {
             PointAttributeDataType::Bool => std::mem::align_of::<bool>(),
             PointAttributeDataType::Vec3u8 => std::mem::align_of::<Vector3<u8>>(),
             PointAttributeDataType::Vec3u16 => std::mem::align_of::<Vector3<u16>>(),
+            PointAttributeDataType::Vec3i32 => std::mem::align_of::<Vector3<i32>>(),
             PointAttributeDataType::Vec3f32 => std::mem::align_of::<Vector3<f32>>(),
             PointAttributeDataType::Vec3f64 => std::mem::align_of::<Vector3<f64>>(),
             PointAttributeDataType::Vec4u8 => std::mem::align_of::<Vector4<u8>>(),
+            PointAttributeDataType::ByteArray(_) => 1,
+            PointAttributeDataType::Custom {
+                size: _,
+                min_alignment,
+                name: _,
+            } => *min_alignment as usize,
         };
         align as u64
     }
@@ -132,16 +157,23 @@ impl Display for PointAttributeDataType {
             PointAttributeDataType::Bool => write!(f, "Bool"),
             PointAttributeDataType::Vec3u8 => write!(f, "Vec3<u8>"),
             PointAttributeDataType::Vec3u16 => write!(f, "Vec3<u16>"),
+            PointAttributeDataType::Vec3i32 => write!(f, "Vec3<i32>"),
             PointAttributeDataType::Vec3f32 => write!(f, "Vec3<f32>"),
             PointAttributeDataType::Vec3f64 => write!(f, "Vec3<f64>"),
-            &PointAttributeDataType::Vec4u8 => write!(f, "Vec4<u8>"),
+            PointAttributeDataType::Vec4u8 => write!(f, "Vec4<u8>"),
+            PointAttributeDataType::ByteArray(length) => write!(f, "ByteArray[{length}]"),
+            PointAttributeDataType::Custom {
+                size: _,
+                min_alignment: _,
+                name,
+            } => write!(f, "{name}"),
         }
     }
 }
 
 /// Marker trait for all types that can be used as primitive types within a `PointAttributeDefinition`. It provides a mapping
 /// between Rust types and the `PointAttributeDataType` enum.
-pub trait PrimitiveType: Copy + private::Sealed {
+pub trait PrimitiveType: Copy {
     /// Returns the corresponding `PointAttributeDataType` for the implementing type
     fn data_type() -> PointAttributeDataType;
 }
@@ -418,9 +450,23 @@ impl PointAttributeMember {
             PointAttributeDataType::Vec3f32 => 3 * 4,
             PointAttributeDataType::Vec3f64 => 3 * 8,
             PointAttributeDataType::Vec3u16 => 3 * 2,
+            PointAttributeDataType::Vec3i32 => 3 * 4,
             PointAttributeDataType::Vec3u8 => 3,
             PointAttributeDataType::Vec4u8 => 4,
+            PointAttributeDataType::ByteArray(length) => length,
+            PointAttributeDataType::Custom {
+                size,
+                min_alignment: _,
+                name: _,
+            } => size,
         }
+    }
+
+    /// Returns the byte range within the `PointType` for this attribute
+    pub fn byte_range_within_point(&self) -> Range<usize> {
+        let start = self.offset as usize;
+        let end = start + self.size() as usize;
+        start..end
     }
 }
 

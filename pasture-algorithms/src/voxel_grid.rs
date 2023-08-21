@@ -204,11 +204,7 @@ fn centroid_max_pool<T: PointBuffer>(
                 value = buffer.get_attribute::<f64>(attribute_definition, *p) as f64;
             }
             PointAttributeDataType::Bool => panic!("Max pooling not possible with booleans."),
-            PointAttributeDataType::Vec3u8 => unimplemented!(),
-            PointAttributeDataType::Vec3u16 => unimplemented!(),
-            PointAttributeDataType::Vec3f32 => unimplemented!(),
-            PointAttributeDataType::Vec3f64 => unimplemented!(),
-            PointAttributeDataType::Vec4u8 => unimplemented!(),
+            _ => unimplemented!(),
         }
         if value > curr_max {
             curr_max = value;
@@ -316,11 +312,7 @@ fn centroid_most_common<T: PointBuffer>(
                 )
                 .or_insert(0) += 1
             }
-            PointAttributeDataType::Vec3u8 => unimplemented!(),
-            PointAttributeDataType::Vec3u16 => unimplemented!(),
-            PointAttributeDataType::Vec3f32 => unimplemented!(),
-            PointAttributeDataType::Vec3f64 => unimplemented!(),
-            PointAttributeDataType::Vec4u8 => unimplemented!(),
+            _ => unimplemented!(),
         }
     }
     let mut highest_count = 0;
@@ -442,6 +434,7 @@ fn centroid_average_num<PB: PointBuffer>(
             PointAttributeDataType::Vec3f32 => panic!("For vector types use centroid_average_vec."),
             PointAttributeDataType::Vec3f64 => panic!("For vector types use centroid_average_vec."),
             PointAttributeDataType::Vec4u8 => panic!("For vector types use centroid_average_vec."),
+            _ => unimplemented!(),
         }
     }
     let average = sum / v.points.len() as f64;
@@ -715,7 +708,7 @@ mod tests {
 
     use crate::voxel_grid::voxelgrid_filter;
     use pasture_core::{
-        containers::{PerAttributeVecPointStorage, PointBuffer, PointBufferExt, OwningPointBuffer},
+        containers::{OwningPointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferExt},
         layout::{attributes, PointType},
         nalgebra::Vector3,
     };

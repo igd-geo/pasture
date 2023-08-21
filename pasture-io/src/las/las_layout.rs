@@ -2,44 +2,172 @@ use anyhow::{anyhow, Result};
 use las::point::Format;
 use pasture_core::{
     layout::attributes,
-    layout::{PointLayout, PointType},
+    layout::{
+        attributes::{
+            CLASSIFICATION, COLOR_RGB, GPS_TIME, INTENSITY, NIR, POINT_SOURCE_ID, POSITION_3D,
+            RETURN_POINT_WAVEFORM_LOCATION, SCAN_ANGLE, SCAN_ANGLE_RANK, USER_DATA,
+            WAVEFORM_DATA_OFFSET, WAVEFORM_PACKET_SIZE, WAVEFORM_PARAMETERS,
+            WAVE_PACKET_DESCRIPTOR_INDEX,
+        },
+        FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
+    },
 };
 
 use super::{
-    LasPointFormat0, LasPointFormat1, LasPointFormat10, LasPointFormat2, LasPointFormat3,
-    LasPointFormat4, LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8,
-    LasPointFormat9,
+    LASMetadata, LasPointFormat0, LasPointFormat1, LasPointFormat10, LasPointFormat2,
+    LasPointFormat3, LasPointFormat4, LasPointFormat5, LasPointFormat6, LasPointFormat7,
+    LasPointFormat8, LasPointFormat9,
 };
 
-/// Returns the default `PointLayout` for the given LAS point format. This layout mirrors the binary layout
-/// of the point records in the LAS format, as defined by the [LAS specification](http://www.asprs.org/wp-content/uploads/2019/03/LAS_1_4_r14.pdf).
-/// The notable exception are the X, Y, and Z fields, which are combined into a single `POSITION_3D` attribute
-/// with f64 datatype, instead of three separate fields with i32 datatype. The reason for this is usability:
-/// Positions more often than not are treated as a single semantic unit instead of individual components. The
-/// shift from i32 to f64 is the result of how LAS stores positions internally (normalized to integer values within
-/// the bounding box of the file). The true positions are reconstructed from the internal representation automatically
-/// as f64 values.
+/// Returns the offset to the first extra byte in the given LAS point format. Returns `None` if the format
+/// has no extra bytes
+pub fn offset_to_extra_bytes(format: Format) -> Option<usize> {
+    if format.extra_bytes == 0 {
+        None
+    } else {
+        Some((format.len() - format.extra_bytes) as usize)
+    }
+}
+
+/// LAS flags for the basic (0-5) point record types. For internal use only!
+pub(crate) const ATTRIBUTE_BASIC_FLAGS: PointAttributeDefinition =
+    PointAttributeDefinition::custom("LAS_BASIC_FLAGS", PointAttributeDataType::U8);
+/// LAS flags for extended formats. For internal use only!
+pub(crate) const ATTRIBUTE_EXTENDED_FLAGS: PointAttributeDefinition =
+    PointAttributeDefinition::custom("LAS_EXTENDED_FLAGS", PointAttributeDataType::U16);
+
+/// Returns the default `PointLayout` for the given LAS point format. If `exact_binary_representation` is true, the
+/// layout mirrors the binary layout of the point records in the LAS format, as defined by the [LAS specification](http://www.asprs.org/wp-content/uploads/2019/03/LAS_1_4_r14.pdf).
+/// Mirroring in this context means that the binary layout exactly matches that of the specification. This is fast,
+/// as it allows parsing through `memcpy`, but it is not very usable, as this means positions are in local space instead
+/// of world space, and the bit fields are packed instead of represented as separate bytes
 ///
 /// # Errors
 ///
-/// Returns an error if `format` is an invalid LAS point format
-pub fn point_layout_from_las_point_format(format: &Format) -> Result<PointLayout> {
+/// Returns an error if `format` is an invalid LAS point format, or if the format contains extra bytes.
+pub fn point_layout_from_las_point_format(
+    format: &Format,
+    exact_binary_representation: bool,
+) -> Result<PointLayout> {
     let format_number = format.to_u8()?;
 
-    match format_number {
-        0 => Ok(LasPointFormat0::layout()),
-        1 => Ok(LasPointFormat1::layout()),
-        2 => Ok(LasPointFormat2::layout()),
-        3 => Ok(LasPointFormat3::layout()),
-        4 => Ok(LasPointFormat4::layout()),
-        5 => Ok(LasPointFormat5::layout()),
-        6 => Ok(LasPointFormat6::layout()),
-        7 => Ok(LasPointFormat7::layout()),
-        8 => Ok(LasPointFormat8::layout()),
-        9 => Ok(LasPointFormat9::layout()),
-        10 => Ok(LasPointFormat10::layout()),
-        _ => Err(anyhow!("Unsupported LAS point format {}", format_number)),
+    if exact_binary_representation {
+        // Build the layout by hand!
+        let mut layout = PointLayout::default();
+        layout.add_attribute(
+            POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3i32),
+            FieldAlignment::Packed(1),
+        );
+        layout.add_attribute(INTENSITY, FieldAlignment::Packed(1));
+        if format.is_extended {
+            layout.add_attribute(ATTRIBUTE_EXTENDED_FLAGS, FieldAlignment::Packed(1));
+        } else {
+            layout.add_attribute(ATTRIBUTE_BASIC_FLAGS, FieldAlignment::Packed(1));
+        }
+        layout.add_attribute(CLASSIFICATION, FieldAlignment::Packed(1));
+        if format.is_extended {
+            layout.add_attribute(USER_DATA, FieldAlignment::Packed(1));
+            layout.add_attribute(SCAN_ANGLE, FieldAlignment::Packed(1));
+        } else {
+            layout.add_attribute(SCAN_ANGLE_RANK, FieldAlignment::Packed(1));
+            layout.add_attribute(USER_DATA, FieldAlignment::Packed(1));
+        }
+        layout.add_attribute(POINT_SOURCE_ID, FieldAlignment::Packed(1));
+
+        // GPS time, then colors, then NIR, then waveform
+        if format.has_gps_time {
+            layout.add_attribute(GPS_TIME, FieldAlignment::Packed(1));
+        }
+        if format.has_color {
+            layout.add_attribute(COLOR_RGB, FieldAlignment::Packed(1));
+        }
+        if format.has_nir {
+            layout.add_attribute(NIR, FieldAlignment::Packed(1));
+        }
+        if format.has_waveform {
+            layout.add_attribute(WAVE_PACKET_DESCRIPTOR_INDEX, FieldAlignment::Packed(1));
+            layout.add_attribute(WAVEFORM_DATA_OFFSET, FieldAlignment::Packed(1));
+            layout.add_attribute(WAVEFORM_PACKET_SIZE, FieldAlignment::Packed(1));
+            layout.add_attribute(RETURN_POINT_WAVEFORM_LOCATION, FieldAlignment::Packed(1));
+            layout.add_attribute(WAVEFORM_PARAMETERS, FieldAlignment::Packed(1));
+        }
+
+        Ok(layout)
+    } else {
+        match format_number {
+            0 => Ok(LasPointFormat0::layout()),
+            1 => Ok(LasPointFormat1::layout()),
+            2 => Ok(LasPointFormat2::layout()),
+            3 => Ok(LasPointFormat3::layout()),
+            4 => Ok(LasPointFormat4::layout()),
+            5 => Ok(LasPointFormat5::layout()),
+            6 => Ok(LasPointFormat6::layout()),
+            7 => Ok(LasPointFormat7::layout()),
+            8 => Ok(LasPointFormat8::layout()),
+            9 => Ok(LasPointFormat9::layout()),
+            10 => Ok(LasPointFormat10::layout()),
+            _ => Err(anyhow!("Unsupported LAS point format {}", format_number)),
+        }
     }
+}
+
+/// Returns a matching `PointLayout` for the given `LASMetadata`. This function is similar to `point_layout_from_format`, but
+/// also supports extra bytes if the given `LASMetadata` contains an Extra Bytes VLR. If it does not, but the point format in
+/// the `LASMetadata` indicates that extra bytes are present, the extra bytes will be included in the `PointLayout` as raw bytes
+///
+/// # Errors
+///
+/// Returns an error if `format` is an invalid LAS point format, or if the format contains extra bytes.
+pub fn point_layout_from_las_metadata(
+    las_metadata: &LASMetadata,
+    exact_binary_representation: bool,
+) -> Result<PointLayout> {
+    let format = las_metadata.point_format();
+    let mut base_layout = point_layout_from_las_point_format(&format, exact_binary_representation)?;
+    if format.extra_bytes == 0 {
+        return Ok(base_layout);
+    }
+
+    let extra_byte_attributes = las_metadata
+        .extra_bytes_vlr()
+        .map(|vlr| {
+            vlr.entries()
+                .iter()
+                .map(|entry| entry.get_point_attribute())
+                .collect::<Result<Vec<_>>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let num_described_bytes = extra_byte_attributes
+        .iter()
+        .map(|attribute| attribute.size() as usize)
+        .sum::<usize>();
+
+    // Add the extra bytes attributes with a 1-byte alignment, because the base LAS point types are all tightly packed
+    // Currently, the RawLASReader and RawLAZReader both rely on this fact when reading chunks in the default layout
+
+    // TODO It is debatable if there is much gain with using packed alignment as the default, both for the extra bytes
+    //      as well as the LAS types in `las_types.rs` in general. In the end unaligned I/O might be slower, and we can't
+    //      even memcpy directly because we still use Vector3<f64> as the default type for positions, even though LAS
+    //      uses Vector3<i32>... So it might be worthwhile to change this once we have support for reading positions in
+    //      Vector3<i32> using the LASReader
+    for extra_byte_attribute in extra_byte_attributes {
+        base_layout.add_attribute(extra_byte_attribute, FieldAlignment::Packed(1));
+    }
+
+    let num_undescribed_bytes = format.extra_bytes as usize - num_described_bytes;
+    if num_undescribed_bytes > 0 {
+        // Add a PointAttributeDefinition describing a raw byte array for all undescribed extra bytes
+        base_layout.add_attribute(
+            PointAttributeDefinition::custom(
+                "UndescribedExtraBytes",
+                PointAttributeDataType::ByteArray(num_described_bytes as u64),
+            ),
+            FieldAlignment::Packed(1),
+        );
+    }
+
+    Ok(base_layout)
 }
 
 /// Returns the best matching LAS point format for the given `PointLayout`. This method tries to match as many attributes
@@ -80,4 +208,20 @@ pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format 
     }
 
     format
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_point_layout_from_las_format_with_exact_layout() -> Result<()> {
+        let expected_sizes_per_format = [20, 28, 26, 34, 57, 63, 30, 36, 38, 59, 67];
+        for (format_number, expected_size) in expected_sizes_per_format.iter().enumerate() {
+            let format = Format::new(format_number as u8)?;
+            let layout = point_layout_from_las_point_format(&format, true)?;
+            assert_eq!(layout.size_of_point_entry(), *expected_size);
+        }
+        Ok(())
+    }
 }

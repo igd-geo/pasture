@@ -22,6 +22,7 @@ serde = { version = "1.0.119", features = ["derive"] }
 rayon = "1.5.0"
 itertools = "0.10.0"
 byteorder = "1.4.2"
+num-traits = "0.2.16"
 
 # GPU related
 wgpu = { version = "0.12.0", features = ["spirv"], optional = true }
