@@ -92,7 +92,13 @@ impl<T: Read + Seek> RawLASReader<T> {
     ) -> Result<()> {
         let mut buffer_cursor = Cursor::new(chunk_buffer);
 
-        let format = Format::new(self.metadata.point_format())?;
+        let format = self
+            .metadata
+            .raw_las_header()
+            .map(&Header::point_format)
+            .cloned()
+            .unwrap_or(Format::new(self.metadata.point_format())?);
+
         let num_extra_bytes = format.extra_bytes;
 
         // This method assumes that self.reader is currently at the starting point of the chunk to read. Since it
