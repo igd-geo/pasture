@@ -1,4 +1,4 @@
-use std::{alloc::Layout, fmt::Display, ops::Range};
+use std::{alloc::Layout, borrow::Cow, fmt::Display, ops::Range};
 
 use itertools::Itertools;
 use nalgebra::{Vector3, Vector4};
@@ -243,6 +243,11 @@ impl PrimitiveType for Vector3<u16> {
         PointAttributeDataType::Vec3u16
     }
 }
+impl PrimitiveType for Vector3<i32> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3i32
+    }
+}
 impl PrimitiveType for Vector3<f32> {
     fn data_type() -> PointAttributeDataType {
         PointAttributeDataType::Vec3f32
@@ -274,7 +279,7 @@ const_assert!(std::mem::size_of::<Vector4<u8>>() == 4);
 /// attributes (e.g. POSITION_3D, INTENSITY, GPS_TIME etc.) and custom attributes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointAttributeDefinition {
-    name: &'static str,
+    name: Cow<'static, str>,
     datatype: PointAttributeDataType,
 }
 
@@ -282,11 +287,12 @@ impl PointAttributeDefinition {
     /// Creates a new custom PointAttributeDefinition with the given name and data type
     /// ```
     /// # use pasture_core::layout::*;
-    /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
+    /// # use std::borrow::Cow;
+    /// let custom_attribute = PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::F32);
     /// # assert_eq!(custom_attribute.name(), "Custom");
     /// # assert_eq!(custom_attribute.datatype(), PointAttributeDataType::F32);
     /// ```
-    pub const fn custom(name: &'static str, datatype: PointAttributeDataType) -> Self {
+    pub const fn custom(name: Cow<'static, str>, datatype: PointAttributeDataType) -> Self {
         Self { name, datatype }
     }
 
@@ -297,8 +303,8 @@ impl PointAttributeDefinition {
     /// let name = custom_attribute.name();
     /// # assert_eq!(name, "Custom");
     /// ```
-    pub fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Returns the datatype of this PointAttributeDefinition
@@ -324,9 +330,9 @@ impl PointAttributeDefinition {
     /// # assert_eq!(custom_position_attribute.name(), attributes::POSITION_3D.name());
     /// # assert_eq!(custom_position_attribute.datatype(), PointAttributeDataType::Vec3f32);
     /// ```
-    pub const fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
+    pub fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
         Self {
-            name: self.name,
+            name: self.name.clone(),
             datatype: new_datatype,
         }
     }
@@ -344,7 +350,7 @@ impl PointAttributeDefinition {
     pub fn at_offset_in_type(&self, offset: u64) -> PointAttributeMember {
         PointAttributeMember {
             datatype: self.datatype,
-            name: self.name,
+            name: self.name.clone(),
             offset,
         }
     }
@@ -369,7 +375,7 @@ impl From<&PointAttributeMember> for PointAttributeDefinition {
     fn from(attribute: &PointAttributeMember) -> Self {
         Self {
             datatype: attribute.datatype,
-            name: attribute.name,
+            name: attribute.name.clone(),
         }
     }
 }
@@ -378,7 +384,7 @@ impl From<&PointAttributeMember> for PointAttributeDefinition {
 /// offset of the member within the structure
 #[derive(Debug, Clone)]
 pub struct PointAttributeMember {
-    name: &'static str,
+    name: Cow<'static, str>,
     datatype: PointAttributeDataType,
     offset: u64,
 }
@@ -394,7 +400,7 @@ impl PointAttributeMember {
     /// ```
     pub fn custom(name: &'static str, datatype: PointAttributeDataType, offset: u64) -> Self {
         Self {
-            name,
+            name: Cow::Borrowed(name),
             datatype,
             offset,
         }
@@ -407,8 +413,8 @@ impl PointAttributeMember {
     /// let name = custom_attribute.name();
     /// # assert_eq!(name, "Custom");
     /// ```
-    pub fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Returns the datatype of the associated `PointAttributeMember`
@@ -490,95 +496,97 @@ impl Eq for PointAttributeMember {}
 
 /// Module containing default attribute definitions
 pub mod attributes {
+    use std::borrow::Cow;
+
     use super::{PointAttributeDataType, PointAttributeDefinition};
 
     /// Attribute definition for a 3D position. Default datatype is Vec3f64
     pub const POSITION_3D: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Position3D",
+        name: Cow::Borrowed("Position3D"),
         datatype: PointAttributeDataType::Vec3f64,
     };
 
     /// Attribute definition for an intensity value. Default datatype is U16
     pub const INTENSITY: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Intensity",
+        name: Cow::Borrowed("Intensity"),
         datatype: PointAttributeDataType::U16,
     };
 
     /// Attribute definition for a return number. Default datatype is U8
     pub const RETURN_NUMBER: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ReturnNumber",
+        name: Cow::Borrowed("ReturnNumber"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the number of returns. Default datatype is U8
     pub const NUMBER_OF_RETURNS: PointAttributeDefinition = PointAttributeDefinition {
-        name: "NumberOfReturns",
+        name: Cow::Borrowed("NumberOfReturns"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the classification flags. Default datatype is U8
     pub const CLASSIFICATION_FLAGS: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ClassificationFlags",
+        name: Cow::Borrowed("ClassificationFlags"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the scanner channel. Default datatype is U8
     pub const SCANNER_CHANNEL: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScannerChannel",
+        name: Cow::Borrowed("ScannerChannel"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for a scan direction flag. Default datatype is Bool
     pub const SCAN_DIRECTION_FLAG: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScanDirectionFlag",
+        name: Cow::Borrowed("ScanDirectionFlag"),
         datatype: PointAttributeDataType::Bool,
     };
 
     /// Attribute definition for an edge of flight line flag. Default datatype is Bool
     pub const EDGE_OF_FLIGHT_LINE: PointAttributeDefinition = PointAttributeDefinition {
-        name: "EdgeOfFlightLine",
+        name: Cow::Borrowed("EdgeOfFlightLine"),
         datatype: PointAttributeDataType::Bool,
     };
 
     /// Attribute definition for a classification. Default datatype is U8
     pub const CLASSIFICATION: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Classification",
+        name: Cow::Borrowed("Classification"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for a scan angle rank. Default datatype is I8
     pub const SCAN_ANGLE_RANK: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScanAngleRank",
+        name: Cow::Borrowed("ScanAngleRank"),
         datatype: PointAttributeDataType::I8,
     };
 
     /// Attribute definition for a scan angle with extended precision (like in LAS format 1.4). Default datatype is I16
     pub const SCAN_ANGLE: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScanAngle",
+        name: Cow::Borrowed("ScanAngle"),
         datatype: PointAttributeDataType::I16,
     };
 
     /// Attribute definition for a user data field. Default datatype is U8
     pub const USER_DATA: PointAttributeDefinition = PointAttributeDefinition {
-        name: "UserData",
+        name: Cow::Borrowed("UserData"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for a point source ID. Default datatype is U16
     pub const POINT_SOURCE_ID: PointAttributeDefinition = PointAttributeDefinition {
-        name: "PointSourceID",
+        name: Cow::Borrowed("PointSourceID"),
         datatype: PointAttributeDataType::U16,
     };
 
     /// Attribute definition for an RGB color. Default datatype is Vec3u16
     pub const COLOR_RGB: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ColorRGB",
+        name: Cow::Borrowed("ColorRGB"),
         datatype: PointAttributeDataType::Vec3u16,
     };
 
     /// Attribute definition for a GPS timestamp. Default datatype is F64
     pub const GPS_TIME: PointAttributeDefinition = PointAttributeDefinition {
-        name: "GpsTime",
+        name: Cow::Borrowed("GpsTime"),
         datatype: PointAttributeDataType::F64,
     };
 
@@ -586,49 +594,49 @@ pub mod attributes {
     /// TODO NIR semantically belongs to the color attributes, so there should be a separate
     /// attribute for 4-channel color that includes NIR!
     pub const NIR: PointAttributeDefinition = PointAttributeDefinition {
-        name: "NIR",
+        name: Cow::Borrowed("NIR"),
         datatype: PointAttributeDataType::U16,
     };
 
     /// Attribute definition for the wave packet descriptor index in the LAS format. Default datatype is U8
     pub const WAVE_PACKET_DESCRIPTOR_INDEX: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WavePacketDescriptorIndex",
+        name: Cow::Borrowed("WavePacketDescriptorIndex"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the offset to the waveform data in the LAS format. Default datatype is U64
     pub const WAVEFORM_DATA_OFFSET: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WaveformDataOffset",
+        name: Cow::Borrowed("WaveformDataOffset"),
         datatype: PointAttributeDataType::U64,
     };
 
     /// Attribute definition for the size of a waveform data packet in the LAS format. Default datatype is U32
     pub const WAVEFORM_PACKET_SIZE: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WaveformPacketSize",
+        name: Cow::Borrowed("WaveformPacketSize"),
         datatype: PointAttributeDataType::U32,
     };
 
     /// Attribute definition for the return point waveform location in the LAS format. Default datatype is F32
     pub const RETURN_POINT_WAVEFORM_LOCATION: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ReturnPointWaveformLocation",
+        name: Cow::Borrowed("ReturnPointWaveformLocation"),
         datatype: PointAttributeDataType::F32,
     };
 
     /// Attribute definition for the waveform parameters in the LAS format. Default datatype is Vector3<f32>
     pub const WAVEFORM_PARAMETERS: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WaveformParameters",
+        name: Cow::Borrowed("WaveformParameters"),
         datatype: PointAttributeDataType::Vec3f32,
     };
 
     /// Attribute definition for a point ID. Default datatype is U64
     pub const POINT_ID: PointAttributeDefinition = PointAttributeDefinition {
-        name: "PointID",
+        name: Cow::Borrowed("PointID"),
         datatype: PointAttributeDataType::U64,
     };
 
     /// Attribute definition for a 3D point normal. Default datatype is Vec3f32
     pub const NORMAL: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Normal",
+        name: Cow::Borrowed("Normal"),
         datatype: PointAttributeDataType::Vec3f32,
     };
 }

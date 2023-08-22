@@ -1,4 +1,4 @@
-use std::{mem::MaybeUninit, ops::Range};
+use std::{borrow::Cow, mem::MaybeUninit, ops::Range};
 
 use crate::{
     layout::{
@@ -16,7 +16,7 @@ use super::{
     iterators::PointIteratorByMut,
     iterators::PointIteratorByRef,
     iterators::PointIteratorByValue,
-    PerAttributePointBufferSlice, PerAttributePointBufferSliceMut, InterleavedPointBufferSlice,
+    InterleavedPointBufferSlice, PerAttributePointBufferSlice, PerAttributePointBufferSliceMut,
 };
 
 // TODO Can we maybe impl<T: PointBufferWriteable> &T and provide some push<U> methods?
@@ -76,11 +76,23 @@ pub trait PointBuffer {
     }
 }
 
-pub trait InterleavedMutableWriteablePointBuffer : InterleavedPointBufferMut + PointBufferWriteable {}
-impl <T: InterleavedPointBufferMut + PointBufferWriteable> InterleavedMutableWriteablePointBuffer for T {}
+pub trait InterleavedMutableWriteablePointBuffer:
+    InterleavedPointBufferMut + PointBufferWriteable
+{
+}
+impl<T: InterleavedPointBufferMut + PointBufferWriteable> InterleavedMutableWriteablePointBuffer
+    for T
+{
+}
 
-pub trait PerAttributeMutableWriteablePointBuffer<'a> : PerAttributePointBufferMut<'a> + PointBufferWriteable {}
-impl <'a, T: PerAttributePointBufferMut<'a> + PointBufferWriteable> PerAttributeMutableWriteablePointBuffer<'a> for T {}
+pub trait PerAttributeMutableWriteablePointBuffer<'a>:
+    PerAttributePointBufferMut<'a> + PointBufferWriteable
+{
+}
+impl<'a, T: PerAttributePointBufferMut<'a> + PointBufferWriteable>
+    PerAttributeMutableWriteablePointBuffer<'a> for T
+{
+}
 
 /// Trait for all mutable `PointBuffer`s, that is all `PointBuffer`s where it is possible to push points into. Distinguishing between
 /// read-only `PointBuffer` and mutable `PointBufferMut` traits enables read-only, non-owning views of a `PointBuffer` with the same interface
@@ -221,7 +233,12 @@ pub trait PerAttributePointBufferMut<'a>: PerAttributePointBuffer {
     ///
     /// Panics if `index_range` is out of bounds, `attribute` is not part of the `PointLayout`, or the length of `buf` does not
     /// match the size of the range of attributes in the `PointLayout`
-    fn set_raw_attribute_range(&mut self, index_range: Range<usize>, attribute: &PointAttributeDefinition, buf: &[u8]);
+    fn set_raw_attribute_range(
+        &mut self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &[u8],
+    );
     /// Returns a mutable slice of the associated `PerAttributePointBufferMut`
     fn slice_mut(&'a mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'a>;
 
@@ -269,9 +286,9 @@ pub trait PerAttributePointBufferMut<'a>: PerAttributePointBuffer {
     fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer;
 }
 
-/// Trait for all point buffers that own their memory and hence can be constructed using a `PointLayout` and potentially a capacity. This 
+/// Trait for all point buffers that own their memory and hence can be constructed using a `PointLayout` and potentially a capacity. This
 /// trait enables writing generic code that creates new `PointBuffer`s without knowing their specific type
-pub trait OwningPointBuffer : PointBuffer + Sized {
+pub trait OwningPointBuffer: PointBuffer + Sized {
     /// Creates a new empty `PointBuffer` with the given `PointLayout`
     fn new(point_layout: PointLayout) -> Self;
     /// Creates a new empty `PointBuffer` with enough pre-allocated memory to store `capacity` points with the given `PointLayout`
@@ -451,7 +468,8 @@ impl<B: PointBufferWriteable + ?Sized> PointBufferWriteableExt<B> for B {
         attribute_name: &'static str,
         func: F,
     ) {
-        let source_attribute = PointAttributeDefinition::custom(attribute_name, T::data_type());
+        let source_attribute =
+            PointAttributeDefinition::custom(Cow::Borrowed(attribute_name), T::data_type());
         if let Some(target_attribute) = self.point_layout().get_attribute_by_name(attribute_name) {
             // It is important that we use 'set_attribute' and 'get_attribute' here. This is the blanket implementation
             // of 'transform_attribute', so it makes no assumptions on the memory layout of the point data. Since the

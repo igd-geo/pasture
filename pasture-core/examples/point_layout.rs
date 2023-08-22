@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use pasture_core::containers::OwningPointBuffer;
 use pasture_core::nalgebra::Vector3;
 use pasture_core::{
@@ -80,7 +82,7 @@ fn main() {
         // as well as custom attribute names:
         let custom_layout = PointLayout::from_attributes(&[
             attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
-            PointAttributeDefinition::custom("Custom", PointAttributeDataType::U64),
+            PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::U64),
         ]);
 
         // We can ask the layout if it contains an attribute just by its name, ignoring the datatype:

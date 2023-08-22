@@ -1,5 +1,6 @@
 use std::{
     any::Any,
+    borrow::Cow,
     convert::{TryFrom, TryInto},
     fmt::Display,
     path::Path,
@@ -470,7 +471,12 @@ impl ExtraBytesEntry {
 
     /// Returns a matching `PointAttributeDefinition` for the extra bytes described by this `ExtraBytesEntry`
     pub fn get_point_attribute(&self) -> Result<PointAttributeDefinition> {
-        todo!()
+        let pasture_datatype: PointAttributeDataType =
+            self.data_type.try_into().context("Invalid data type")?;
+        Ok(PointAttributeDefinition::custom(
+            Cow::Owned(self.name.clone()),
+            pasture_datatype,
+        ))
     }
 }
 

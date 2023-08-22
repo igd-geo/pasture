@@ -3,11 +3,15 @@ use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 
 pub mod attributes {
+    use std::borrow::Cow;
+
     use pasture_core::layout::{PointAttributeDataType, PointAttributeDefinition};
 
     /// Attribute definition for an RGBA color in the 3D Tiles format
-    pub const COLOR_RGBA: PointAttributeDefinition =
-        PointAttributeDefinition::custom("ColorRGBA", PointAttributeDataType::Vec4u8);
+    pub const COLOR_RGBA: PointAttributeDefinition = PointAttributeDefinition::custom(
+        Cow::Borrowed("ColorRGBA"),
+        PointAttributeDataType::Vec4u8,
+    );
 }
 
 /// Header of .pnts files

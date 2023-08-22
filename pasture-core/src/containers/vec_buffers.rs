@@ -6,9 +6,10 @@ use crate::{
 };
 
 use super::{
-    InterleavedPointBuffer, InterleavedPointBufferMut, InterleavedPointBufferSlice,
+    InterleavedMutableWriteablePointBuffer, InterleavedPointBuffer, InterleavedPointBufferMut,
+    InterleavedPointBufferSlice, OwningPointBuffer, PerAttributeMutableWriteablePointBuffer,
     PerAttributePointBuffer, PerAttributePointBufferMut, PerAttributePointBufferSlice,
-    PerAttributePointBufferSliceMut, PointBuffer, PointBufferWriteable, OwningPointBuffer, InterleavedMutableWriteablePointBuffer, PerAttributeMutableWriteablePointBuffer,
+    PerAttributePointBufferSliceMut, PointBuffer, PointBufferWriteable,
 };
 use rayon::prelude::*;
 
@@ -328,7 +329,6 @@ impl OwningPointBuffer for InterleavedVecPointStorage {
             size_of_point_entry,
         }
     }
-
 }
 
 impl PointBuffer for InterleavedVecPointStorage {
@@ -603,7 +603,7 @@ impl<T: PointType> From<Vec<T>> for InterleavedVecPointStorage {
 #[derive(Clone, Debug)]
 pub struct PerAttributeVecPointStorage {
     layout: PointLayout,
-    attributes: HashMap<&'static str, Vec<u8>>,
+    attributes: HashMap<String, Vec<u8>>,
 }
 
 impl PerAttributeVecPointStorage {
@@ -720,7 +720,7 @@ impl PerAttributeVecPointStorage {
         let attribute_sizes = self
             .attributes
             .keys()
-            .map(|&key| self.layout.get_attribute_by_name(key).unwrap().size())
+            .map(|key| self.layout.get_attribute_by_name(&key).unwrap().size())
             .collect::<Vec<_>>();
 
         self.attributes
@@ -757,17 +757,17 @@ impl PerAttributeVecPointStorage {
         let attribute_sizes = self
             .attributes
             .keys()
-            .map(|&key| {
+            .map(|key| {
                 (
                     key.to_owned(),
-                    self.layout.get_attribute_by_name(key).unwrap().size(),
+                    self.layout.get_attribute_by_name(&key).unwrap().size(),
                 )
             })
             .collect::<HashMap<_, _>>();
 
         self.attributes
             .par_iter_mut()
-            .for_each(|(&key, untyped_attribute)| {
+            .for_each(|(key, untyped_attribute)| {
                 let size = *attribute_sizes.get(key).unwrap();
                 sort_untyped_slice_by_permutation(
                     untyped_attribute.as_mut_slice(),
@@ -907,7 +907,7 @@ impl OwningPointBuffer for PerAttributeVecPointStorage {
     fn new(layout: PointLayout) -> Self {
         let attributes = layout
             .attributes()
-            .map(|attribute| (attribute.name(), vec![]))
+            .map(|attribute| (attribute.name().to_owned(), vec![]))
             .collect::<HashMap<_, _>>();
         Self { layout, attributes }
     }
@@ -930,12 +930,14 @@ impl OwningPointBuffer for PerAttributeVecPointStorage {
             .attributes()
             .map(|attribute| {
                 let attribute_bytes = capacity * attribute.size() as usize;
-                (attribute.name(), Vec::with_capacity(attribute_bytes))
+                (
+                    attribute.name().to_owned(),
+                    Vec::with_capacity(attribute_bytes),
+                )
             })
             .collect::<HashMap<_, _>>();
         Self { layout, attributes }
     }
-
 }
 
 impl PointBuffer for PerAttributeVecPointStorage {
@@ -1166,7 +1168,7 @@ impl PerAttributePointBuffer for PerAttributeVecPointStorage {
     }
 }
 
-impl <'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
+impl<'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
     fn get_raw_attribute_mut(
         &mut self,
         point_index: usize,
@@ -1213,8 +1215,14 @@ impl <'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
         &mut attribute_buffer[start_offset_in_attribute_buffer..end_offset_in_attribute_buffer]
     }
 
-    fn set_raw_attribute_range(&mut self, index_range: Range<usize>, attribute: &PointAttributeDefinition, buf: &[u8]) {
-        self.get_raw_attribute_range_mut(index_range, attribute).copy_from_slice(buf)
+    fn set_raw_attribute_range(
+        &mut self,
+        index_range: Range<usize>,
+        attribute: &PointAttributeDefinition,
+        buf: &[u8],
+    ) {
+        self.get_raw_attribute_range_mut(index_range, attribute)
+            .copy_from_slice(buf)
     }
 
     fn slice_mut(&mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'_> {
@@ -1224,8 +1232,7 @@ impl <'a> PerAttributePointBufferMut<'a> for PerAttributeVecPointStorage {
     fn disjunct_slices_mut(
         &mut self,
         ranges: &[Range<usize>],
-    ) -> Vec<PerAttributePointBufferSliceMut<'_>>
-    {
+    ) -> Vec<PerAttributePointBufferSliceMut<'_>> {
         let self_ptr = self as *mut dyn PerAttributePointBufferMut;
 
         ranges
@@ -1279,7 +1286,7 @@ impl<T: PointType> From<Vec<T>> for PerAttributeVecPointStorage {
  */
 pub struct PerAttributeVecPointStoragePusher<'a> {
     buffer: &'a mut PerAttributeVecPointStorage,
-    new_attribute_data: HashMap<&'static str, Vec<u8>>,
+    new_attribute_data: HashMap<String, Vec<u8>>,
 }
 
 impl<'a> PerAttributeVecPointStoragePusher<'a> {
@@ -1287,7 +1294,7 @@ impl<'a> PerAttributeVecPointStoragePusher<'a> {
         let new_attribute_data = buffer
             .attributes
             .keys()
-            .map(|key| (*key, Vec::new()))
+            .map(|key| (key.clone(), Vec::new()))
             .collect();
         Self {
             buffer,
@@ -1410,7 +1417,7 @@ impl<'a> PerAttributeVecPointStoragePusher<'a> {
         }
 
         for (k, mut v) in self.new_attribute_data.into_iter() {
-            let attribute_data = self.buffer.attributes.get_mut(k).unwrap();
+            let attribute_data = self.buffer.attributes.get_mut(&k).unwrap();
             attribute_data.append(&mut v);
         }
     }
@@ -1456,7 +1463,7 @@ mod tests {
     impl OpqaueInterleavedBuffer for InterleavedVecPointStorage {}
 
     trait OpqauePerAttributeBuffer<'a>: PerAttributePointBufferMut<'a> + PointBufferWriteable {}
-    impl <'a> OpqauePerAttributeBuffer<'a> for PerAttributeVecPointStorage {}
+    impl<'a> OpqauePerAttributeBuffer<'a> for PerAttributeVecPointStorage {}
 
     fn get_empty_interleaved_point_buffer(layout: PointLayout) -> Box<dyn OpqaueInterleavedBuffer> {
         Box::new(InterleavedVecPointStorage::new(layout))

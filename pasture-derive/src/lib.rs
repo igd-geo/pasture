@@ -466,7 +466,7 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
         let attribute_name = &field.attribute_name;
         let primitive_type = &field.primitive_type.as_token_stream();
         quote! {
-            pasture_core::layout::PointAttributeDefinition::custom(#attribute_name, #primitive_type).at_offset_in_type(#offset)
+            pasture_core::layout::PointAttributeDefinition::custom(std::borrow::Cow::Borrowed(#attribute_name), #primitive_type).at_offset_in_type(#offset)
         }
     });
 

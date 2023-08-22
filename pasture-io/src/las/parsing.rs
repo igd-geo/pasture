@@ -208,12 +208,12 @@ impl AttributeParseFn {
     ) {
         // Read the value in its source type from the input data
         let source_slice = &source_point[source_bytes];
-        let source_value_buffer = &mut buffer[..source_slice.len()];
-        extract_source_value_fn(source_slice, source_value_buffer);
+        // let source_value_buffer = &mut buffer[..source_slice.len()];
+        extract_source_value_fn(source_slice, &mut buffer[..]);
 
         // Convert and write the value in its output format to the output data
         let destination_slice = &mut destination_point[destination_bytes];
-        type_converter(source_value_buffer, destination_slice);
+        type_converter(&buffer[..], destination_slice);
     }
 
     #[inline(always)]
@@ -589,8 +589,8 @@ fn build_generic_memcpyable_parser(
             get_converter_for_attributes(&source_attribute.into(), &destination_attribute.into())
                 .ok_or(anyhow!(
                 "No attribute type conversion from type {} to type {} possible",
-                source_attribute.name(),
-                destination_attribute.name()
+                source_attribute,
+                destination_attribute
             ))?;
         let conversion_buffer = vec![0; source_attribute.size() as usize];
         Ok(AttributeParseFn::TypeConverted {
@@ -653,9 +653,10 @@ fn build_position_parser(
     if destination_attribute.datatype() != PointAttributeDataType::Vec3f64 {
         let converter = get_converter_for_attributes(&POSITION_3D, &destination_attribute.into())
             .ok_or(anyhow!(
-            "No attribute type conversion from type {} to type {} possible",
-            source_attribute.name(),
-            destination_attribute.name()
+            "No attribute type conversion from type {} to type {} possible for attribute {}",
+            PointAttributeDataType::Vec3f64,
+            destination_attribute.datatype(),
+            destination_attribute.name(),
         ))?;
 
         let scaling_buffer = vec![0; std::mem::size_of::<[f64; 3]>()];
@@ -700,9 +701,10 @@ fn build_bit_attribute_parser(
             destination_attribute.datatype(),
         )
         .ok_or(anyhow!(
-            "No attribute type conversion from type {} to type {} possible",
+            "No attribute type conversion from type {} to type {} possible for attribute {}",
             default_destination_datatype,
-            destination_attribute.datatype()
+            destination_attribute.datatype(),
+            destination_attribute.name()
         ))?;
         let conversion_buffer = vec![0; default_destination_datatype.size() as usize];
         Ok(AttributeParseFn::TypeConverted {
@@ -947,11 +949,15 @@ fn offset_scale_function<T: Pod + AsPrimitive<f64>>(
 {
     let offset: f64 = bytemuck::cast_slice(offset_bytes)[0];
     let scale: f64 = bytemuck::cast_slice(scale_bytes)[0];
-    let in_bytes: &[T] = bytemuck::cast_slice(in_bytes);
-    let out_bytes: &mut [T] = bytemuck::cast_slice_mut(out_bytes);
-    let unscaled_value: f64 = in_bytes[0].as_();
-    let scaled_value = (unscaled_value * scale) + offset;
-    out_bytes[0] = scaled_value.as_();
+    let in_bytes = in_bytes.as_ptr() as *const T;
+    let out_bytes = out_bytes.as_mut_ptr() as *mut T;
+    // Pointers are never null and we know data is properly initialized because
+    // it comes from a binary file
+    unsafe {
+        let unscaled_value: f64 = in_bytes.read_unaligned().as_();
+        let scaled_value = (unscaled_value * scale) + offset;
+        out_bytes.write_unaligned(scaled_value.as_());
+    }
 }
 
 fn build_generic_offset_scale_function(
@@ -1004,8 +1010,8 @@ fn build_extra_bytes_attribute(
                 )
                 .ok_or(anyhow!(
                     "No attribute type conversion from type {} to type {} possible",
-                    source_attribute.name(),
-                    destination_attribute.name()
+                    source_attribute,
+                    destination_attribute
                 ))?;
 
                 let scaling_buffer = vec![
@@ -1040,5 +1046,796 @@ fn build_extra_bytes_attribute(
     } else {
         // unexplained extra bytes entry can be memcpied
         build_generic_memcpyable_parser(source_attribute, destination_attribute)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryInto;
+
+    use super::*;
+    use crate::las::{LasPointFormat10, LasPointFormat5};
+
+    use bitfield::bitfield;
+    use las_rs::{point::Format, Builder, Transform, Vector, Version};
+    use pasture_core::{
+        layout::{PointAttributeDefinition, PointType, PrimitiveType},
+        util::{view_raw_bytes, view_raw_bytes_mut},
+    };
+    use static_assertions::const_assert_eq;
+
+    bitfield! {
+        pub struct BasicFlags(u8);
+        impl Debug;
+        pub return_number, set_return_number: 2, 0;
+        pub number_of_returns, set_number_of_returns: 5, 3;
+        pub scan_direction_flag, set_scan_direction_flag: 6;
+        pub edge_of_flight_line, set_edge_of_flight_line: 7;
+    }
+
+    impl Copy for BasicFlags {}
+    impl Clone for BasicFlags {
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    bitfield! {
+        pub struct ExtendedFlags(u16);
+        impl Debug;
+        pub return_number, set_return_number: 3, 0;
+        pub number_of_returns, set_number_of_returns: 7, 4;
+        pub classification_flags, set_classification_flags: 11, 8;
+        pub scanner_channel, set_scanner_channel: 13, 12;
+        pub scan_direction_flag, set_scan_direction_flag: 14;
+        pub edge_of_flight_line, set_edge_of_flight_line: 15;
+    }
+
+    impl Copy for ExtendedFlags {}
+    impl Clone for ExtendedFlags {
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    #[repr(C, packed)]
+    struct RawLASPointFormat5 {
+        x: i32,
+        y: i32,
+        z: i32,
+        intensity: u16,
+        flags: BasicFlags,
+        classification: u8,
+        scan_angle_rank: i8,
+        user_data: u8,
+        point_source_id: u16,
+        gps_time: f64,
+        red: u16,
+        green: u16,
+        blue: u16,
+        wave_packet_desriptor_index: u8,
+        byte_offset_to_waveform_data: u64,
+        waveform_packet_size: u32,
+        return_point_waveform_location: f32,
+        dx: f32,
+        dy: f32,
+        dz: f32,
+    }
+    const_assert_eq!(63, std::mem::size_of::<RawLASPointFormat5>());
+
+    #[derive(Debug, Copy, Clone)]
+    #[repr(C, packed)]
+    struct RawLASPointFormat10 {
+        x: i32,
+        y: i32,
+        z: i32,
+        intensity: u16,
+        flags: ExtendedFlags,
+        classification: u8,
+        user_data: u8,
+        scan_angle: i16,
+        point_source_id: u16,
+        gps_time: f64,
+        red: u16,
+        green: u16,
+        blue: u16,
+        nir: u16,
+        wave_packet_desriptor_index: u8,
+        byte_offset_to_waveform_data: u64,
+        waveform_packet_size: u32,
+        return_point_waveform_location: f32,
+        dx: f32,
+        dy: f32,
+        dz: f32,
+    }
+    const_assert_eq!(67, std::mem::size_of::<RawLASPointFormat10>());
+
+    fn get_test_las_metadata(point_format: Format) -> Result<LASMetadata> {
+        let mut builder = Builder::default();
+        builder.version = Version::new(1, 4);
+        builder.transforms = Vector {
+            x: Transform {
+                offset: 0.0,
+                scale: 1.0,
+            },
+            y: Transform {
+                offset: 0.0,
+                scale: 1.0,
+            },
+            z: Transform {
+                offset: 0.0,
+                scale: 1.0,
+            },
+        };
+        builder.point_format = point_format;
+        let header = builder.into_header()?;
+        Ok(header.try_into()?)
+    }
+
+    fn get_test_point_las_format5() -> (RawLASPointFormat5, LasPointFormat5) {
+        let raw_point = RawLASPointFormat5 {
+            x: 123,
+            y: 456,
+            z: 789,
+            intensity: 0x4123,
+            flags: BasicFlags(0xFF),
+            classification: 4,
+            scan_angle_rank: -65,
+            user_data: 128,
+            point_source_id: 0xAB10,
+            gps_time: 1337.0,
+            red: 0xaaaa,
+            green: 0xbbbb,
+            blue: 0xcccc,
+            wave_packet_desriptor_index: 10,
+            byte_offset_to_waveform_data: 9876,
+            waveform_packet_size: 8765,
+            return_point_waveform_location: 0.1,
+            dx: 0.2,
+            dy: 0.3,
+            dz: 0.4,
+        };
+
+        let expected_point = LasPointFormat5 {
+            byte_offset_to_waveform_data: raw_point.byte_offset_to_waveform_data,
+            classification: raw_point.classification,
+            color_rgb: Vector3::new(raw_point.red, raw_point.green, raw_point.blue),
+            edge_of_flight_line: raw_point.flags.edge_of_flight_line(),
+            gps_time: raw_point.gps_time,
+            intensity: raw_point.intensity,
+            number_of_returns: raw_point.flags.number_of_returns(),
+            point_source_id: raw_point.point_source_id,
+            position: Vector3::new(raw_point.x as f64, raw_point.y as f64, raw_point.z as f64),
+            return_number: raw_point.flags.return_number(),
+            return_point_waveform_location: raw_point.return_point_waveform_location,
+            scan_angle_rank: raw_point.scan_angle_rank,
+            scan_direction_flag: raw_point.flags.scan_direction_flag(),
+            user_data: raw_point.user_data,
+            wave_packet_descriptor_index: raw_point.wave_packet_desriptor_index,
+            waveform_packet_size: raw_point.waveform_packet_size,
+            waveform_parameters: Vector3::new(raw_point.dx, raw_point.dy, raw_point.dz),
+        };
+
+        (raw_point, expected_point)
+    }
+
+    fn get_test_point_las_format10() -> (RawLASPointFormat10, LasPointFormat10) {
+        let raw_point = RawLASPointFormat10 {
+            x: 123,
+            y: 456,
+            z: 789,
+            intensity: 0x4123,
+            flags: ExtendedFlags(0xFFFF),
+            classification: 4,
+            scan_angle: -1234,
+            user_data: 128,
+            point_source_id: 0xAB10,
+            gps_time: 1337.0,
+            red: 0xaaaa,
+            green: 0xbbbb,
+            blue: 0xcccc,
+            nir: 0xdddd,
+            wave_packet_desriptor_index: 10,
+            byte_offset_to_waveform_data: 9876,
+            waveform_packet_size: 8765,
+            return_point_waveform_location: 0.1,
+            dx: 0.2,
+            dy: 0.3,
+            dz: 0.4,
+        };
+
+        let flags = raw_point.flags;
+        let expected_point = LasPointFormat10 {
+            byte_offset_to_waveform_data: raw_point.byte_offset_to_waveform_data,
+            classification: raw_point.classification,
+            classification_flags: flags.classification_flags() as u8,
+            color_rgb: Vector3::new(raw_point.red, raw_point.green, raw_point.blue),
+            edge_of_flight_line: flags.edge_of_flight_line(),
+            gps_time: raw_point.gps_time,
+            intensity: raw_point.intensity,
+            nir: raw_point.nir,
+            number_of_returns: flags.number_of_returns() as u8,
+            point_source_id: raw_point.point_source_id,
+            position: Vector3::new(raw_point.x as f64, raw_point.y as f64, raw_point.z as f64),
+            return_number: flags.return_number() as u8,
+            return_point_waveform_location: raw_point.return_point_waveform_location,
+            scan_angle: raw_point.scan_angle,
+            scan_direction_flag: flags.scan_direction_flag(),
+            scanner_channel: flags.scanner_channel() as u8,
+            user_data: raw_point.user_data,
+            wave_packet_descriptor_index: raw_point.wave_packet_desriptor_index,
+            waveform_packet_size: raw_point.waveform_packet_size,
+            waveform_parameters: Vector3::new(raw_point.dx, raw_point.dy, raw_point.dz),
+        };
+
+        (raw_point, expected_point)
+    }
+
+    unsafe fn parse_vector3_attribute_in_format<T>(
+        input_point: &[u8],
+        las_metadata: &LASMetadata,
+        expected_value: Vector3<T>,
+        attribute_definition: &PointAttributeDefinition,
+    ) -> Result<()>
+    where
+        T: std::fmt::Debug + 'static,
+        Vector3<T>: PrimitiveType + Default + PartialEq,
+    {
+        let mut actual_value = Vector3::<T>::default();
+        let layout = PointLayout::from_attributes(&[
+            attribute_definition.with_custom_datatype(Vector3::<T>::data_type())
+        ]);
+
+        let mut parser = PointParser::build(las_metadata, &layout)?;
+
+        unsafe {
+            let destination_data = view_raw_bytes_mut(&mut actual_value);
+            parser.parse_one(input_point, destination_data);
+        }
+
+        assert_eq!(
+            expected_value,
+            actual_value,
+            "Parsed vector attribute {} with type {} is wrong",
+            attribute_definition.name(),
+            Vector3::<T>::data_type()
+        );
+
+        Ok(())
+    }
+
+    unsafe fn parse_scalar_attribute_in_format<T>(
+        input_point: &[u8],
+        las_metadata: &LASMetadata,
+        expected_value: T,
+        attribute_definition: &PointAttributeDefinition,
+    ) -> Result<()>
+    where
+        T: Default + PrimitiveType + PartialEq + std::fmt::Debug,
+    {
+        let mut actual_value = T::default();
+        let layout = PointLayout::from_attributes(&[
+            attribute_definition.with_custom_datatype(T::data_type())
+        ]);
+
+        let mut parser = PointParser::build(las_metadata, &layout)?;
+
+        unsafe {
+            let destination_data = view_raw_bytes_mut(&mut actual_value);
+            parser.parse_one(input_point, destination_data);
+        }
+
+        assert_eq!(
+            expected_value,
+            actual_value,
+            "Parsed scalar attribute {} with type {} is wrong",
+            attribute_definition.name(),
+            T::data_type()
+        );
+
+        Ok(())
+    }
+
+    /// Parse the given Vector3 attribute in all possible formats (i.e. all known Vector3 variants that
+    /// pasture knows as a primitive type). This tests all possible Vector3 conversions
+    fn parse_vector3_attribute_in_various_formats<T>(
+        input_point: &[u8],
+        las_metadata: &LASMetadata,
+        expected_value: Vector3<T>,
+        attribute_definition: &PointAttributeDefinition,
+    ) -> Result<()>
+    where
+        T: Copy
+            + AsPrimitive<u8>
+            + AsPrimitive<u16>
+            + AsPrimitive<i32>
+            + AsPrimitive<f32>
+            + AsPrimitive<f64>,
+    {
+        unsafe {
+            parse_vector3_attribute_in_format::<f64>(
+                input_point,
+                las_metadata,
+                Vector3::new(
+                    expected_value[0].as_(),
+                    expected_value[1].as_(),
+                    expected_value[2].as_(),
+                ),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::Vec3f64),
+            )?;
+            parse_vector3_attribute_in_format::<f32>(
+                input_point,
+                las_metadata,
+                Vector3::new(
+                    expected_value[0].as_(),
+                    expected_value[1].as_(),
+                    expected_value[2].as_(),
+                ),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::Vec3f32),
+            )?;
+            parse_vector3_attribute_in_format::<i32>(
+                input_point,
+                las_metadata,
+                Vector3::new(
+                    expected_value[0].as_(),
+                    expected_value[1].as_(),
+                    expected_value[2].as_(),
+                ),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::Vec3i32),
+            )?;
+            parse_vector3_attribute_in_format::<u16>(
+                input_point,
+                las_metadata,
+                Vector3::new(
+                    expected_value[0].as_(),
+                    expected_value[1].as_(),
+                    expected_value[2].as_(),
+                ),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::Vec3u16),
+            )?;
+            parse_vector3_attribute_in_format::<u8>(
+                input_point,
+                las_metadata,
+                Vector3::new(
+                    expected_value[0].as_(),
+                    expected_value[1].as_(),
+                    expected_value[2].as_(),
+                ),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::Vec3u8),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn parse_scalar_attribute_in_various_formats<T>(
+        input_point: &[u8],
+        las_metadata: &LASMetadata,
+        expected_value: T,
+        attribute_definition: &PointAttributeDefinition,
+    ) -> Result<()>
+    where
+        T: Copy
+            + AsPrimitive<f64>
+            + AsPrimitive<f32>
+            + AsPrimitive<u8>
+            + AsPrimitive<u16>
+            + AsPrimitive<u32>
+            + AsPrimitive<u64>
+            + AsPrimitive<i8>
+            + AsPrimitive<i16>
+            + AsPrimitive<i32>
+            + AsPrimitive<i64>,
+    {
+        unsafe {
+            parse_scalar_attribute_in_format::<f64>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::F64),
+            )?;
+            parse_scalar_attribute_in_format::<f32>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::F32),
+            )?;
+            parse_scalar_attribute_in_format::<i8>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::I8),
+            )?;
+            parse_scalar_attribute_in_format::<i16>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::I16),
+            )?;
+            parse_scalar_attribute_in_format::<i32>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::I32),
+            )?;
+            parse_scalar_attribute_in_format::<i64>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::I64),
+            )?;
+
+            parse_scalar_attribute_in_format::<u8>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::U8),
+            )?;
+            parse_scalar_attribute_in_format::<u16>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::U16),
+            )?;
+            parse_scalar_attribute_in_format::<u32>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::U32),
+            )?;
+            parse_scalar_attribute_in_format::<u64>(
+                input_point,
+                las_metadata,
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::U64),
+            )?;
+
+            parse_scalar_attribute_in_format::<bool>(
+                input_point,
+                las_metadata,
+                AsPrimitive::<f64>::as_(expected_value) != 0.0,
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::Bool),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_las_format5_default() -> Result<()> {
+        let (test_point, expected_point) = get_test_point_las_format5();
+        let target_point_layout = LasPointFormat5::layout();
+        let las_metadata = get_test_las_metadata(Format::new(5)?)?;
+
+        let mut parsed_point = LasPointFormat5::default();
+
+        let mut parser = PointParser::build(&las_metadata, &target_point_layout)?;
+        unsafe {
+            let source_data = view_raw_bytes(&test_point);
+            let destination_data = view_raw_bytes_mut(&mut parsed_point);
+            parser.parse_one(source_data, destination_data);
+        }
+
+        assert_eq!(expected_point, parsed_point);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_las_format5_individual_attributes() -> Result<()> {
+        let (test_point, expected_point) = get_test_point_las_format5();
+        // let target_point_layout = LasPointFormat5::layout();
+        let las_metadata = get_test_las_metadata(Format::new(5)?)?;
+
+        let input_point_data = unsafe { view_raw_bytes(&test_point) };
+
+        // Parse all attributes individually
+        parse_vector3_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.position,
+            &POSITION_3D,
+        )
+        .context("Parsing position failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.intensity,
+            &INTENSITY,
+        )
+        .context("Parsing intensity failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.return_number,
+            &RETURN_NUMBER,
+        )
+        .context("Parsing return number failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.number_of_returns,
+            &NUMBER_OF_RETURNS,
+        )
+        .context("Parsing number of returns failed")?;
+
+        // bool attributes can only be parsed as bools, pasture does not support bool-to-numeric upcasting!
+        unsafe {
+            parse_scalar_attribute_in_format(
+                input_point_data,
+                &las_metadata,
+                expected_point.scan_direction_flag,
+                &SCAN_DIRECTION_FLAG,
+            )
+            .context("Parsing scan direction flag failed")?;
+            parse_scalar_attribute_in_format(
+                input_point_data,
+                &las_metadata,
+                expected_point.edge_of_flight_line,
+                &EDGE_OF_FLIGHT_LINE,
+            )
+            .context("Parsing edge of flight line failed")?;
+        }
+
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.classification,
+            &CLASSIFICATION,
+        )
+        .context("Parsing classification failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.scan_angle_rank,
+            &SCAN_ANGLE_RANK,
+        )
+        .context("Parsing scan angle rank failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.user_data,
+            &USER_DATA,
+        )
+        .context("Parsing user data failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.point_source_id,
+            &POINT_SOURCE_ID,
+        )
+        .context("Parsing point source ID failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.gps_time,
+            &GPS_TIME,
+        )
+        .context("Parsing gps time failed")?;
+        let expected_color = expected_point.color_rgb;
+        parse_vector3_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_color,
+            &COLOR_RGB,
+        )
+        .context("Parsing color failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.wave_packet_descriptor_index,
+            &WAVE_PACKET_DESCRIPTOR_INDEX,
+        )
+        .context("Parsing wave packet descriptor index failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.byte_offset_to_waveform_data,
+            &WAVEFORM_DATA_OFFSET,
+        )
+        .context("Parsing waveform data offset failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.waveform_packet_size,
+            &WAVEFORM_PACKET_SIZE,
+        )
+        .context("Parsing waveform packet size failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.return_point_waveform_location,
+            &RETURN_POINT_WAVEFORM_LOCATION,
+        )
+        .context("Parsing return point waveform location failed")?;
+        parse_vector3_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.waveform_parameters,
+            &WAVEFORM_PARAMETERS,
+        )
+        .context("Parsing waveform parameters failed")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_las_format10_default() -> Result<()> {
+        let (test_point, expected_point) = get_test_point_las_format10();
+        let target_point_layout = LasPointFormat10::layout();
+        let las_metadata = get_test_las_metadata(Format::new(10)?)?;
+
+        let mut parsed_point = LasPointFormat10::default();
+
+        let mut parser = PointParser::build(&las_metadata, &target_point_layout)?;
+        unsafe {
+            let source_data = view_raw_bytes(&test_point);
+            let destination_data = view_raw_bytes_mut(&mut parsed_point);
+            parser.parse_one(source_data, destination_data);
+        }
+
+        assert_eq!(expected_point, parsed_point);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_las_format10_individual_attributes() -> Result<()> {
+        let (test_point, expected_point) = get_test_point_las_format10();
+        // let target_point_layout = LasPointFormat5::layout();
+        let las_metadata = get_test_las_metadata(Format::new(10)?)?;
+
+        let input_point_data = unsafe { view_raw_bytes(&test_point) };
+
+        // Parse all attributes individually
+        parse_vector3_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.position,
+            &POSITION_3D,
+        )
+        .context("Parsing position failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.intensity,
+            &INTENSITY,
+        )
+        .context("Parsing intensity failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.return_number,
+            &RETURN_NUMBER,
+        )
+        .context("Parsing return number failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.number_of_returns,
+            &NUMBER_OF_RETURNS,
+        )
+        .context("Parsing number of returns failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.classification_flags,
+            &CLASSIFICATION_FLAGS,
+        )
+        .context("Parsing classification flags failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.scanner_channel,
+            &SCANNER_CHANNEL,
+        )
+        .context("Parsing scanner channel failed")?;
+
+        // bool attributes can only be parsed as bools, pasture does not support bool-to-numeric upcasting!
+        unsafe {
+            parse_scalar_attribute_in_format(
+                input_point_data,
+                &las_metadata,
+                expected_point.scan_direction_flag,
+                &SCAN_DIRECTION_FLAG,
+            )
+            .context("Parsing scan direction flag failed")?;
+            parse_scalar_attribute_in_format(
+                input_point_data,
+                &las_metadata,
+                expected_point.edge_of_flight_line,
+                &EDGE_OF_FLIGHT_LINE,
+            )
+            .context("Parsing edge of flight line failed")?;
+        }
+
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.classification,
+            &CLASSIFICATION,
+        )
+        .context("Parsing classification failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.scan_angle,
+            &SCAN_ANGLE,
+        )
+        .context("Parsing scan angle failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.user_data,
+            &USER_DATA,
+        )
+        .context("Parsing user data failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.point_source_id,
+            &POINT_SOURCE_ID,
+        )
+        .context("Parsing point source ID failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.gps_time,
+            &GPS_TIME,
+        )
+        .context("Parsing gps time failed")?;
+        let expected_color = expected_point.color_rgb;
+        parse_vector3_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_color,
+            &COLOR_RGB,
+        )
+        .context("Parsing color failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.nir,
+            &NIR,
+        )
+        .context("Parsing nir failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.wave_packet_descriptor_index,
+            &WAVE_PACKET_DESCRIPTOR_INDEX,
+        )
+        .context("Parsing wave packet descriptor index failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.byte_offset_to_waveform_data,
+            &WAVEFORM_DATA_OFFSET,
+        )
+        .context("Parsing waveform data offset failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.waveform_packet_size,
+            &WAVEFORM_PACKET_SIZE,
+        )
+        .context("Parsing waveform packet size failed")?;
+        parse_scalar_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.return_point_waveform_location,
+            &RETURN_POINT_WAVEFORM_LOCATION,
+        )
+        .context("Parsing return point waveform location failed")?;
+        parse_vector3_attribute_in_various_formats(
+            input_point_data,
+            &las_metadata,
+            expected_point.waveform_parameters,
+            &WAVEFORM_PARAMETERS,
+        )
+        .context("Parsing waveform parameters failed")?;
+
+        Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     convert::TryInto,
     io::{Cursor, Seek, SeekFrom, Write},
@@ -7,7 +8,8 @@ use std::{
 use anyhow::{Context, Result};
 use pasture_core::{
     containers::{
-        PerAttributePointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable, OwningPointBuffer,
+        OwningPointBuffer, PerAttributePointBuffer, PerAttributeVecPointStorage, PointBuffer,
+        PointBufferWriteable,
     },
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
@@ -67,7 +69,7 @@ pub struct PntsWriter<W: Write + Seek> {
     expected_layout: PointLayout,
     default_layout: PointLayout,
     cached_points: PerAttributeVecPointStorage,
-    attribute_converters: HashMap<&'static str, Option<AttributeConversionFn>>,
+    attribute_converters: HashMap<String, Option<AttributeConversionFn>>,
     rtc_center: Option<Vector3<f64>>,
     requires_flush: bool,
 }
@@ -105,23 +107,20 @@ impl<W: Write + Seek> PntsWriter<W> {
     /// type as per the [3D Tiles standard](https://github.com/CesiumGS/3d-tiles/blob/master/specification/TileFormats/PointCloud/README.md#semantics)
     fn make_compatible_layout(
         point_layout: &PointLayout,
-    ) -> (
-        PointLayout,
-        HashMap<&'static str, Option<AttributeConversionFn>>,
-    ) {
+    ) -> (PointLayout, HashMap<String, Option<AttributeConversionFn>>) {
         let mut compatible_layout = PointLayout::default();
-        let mut conversion_fns: HashMap<&'static str, Option<AttributeConversionFn>> =
-            HashMap::new();
+        let mut conversion_fns: HashMap<String, Option<AttributeConversionFn>> = HashMap::new();
         // TODO Support for other attributes:
         // * Quantized positions
         // * RGB565 colors
         // * Normal oct encoded
         // * Batch ID (and batch table with custom attributes)
 
-        let supported_attributes: HashMap<&'static str, PointAttributeDataType> = vec![
+        let color_rgba = COLOR_RGBA;
+        let supported_attributes: HashMap<&str, PointAttributeDataType> = vec![
             (POSITION_3D.name(), PointAttributeDataType::Vec3f32),
             (COLOR_RGB.name(), PointAttributeDataType::Vec3u8),
-            (COLOR_RGBA.name(), PointAttributeDataType::Vec4u8),
+            (color_rgba.name(), PointAttributeDataType::Vec4u8),
             (NORMAL.name(), PointAttributeDataType::Vec3f32),
         ]
         .drain(..)
@@ -130,17 +129,20 @@ impl<W: Write + Seek> PntsWriter<W> {
         for src_attribute in point_layout.attributes() {
             if let Some(dst_attribute_datatype) = supported_attributes.get(&src_attribute.name()) {
                 compatible_layout.add_attribute(
-                    PointAttributeDefinition::custom(src_attribute.name(), *dst_attribute_datatype),
+                    PointAttributeDefinition::custom(
+                        Cow::Owned(src_attribute.name().to_owned()),
+                        *dst_attribute_datatype,
+                    ),
                     FieldAlignment::Default,
                 );
                 let dst_attribute = compatible_layout
                     .get_attribute_by_name(src_attribute.name())
                     .unwrap();
                 if src_attribute.datatype() == dst_attribute.datatype() {
-                    conversion_fns.insert(src_attribute.name(), None);
+                    conversion_fns.insert(src_attribute.name().to_owned(), None);
                 } else {
                     conversion_fns.insert(
-                        src_attribute.name(),
+                        src_attribute.name().to_owned(),
                         get_converter_for_attributes(&src_attribute.into(), &dst_attribute.into()),
                     );
                 }
