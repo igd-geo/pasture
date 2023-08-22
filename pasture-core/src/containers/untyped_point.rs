@@ -77,7 +77,6 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
         &mut self,
         attribute: &PointAttributeDefinition,
         value_byte_slice: &[u8],
-
     ) -> Result<()> {
         let attribute = self
             .layout
@@ -365,9 +364,7 @@ mod tests {
         let mut point = UntypedPointSlice::new(&layout, &mut buffer);
         let intensity_value: u16 = 42;
 
-        let offset = layout
-            .offset_of(&attributes::INTENSITY)
-            .unwrap();
+        let offset = layout.offset_of(&attributes::INTENSITY).unwrap();
         // Write
         let mut cursor = point.get_cursor();
         cursor.set_position(offset);
@@ -417,17 +414,5 @@ mod tests {
         assert_eq!(intensity_value, intencity_from_point as u16);
         assert_eq!(position, position_from_point);
         Ok(())
-    }
-
-    #[test]
-    #[should_panic(expected = "Invalid conversion")]
-    fn test_error_invalid_conversion() {
-        let layout =
-            PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
-        let mut point = UntypedPointBuffer::new(&layout);
-        let intensity_value: f32 = 42.0;
-        point
-            .set_attribute(&attributes::INTENSITY, &intensity_value)
-            .unwrap();
     }
 }

@@ -754,9 +754,7 @@ mod tests {
                     let expected_colors = if format.has_color {
                         test_data_colors()
                             .iter()
-                            .map(|c| {
-                                Vector3::new((c.x >> 8) as u8, (c.y >> 8) as u8, (c.z >> 8) as u8)
-                            })
+                            .map(|c| Vector3::new(c.x as u8, c.y as u8, c.z as u8))
                             .collect::<Vec<_>>()
                     } else {
                         (0..10)

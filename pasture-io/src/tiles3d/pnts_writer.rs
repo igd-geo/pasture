@@ -500,12 +500,12 @@ mod tests {
         let test_data = vec![
             PntsCustomLayout {
                 position: Vector3::new(1.0, 2.0, 3.0),
-                color: Vector3::new(1 << 8, 2 << 8, 3 << 8),
+                color: Vector3::new(0x1111, 0x2222, 0x3333),
                 intensity: 10_000,
             },
             PntsCustomLayout {
                 position: Vector3::new(2.0, 4.0, 6.0),
-                color: Vector3::new(2 << 8, 4 << 8, 6 << 8),
+                color: Vector3::new(0x2222, 0x4444, 0x6666),
                 intensity: 20_000,
             },
         ];
@@ -545,8 +545,8 @@ mod tests {
             let expected_pos_1: Vector3<f32> = Vector3::new(1.0, 2.0, 3.0);
             let expected_pos_2: Vector3<f32> = Vector3::new(2.0, 4.0, 6.0);
 
-            let expected_color_1: Vector3<u8> = Vector3::new(1, 2, 3);
-            let expected_color_2: Vector3<u8> = Vector3::new(2, 4, 6);
+            let expected_color_1: Vector3<u8> = Vector3::new(0x11, 0x22, 0x33);
+            let expected_color_2: Vector3<u8> = Vector3::new(0x22, 0x44, 0x66);
 
             assert_eq!(
                 expected_pos_1,

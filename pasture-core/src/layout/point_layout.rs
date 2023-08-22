@@ -299,7 +299,8 @@ impl PointAttributeDefinition {
     /// Returns the name of this PointAttributeDefinition
     /// ```
     /// # use pasture_core::layout::*;
-    /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
+    /// # use std::borrow::Cow;
+    /// let custom_attribute = PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::F32);
     /// let name = custom_attribute.name();
     /// # assert_eq!(name, "Custom");
     /// ```
@@ -310,7 +311,8 @@ impl PointAttributeDefinition {
     /// Returns the datatype of this PointAttributeDefinition
     /// ```
     /// # use pasture_core::layout::*;
-    /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
+    /// # use std::borrow::Cow;
+    /// let custom_attribute = PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::F32);
     /// let datatype = custom_attribute.datatype();
     /// # assert_eq!(datatype, PointAttributeDataType::F32);
     /// ```
