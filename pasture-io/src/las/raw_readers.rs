@@ -594,6 +594,7 @@ mod tests {
     use pasture_core::layout::PointAttributeDataType;
     use pasture_core::nalgebra::Vector3;
 
+    use crate::las::get_test_las_path_with_extra_bytes;
     use crate::las::{
         compare_to_reference_data, compare_to_reference_data_range, get_test_las_path,
         get_test_laz_path, test_data_bounds, test_data_classifications, test_data_colors,
@@ -652,12 +653,13 @@ mod tests {
                 fn test_raw_las_reader_read() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
                     let mut reader = $reader::from_read(read)?;
+                    let format = Format::new($format)?;
 
                     let points = reader.read(10)?;
                     let expected_layout =
                         point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     assert_eq!(*points.point_layout(), expected_layout);
-                    compare_to_reference_data(points.as_ref(), ($format));
+                    compare_to_reference_data(points.as_ref(), format);
 
                     assert_eq!(10, reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());
@@ -669,12 +671,13 @@ mod tests {
                 fn test_raw_las_reader_read_into_interleaved() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
                     let mut reader = $reader::from_read(read)?;
+                    let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     let mut buffer = InterleavedVecPointStorage::new(layout);
 
                     reader.read_into(&mut buffer, 10)?;
-                    compare_to_reference_data(&buffer, $format);
+                    compare_to_reference_data(&buffer, format);
 
                     assert_eq!(10, reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());
@@ -686,12 +689,13 @@ mod tests {
                 fn test_raw_las_reader_read_into_perattribute() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
                     let mut reader = $reader::from_read(read)?;
+                    let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     let mut buffer = PerAttributeVecPointStorage::new(layout);
 
                     reader.read_into(&mut buffer, 10)?;
-                    compare_to_reference_data(&buffer, $format);
+                    compare_to_reference_data(&buffer, format);
 
                     assert_eq!(10, reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());
@@ -797,6 +801,7 @@ mod tests {
                 fn test_raw_las_reader_seek() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
                     let mut reader = $reader::from_read(read)?;
+                    let format = Format::new($format)?;
 
                     let seek_index: usize = 5;
                     let new_pos = reader.seek_point(SeekFrom::Current(seek_index as i64))?;
@@ -805,7 +810,7 @@ mod tests {
                     let points = reader.read((10 - seek_index) as usize)?;
                     assert_eq!(10 - seek_index, points.len());
 
-                    compare_to_reference_data_range(points.as_ref(), $format, seek_index..10);
+                    compare_to_reference_data_range(points.as_ref(), format, seek_index..10);
 
                     Ok(())
                 }
@@ -821,6 +826,26 @@ mod tests {
 
                     let points = reader.read(10)?;
                     assert_eq!(0, points.len());
+
+                    Ok(())
+                }
+
+                #[test]
+                fn test_raw_las_reader_read_with_extra_bytes() -> Result<()> {
+                    let read =
+                        BufReader::new(File::open(get_test_las_path_with_extra_bytes($format))?);
+                    let mut reader = RawLASReader::from_read(read)?;
+                    let mut format = Format::new($format)?;
+                    format.extra_bytes = 4;
+
+                    let points = reader.read(10)?;
+                    let expected_layout =
+                        point_layout_from_las_metadata(reader.las_metadata(), false)?;
+                    assert_eq!(*points.point_layout(), expected_layout);
+                    compare_to_reference_data(points.as_ref(), format);
+
+                    assert_eq!(10, reader.point_index()?);
+                    assert_eq!(0, reader.remaining_points());
 
                     Ok(())
                 }

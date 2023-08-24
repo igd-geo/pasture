@@ -1222,7 +1222,7 @@ mod tests {
 
                 #[test]
                 fn test_raw_las_writer() -> Result<()> {
-                    let test_data = get_test_points_in_las_format($format)?;
+                    let test_data = get_test_points_in_las_format($format, false)?;
 
                     let format = Format::new($format)?;
                     let mut header_builder = Builder::from((1, 4));
@@ -1400,7 +1400,7 @@ mod tests {
 
                 #[test]
                 fn test_raw_laz_writer() -> Result<()> {
-                    let test_data = get_test_points_in_las_format($format)?;
+                    let test_data = get_test_points_in_las_format($format, false)?;
 
                     let format = Format::new($format)?;
                     let mut header_builder = Builder::from((1, 4));

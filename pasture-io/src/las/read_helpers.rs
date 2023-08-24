@@ -488,3 +488,18 @@ make_get_reader_fn!(
     WAVEFORM_PARAMETERS,
     read_waveform_parameters_in_default_layout
 );
+
+/// Attempts to convert the given LAS string (a fixed-size byte array, potentially null-terminated) into a
+/// Rust `String`. As per the LAS specification, `las_string` will be null-terminated ONLY IF the length of
+/// the string is less than the size of the array (i.e. `N`)!
+pub(crate) fn las_string_to_rust_string<const N: usize>(las_string: &[u8; N]) -> Result<String> {
+    let first_null_terminator = las_string.iter().position(|c| *c == 0);
+    if let Some(index_of_null_terminator) = first_null_terminator {
+        let string = std::str::from_utf8(&las_string[..index_of_null_terminator])?;
+        Ok(string.to_owned())
+    } else {
+        // String is fully utilized
+        let string = std::str::from_utf8(las_string)?;
+        Ok(string.to_owned())
+    }
+}

@@ -555,7 +555,7 @@ pub struct LasPointFormat10 {
 const_assert_eq!(std::mem::size_of::<LasPointFormat10>(), 83);
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct BitAttributesRegular {
+pub struct BitAttributesRegular {
     pub return_number: u8,
     pub number_of_returns: u8,
     pub scan_direction_flag: u8,
@@ -563,7 +563,7 @@ pub(crate) struct BitAttributesRegular {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct BitAttributesExtended {
+pub struct BitAttributesExtended {
     pub return_number: u8,
     pub number_of_returns: u8,
     pub classification_flags: u8,
@@ -573,51 +573,7 @@ pub(crate) struct BitAttributesExtended {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) enum BitAttributes {
+pub enum BitAttributes {
     Regular(BitAttributesRegular),
     Extended(BitAttributesExtended),
-}
-
-impl BitAttributes {
-    pub fn return_number(&self) -> u8 {
-        match &self {
-            Self::Regular(attr) => attr.return_number,
-            Self::Extended(attr) => attr.return_number,
-        }
-    }
-
-    pub fn number_of_returns(&self) -> u8 {
-        match &self {
-            Self::Regular(attr) => attr.number_of_returns,
-            Self::Extended(attr) => attr.number_of_returns,
-        }
-    }
-
-    pub fn classification_flags_or_default(&self) -> u8 {
-        match &self {
-            Self::Regular(_) => Default::default(),
-            Self::Extended(attr) => attr.classification_flags,
-        }
-    }
-
-    pub fn scanner_channel_or_default(&self) -> u8 {
-        match &self {
-            Self::Regular(_) => Default::default(),
-            Self::Extended(attr) => attr.scanner_channel,
-        }
-    }
-
-    pub fn scan_direction_flag(&self) -> u8 {
-        match &self {
-            Self::Regular(attr) => attr.scan_direction_flag,
-            Self::Extended(attr) => attr.scan_direction_flag,
-        }
-    }
-
-    pub fn edge_of_flight_line(&self) -> u8 {
-        match &self {
-            Self::Regular(attr) => attr.edge_of_flight_line,
-            Self::Extended(attr) => attr.edge_of_flight_line,
-        }
-    }
 }

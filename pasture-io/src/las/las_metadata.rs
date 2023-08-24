@@ -3,6 +3,7 @@ use std::{
     borrow::Cow,
     convert::{TryFrom, TryInto},
     fmt::Display,
+    iter::FromIterator,
     path::Path,
 };
 
@@ -10,7 +11,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use bitfield::bitfield;
 use chrono::Datelike;
 use las::{Bounds, Header};
-use las_rs::{point::Format, Vector, Vlr};
+use las_rs::{point::Format, raw::vlr::RecordLength, Vector, Vlr};
 use pasture_core::{
     layout::{PointAttributeDataType, PointAttributeDefinition},
     math::AABB,
@@ -18,6 +19,8 @@ use pasture_core::{
     nalgebra::Point3,
 };
 use static_assertions::const_assert_eq;
+
+use super::{las_string_to_rust_string, write_rust_string_into_las_ascii_array};
 
 /// Contains constants for possible named fields in a `LASMetadata` structure
 pub mod named_fields {
@@ -203,8 +206,8 @@ pub enum ExtraBytesDataType {
     I64,
     F32,
     F64,
-    Deprecated,
-    Reserved,
+    Deprecated(u8),
+    Reserved(u8),
 }
 
 impl ExtraBytesDataType {
@@ -223,8 +226,8 @@ impl ExtraBytesDataType {
             ExtraBytesDataType::F32 => Some(4),
             ExtraBytesDataType::F64 => Some(8),
             ExtraBytesDataType::Undocumented
-            | ExtraBytesDataType::Deprecated
-            | ExtraBytesDataType::Reserved => todo!(),
+            | ExtraBytesDataType::Deprecated(_)
+            | ExtraBytesDataType::Reserved(_) => None,
         }
     }
     /// Does this data type represent an unsigned integer?
@@ -266,8 +269,28 @@ impl From<u8> for ExtraBytesDataType {
             8 => Self::I64,
             9 => Self::F32,
             10 => Self::F64,
-            11..=30 => Self::Deprecated,
-            31.. => Self::Reserved,
+            11..=30 => Self::Deprecated(value),
+            31.. => Self::Reserved(value),
+        }
+    }
+}
+
+impl Into<u8> for ExtraBytesDataType {
+    fn into(self) -> u8 {
+        match self {
+            ExtraBytesDataType::Undocumented => 0,
+            ExtraBytesDataType::U8 => 1,
+            ExtraBytesDataType::I8 => 2,
+            ExtraBytesDataType::U16 => 3,
+            ExtraBytesDataType::I16 => 4,
+            ExtraBytesDataType::U32 => 5,
+            ExtraBytesDataType::I32 => 6,
+            ExtraBytesDataType::U64 => 7,
+            ExtraBytesDataType::I64 => 8,
+            ExtraBytesDataType::F32 => 9,
+            ExtraBytesDataType::F64 => 10,
+            ExtraBytesDataType::Deprecated(value) => value,
+            ExtraBytesDataType::Reserved(value) => value,
         }
     }
 }
@@ -290,10 +313,10 @@ impl TryFrom<ExtraBytesDataType> for PointAttributeDataType {
             ExtraBytesDataType::Undocumented => {
                 bail!("Extra bytes of type 'undocumented' are currently unsupported in pasture")
             }
-            ExtraBytesDataType::Deprecated => {
+            ExtraBytesDataType::Deprecated(_) => {
                 bail!("Extra bytes of type 'deprecated' are currently unsupported in pasture")
             }
-            ExtraBytesDataType::Reserved => {
+            ExtraBytesDataType::Reserved(_) => {
                 bail!("Extra bytes of type 'reserved' are currently unsupported in pasture")
             }
         }
@@ -322,8 +345,40 @@ impl Clone for ExtraBytesOptions {
         Self(self.0.clone())
     }
 }
+impl Default for ExtraBytesOptions {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
 
-/// LAS VLR entry describing the meaning of extra bytes within a point record
+/// Raw binary representation of an entry in a 'Extra bytes' VLR
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Default)]
+pub(crate) struct RawExtraBytesEntry {
+    reserved: [u8; 2],
+    data_type: u8,
+    options: u8,
+    name: [u8; 32],
+    unused: [u8; 4],
+    no_data: [u8; 8],
+    deprecated_1: [u8; 16],
+    min: [u8; 8],
+    deprecated_2: [u8; 16],
+    max: [u8; 8],
+    deprecated_3: [u8; 16],
+    scale: f64,
+    deprecated_4: [u8; 16],
+    offset: f64,
+    deprecated_5: [u8; 16],
+    description: [u8; 32],
+}
+const RAW_EXTRA_BYTES_ENTRY_SIZE: usize = 192;
+const_assert_eq!(
+    RAW_EXTRA_BYTES_ENTRY_SIZE,
+    std::mem::size_of::<RawExtraBytesEntry>()
+);
+
+/// Entry within the 'Extra bytes' LAS VLR
 #[derive(Clone, Debug)]
 pub struct ExtraBytesEntry {
     data_type: ExtraBytesDataType,
@@ -544,12 +599,105 @@ impl Display for ExtraBytesEntry {
     }
 }
 
+impl TryFrom<&RawExtraBytesEntry> for ExtraBytesEntry {
+    type Error = anyhow::Error;
+    fn try_from(raw_entry: &RawExtraBytesEntry) -> Result<Self> {
+        Ok(Self {
+            data_type: raw_entry.data_type.into(),
+            description: las_string_to_rust_string(&raw_entry.description)
+                .context("Description is invalid string")?,
+            name: las_string_to_rust_string(&raw_entry.name).context("Name is invalid string")?,
+            offset: raw_entry.offset,
+            max_value: raw_entry.max,
+            min_value: raw_entry.min,
+            no_data_value: raw_entry.no_data,
+            options: ExtraBytesOptions(raw_entry.options),
+            scale: raw_entry.scale,
+        })
+    }
+}
+
+impl Into<RawExtraBytesEntry> for &ExtraBytesEntry {
+    fn into(self) -> RawExtraBytesEntry {
+        let mut ret: RawExtraBytesEntry = Default::default();
+        ret.data_type = self.data_type.into();
+        ret.options = self.options.0;
+        write_rust_string_into_las_ascii_array(&self.name, &mut ret.name);
+        ret.no_data = self.no_data_value;
+        ret.min = self.min_value;
+        ret.max = self.max_value;
+        ret.scale = self.scale;
+        ret.offset = self.offset;
+        write_rust_string_into_las_ascii_array(&self.description, &mut ret.description);
+        ret
+    }
+}
+
+/// Build to create `ExtraBytesEntry` values
 #[derive(Clone, Debug)]
-pub struct ExtraBytes {
+pub struct ExtraBytesEntryBuilder {
+    extra_bytes_entry: ExtraBytesEntry,
+}
+
+impl ExtraBytesEntryBuilder {
+    pub fn new(data_type: ExtraBytesDataType, name: String, description: String) -> Self {
+        Self {
+            extra_bytes_entry: ExtraBytesEntry {
+                data_type,
+                name,
+                description,
+                max_value: Default::default(),
+                min_value: Default::default(),
+                no_data_value: Default::default(),
+                offset: Default::default(),
+                options: Default::default(),
+                scale: Default::default(),
+            },
+        }
+    }
+
+    pub fn with_offset(mut self, offset: f64) -> Self {
+        self.extra_bytes_entry.offset = offset;
+        self.extra_bytes_entry.options.set_use_offset(true);
+        self
+    }
+
+    pub fn with_scale(mut self, scale: f64) -> Self {
+        self.extra_bytes_entry.scale = scale;
+        self.extra_bytes_entry.options.set_use_scale(true);
+        self
+    }
+
+    pub fn min_data_value(mut self, min_data_value: [u8; 8]) -> Self {
+        self.extra_bytes_entry.min_value = min_data_value;
+        self.extra_bytes_entry.options.set_min_is_relevant(true);
+        self
+    }
+
+    pub fn max_data_value(mut self, max_data_value: [u8; 8]) -> Self {
+        self.extra_bytes_entry.max_value = max_data_value;
+        self.extra_bytes_entry.options.set_max_is_relevant(true);
+        self
+    }
+
+    pub fn no_data_value(mut self, no_data_value: [u8; 8]) -> Self {
+        self.extra_bytes_entry.no_data_value = no_data_value;
+        self.extra_bytes_entry.options.set_no_data_is_relevant(true);
+        self
+    }
+
+    pub fn build(self) -> ExtraBytesEntry {
+        self.extra_bytes_entry
+    }
+}
+
+// LAS VLR describing the meaning of extra bytes within a point record
+#[derive(Clone, Debug)]
+pub struct ExtraBytesVlr {
     entries: Vec<ExtraBytesEntry>,
 }
 
-impl ExtraBytes {
+impl ExtraBytesVlr {
     pub const RECORD_ID: u16 = 4;
 
     pub fn entries(&self) -> &[ExtraBytesEntry] {
@@ -557,7 +705,15 @@ impl ExtraBytes {
     }
 }
 
-impl TryFrom<&'_ Vlr> for ExtraBytes {
+impl FromIterator<ExtraBytesEntry> for ExtraBytesVlr {
+    fn from_iter<T: IntoIterator<Item = ExtraBytesEntry>>(iter: T) -> Self {
+        Self {
+            entries: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl TryFrom<&'_ Vlr> for ExtraBytesVlr {
     type Error = anyhow::Error;
 
     fn try_from(value: &'_ Vlr) -> std::result::Result<Self, Self::Error> {
@@ -575,54 +731,50 @@ impl TryFrom<&'_ Vlr> for ExtraBytes {
             ));
         }
 
-        #[repr(C)]
-        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-        struct RawEntry {
-            reserved: [u8; 2],
-            data_type: u8,
-            options: u8,
-            name: [u8; 32],
-            unused: [u8; 4],
-            no_data: [u8; 8],
-            deprecated_1: [u8; 16],
-            min: [u8; 8],
-            deprecated_2: [u8; 16],
-            max: [u8; 8],
-            deprecated_3: [u8; 16],
-            scale: f64,
-            deprecated_4: [u8; 16],
-            offset: f64,
-            deprecated_5: [u8; 16],
-            description: [u8; 32],
-        }
-        const RAW_ENTRY_SIZE: usize = 192;
-        const_assert_eq!(RAW_ENTRY_SIZE, std::mem::size_of::<RawEntry>());
-
-        if value.data.len() % RAW_ENTRY_SIZE != 0 {
-            bail!("VLR data size ({} bytes) is not a multiple of the size of an EXTRA_BYTES entry ({} bytes)", value.data.len(), RAW_ENTRY_SIZE);
+        if value.data.len() % RAW_EXTRA_BYTES_ENTRY_SIZE != 0 {
+            bail!("VLR data size ({} bytes) is not a multiple of the size of an EXTRA_BYTES entry ({} bytes)", value.data.len(), RAW_EXTRA_BYTES_ENTRY_SIZE);
         }
 
-        let raw_entries: &[RawEntry] = bytemuck::cast_slice(&value.data);
+        let raw_entries: &[RawExtraBytesEntry] = bytemuck::cast_slice(&value.data);
         let entries = raw_entries
             .into_iter()
-            .map(|raw_entry| ExtraBytesEntry {
-                data_type: raw_entry.data_type.into(),
-                description: String::from_utf8_lossy(&raw_entry.description).to_string(),
-                name: String::from_utf8_lossy(&raw_entry.name).to_string(),
-                offset: raw_entry.offset,
-                max_value: raw_entry.max,
-                min_value: raw_entry.min,
-                no_data_value: raw_entry.no_data,
-                options: ExtraBytesOptions(raw_entry.options),
-                scale: raw_entry.scale,
-            })
-            .collect();
+            .map(|raw_entry| raw_entry.try_into())
+            .collect::<Result<_, _>>()?;
 
         Ok(Self { entries })
     }
 }
 
-impl Display for ExtraBytes {
+impl TryInto<Vlr> for &ExtraBytesVlr {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<Vlr> {
+        let entries: Vec<u8> = self
+            .entries
+            .iter()
+            .flat_map(|entry| {
+                let raw_entry: RawExtraBytesEntry = entry.into();
+                bytemuck::bytes_of(&raw_entry).to_owned()
+            })
+            .collect::<Vec<_>>();
+        assert!(entries.len() % RAW_EXTRA_BYTES_ENTRY_SIZE == 0);
+
+        let mut raw_vlr = las_rs::raw::Vlr::default();
+        write_rust_string_into_las_ascii_array("LASF_Spec", &mut raw_vlr.user_id);
+        raw_vlr.record_id = ExtraBytesVlr::RECORD_ID;
+        raw_vlr.record_length_after_header = RecordLength::Vlr(
+            entries
+                .len()
+                .try_into()
+                .context("Length of Extra Bytes VLR entries exceeds capacity of u16 value")?,
+        );
+        raw_vlr.data = entries;
+
+        Ok(Vlr::new(raw_vlr))
+    }
+}
+
+impl Display for ExtraBytesVlr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Extra Bytes:")?;
         for entry in &self.entries {
@@ -656,7 +808,7 @@ pub struct LASMetadata {
     point_format: Format,
     classification_lookup_vlr: Option<ClassificationLookup>,
     text_area_description_vlr: Option<TextAreaDescription>,
-    extra_bytes_vlr: Option<ExtraBytes>,
+    extra_bytes_vlr: Option<ExtraBytesVlr>,
     raw_las_header: Option<Header>,
 }
 
@@ -711,7 +863,7 @@ impl LASMetadata {
     }
 
     /// Returns the Extra Bytes VLR, if it exists
-    pub fn extra_bytes_vlr(&self) -> Option<&ExtraBytes> {
+    pub fn extra_bytes_vlr(&self) -> Option<&ExtraBytesVlr> {
         self.extra_bytes_vlr.as_ref()
     }
 }
@@ -920,8 +1072,8 @@ impl TryFrom<&las::Header> for LASMetadata {
         let extra_bytes_vlr = header
             .vlrs()
             .iter()
-            .find(|vlr| vlr.record_id == ExtraBytes::RECORD_ID)
-            .map(|vlr| ExtraBytes::try_from(vlr))
+            .find(|vlr| vlr.record_id == ExtraBytesVlr::RECORD_ID)
+            .map(|vlr| ExtraBytesVlr::try_from(vlr))
             .transpose()
             .context("Could not parse Extra Bytes VLR")?;
 

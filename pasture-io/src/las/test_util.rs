@@ -1,11 +1,11 @@
-use std::{ops::Range, path::PathBuf};
+use std::{borrow::Cow, ops::Range, path::PathBuf};
 
 use anyhow::Result;
 use las_rs::point::Format;
 use pasture_core::{
     containers::PointBuffer,
     containers::{OwningPointBuffer, PerAttributeVecPointStorage, PointBufferExt},
-    layout::attributes,
+    layout::{attributes, FieldAlignment, PointAttributeDataType, PointAttributeDefinition},
     math::AABB,
     nalgebra::{Point3, Vector3},
 };
@@ -18,6 +18,16 @@ use super::point_layout_from_las_point_format;
 pub(crate) fn get_test_las_path(format: u8) -> PathBuf {
     let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     test_file_path.push(format!("resources/test/10_points_format_{}.las", format));
+    test_file_path
+}
+
+/// Returns the path to a LAS test file with the given `format` and extra bytes
+pub(crate) fn get_test_las_path_with_extra_bytes(format: u8) -> PathBuf {
+    let mut test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    test_file_path.push(format!(
+        "resources/test/10_points_with_extra_bytes_format_{}.las",
+        format
+    ));
     test_file_path
 }
 
@@ -214,36 +224,13 @@ pub(crate) fn test_data_wavepacket_parameters() -> Vec<Vector3<f32>> {
     ]
 }
 
-pub(crate) fn test_data_extra_bytes_array() -> Vec<[u8; 4]> {
-    vec![
-        [0, 1, 2, 3],
-        [4, 5, 6, 7],
-        [8, 9, 10, 11],
-        [12, 13, 14, 15],
-        [16, 17, 18, 19],
-        [20, 21, 22, 23],
-        [24, 25, 26, 27],
-        [28, 29, 30, 31],
-        [32, 33, 34, 35],
-        [36, 37, 38, 39],
-    ]
-}
-
-pub(crate) fn test_data_extra_bytes_signed() -> Vec<i32> {
-    vec![0, -1, -2, -3, -4, -5, -6, -7, -8, -9]
-}
-
 pub(crate) fn test_data_extra_bytes_unsigned() -> Vec<u32> {
     vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
 
-pub(crate) fn test_data_extra_bytes_float() -> Vec<f32> {
-    vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-}
-
 pub(crate) fn compare_to_reference_data_range(
     points: &dyn PointBuffer,
-    point_format: u8,
+    point_format: Format,
     range: Range<usize>,
 ) {
     let positions = points
@@ -267,7 +254,7 @@ pub(crate) fn compare_to_reference_data_range(
     let return_numbers = points
         .iter_attribute::<u8>(&attributes::RETURN_NUMBER)
         .collect::<Vec<_>>();
-    let expected_return_numbers = if format_is_extended(point_format) {
+    let expected_return_numbers = if point_format.is_extended {
         test_data_return_numbers_extended()
     } else {
         test_data_return_numbers()
@@ -281,7 +268,7 @@ pub(crate) fn compare_to_reference_data_range(
     let number_of_returns = points
         .iter_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
         .collect::<Vec<_>>();
-    let expected_number_of_returns = if format_is_extended(point_format) {
+    let expected_number_of_returns = if point_format.is_extended {
         test_data_number_of_returns_extended()
     } else {
         test_data_number_of_returns()
@@ -292,7 +279,7 @@ pub(crate) fn compare_to_reference_data_range(
         "Number of returns do not match"
     );
 
-    if format_is_extended(point_format) {
+    if point_format.is_extended {
         let classification_flags = points
             .iter_attribute::<u8>(&attributes::CLASSIFICATION_FLAGS)
             .collect::<Vec<_>>();
@@ -339,7 +326,7 @@ pub(crate) fn compare_to_reference_data_range(
         "Classifications do not match"
     );
 
-    if point_format < 6 {
+    if !point_format.is_extended {
         let scan_angle_ranks = points
             .iter_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
             .collect::<Vec<_>>();
@@ -377,7 +364,7 @@ pub(crate) fn compare_to_reference_data_range(
         "Point source IDs do not match"
     );
 
-    if format_has_gps_times(point_format) {
+    if point_format.has_gps_time {
         let gps_times = points
             .iter_attribute::<f64>(&attributes::GPS_TIME)
             .collect::<Vec<_>>();
@@ -388,7 +375,7 @@ pub(crate) fn compare_to_reference_data_range(
         );
     }
 
-    if format_has_colors(point_format) {
+    if point_format.has_color {
         let colors = points
             .iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
             .collect::<Vec<_>>();
@@ -399,7 +386,7 @@ pub(crate) fn compare_to_reference_data_range(
         );
     }
 
-    if format_has_nir(point_format) {
+    if point_format.has_nir {
         let nirs = points
             .iter_attribute::<u16>(&attributes::NIR)
             .collect::<Vec<_>>();
@@ -410,7 +397,7 @@ pub(crate) fn compare_to_reference_data_range(
         );
     }
 
-    if format_has_wavepacket(point_format) {
+    if point_format.has_waveform {
         let wp_indices = points
             .iter_attribute::<u8>(&attributes::WAVE_PACKET_DESCRIPTOR_INDEX)
             .collect::<Vec<_>>();
@@ -444,7 +431,7 @@ pub(crate) fn compare_to_reference_data_range(
         assert_eq!(
             &test_data_wavepacket_location()[range.clone()],
             wp_return_points,
-            "WAveform return point locations do not match"
+            "Waveform return point locations do not match"
         );
 
         let wp_parameters = points
@@ -456,16 +443,37 @@ pub(crate) fn compare_to_reference_data_range(
             "Waveform parameters do not match"
         );
     }
+
+    if point_format.extra_bytes > 0 {
+        let extra_bytes = points
+            .iter_attribute::<u32>(&DEFAULT_EXTRA_BYTES_ATTRIBUTE)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            &test_data_extra_bytes_unsigned()[range.clone()],
+            extra_bytes,
+            "Extra bytes do not match"
+        );
+    }
 }
 
 /// Compare the `points` in the given `point_format` to the reference data for the format
-pub(crate) fn compare_to_reference_data(points: &dyn PointBuffer, point_format: u8) {
+pub(crate) fn compare_to_reference_data(points: &dyn PointBuffer, point_format: Format) {
     compare_to_reference_data_range(points, point_format, 0..test_data_point_count());
 }
 
-pub(crate) fn get_test_points_in_las_format(point_format: u8) -> Result<Box<dyn PointBuffer>> {
+pub(crate) const DEFAULT_EXTRA_BYTES_ATTRIBUTE: PointAttributeDefinition =
+    PointAttributeDefinition::custom(Cow::Borrowed("TestExtraBytes"), PointAttributeDataType::U32);
+
+pub(crate) fn get_test_points_in_las_format(
+    point_format: u8,
+    with_extra_bytes: bool,
+) -> Result<Box<dyn PointBuffer>> {
     let format = Format::new(point_format)?;
-    let layout = point_layout_from_las_point_format(&format, false)?;
+    let mut layout = point_layout_from_las_point_format(&format, false)?;
+    if with_extra_bytes {
+        layout.add_attribute(DEFAULT_EXTRA_BYTES_ATTRIBUTE, FieldAlignment::Packed(1));
+    }
+
     let mut buffer = PerAttributeVecPointStorage::with_capacity(10, layout);
     let mut pusher = buffer.begin_push_attributes();
     pusher.push_attribute_range(&attributes::POSITION_3D, test_data_positions().as_slice());
@@ -563,6 +571,13 @@ pub(crate) fn get_test_points_in_las_format(point_format: u8) -> Result<Box<dyn 
         pusher.push_attribute_range(
             &attributes::WAVEFORM_PARAMETERS,
             test_data_wavepacket_parameters().as_slice(),
+        );
+    }
+
+    if with_extra_bytes {
+        pusher.push_attribute_range(
+            &DEFAULT_EXTRA_BYTES_ATTRIBUTE,
+            test_data_extra_bytes_unsigned().as_slice(),
         );
     }
 
