@@ -384,7 +384,7 @@ impl From<&PointAttributeMember> for PointAttributeDefinition {
 
 /// A point attribute within a `PointType` structure. This is similar to a `PointAttributeDefinition`, but includes the
 /// offset of the member within the structure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointAttributeMember {
     name: Cow<'static, str>,
     datatype: PointAttributeDataType,
@@ -488,13 +488,13 @@ impl Display for PointAttributeMember {
     }
 }
 
-impl PartialEq for PointAttributeMember {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.datatype == other.datatype
-    }
-}
+// impl PartialEq for PointAttributeMember {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.name == other.name && self.datatype == other.datatype
+//     }
+// }
 
-impl Eq for PointAttributeMember {}
+// impl Eq for PointAttributeMember {}
 
 /// Module containing default attribute definitions
 pub mod attributes {
@@ -689,7 +689,7 @@ pub enum FieldAlignment {
 /// To support the different memory layouts, Pasture buffers store point data as raw binary buffers internally. To work with the data,
 /// you will want to use strongly typed Rust structures. Any type `T` that you want to use for accessing point data in a strongly typed manner
 /// must implement the `PointType` trait and thus provide Pasture with a way of figuring out the attributes and memory layout of this type `T`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointLayout {
     attributes: Vec<PointAttributeMember>,
     memory_layout: Layout,

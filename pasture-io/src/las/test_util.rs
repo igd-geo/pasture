@@ -38,45 +38,7 @@ pub(crate) fn get_test_laz_path(format: u8) -> PathBuf {
     test_file_path
 }
 
-pub(crate) fn format_has_gps_times(format: u8) -> bool {
-    match format {
-        1 => true,
-        3..=10 => true,
-        _ => false,
-    }
-}
-
-pub(crate) fn format_has_colors(format: u8) -> bool {
-    match format {
-        2..=3 => true,
-        5 => true,
-        7..=8 => true,
-        10 => true,
-        _ => false,
-    }
-}
-
-pub(crate) fn format_has_nir(format: u8) -> bool {
-    match format {
-        8 => true,
-        10 => true,
-        _ => false,
-    }
-}
-
-pub(crate) fn format_has_wavepacket(format: u8) -> bool {
-    match format {
-        4..=5 => true,
-        9..=10 => true,
-        _ => false,
-    }
-}
-
-fn format_is_extended(format: u8) -> bool {
-    format >= 6
-}
-
-pub(crate) fn test_data_point_count() -> usize {
+pub(crate) const fn test_data_point_count() -> usize {
     10
 }
 
