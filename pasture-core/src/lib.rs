@@ -10,13 +10,11 @@ pub extern crate nalgebra;
 extern crate self as pasture_core;
 
 pub mod containers;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 /// Defines attributes and data layout of point cloud data
 pub mod layout;
 /// Useful mathematical tools when working with point clooud data
 pub mod math;
 /// Data structures for handling point cloud metadata
 pub mod meta;
-/// Utilities
-pub mod util;
-#[cfg(feature = "gpu")]
-pub mod gpu;

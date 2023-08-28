@@ -1,4 +1,3 @@
-use crate::containers::InterleavedPointView;
 use crate::layout::conversion::get_converter_for_attributes;
 use crate::layout::{PointAttributeDefinition, PointLayout, PrimitiveType};
 use anyhow::{bail, Context, Result};
@@ -38,9 +37,6 @@ pub trait UntypedPoint {
     fn get_layout(&self) -> &PointLayout;
     // To handle byte manipulation.
     fn get_cursor(&mut self) -> Cursor<&mut [u8]>;
-    /// Gets an `InterleavedPointView` of the point.
-    /// This can help to create `PointBuffer`.
-    fn get_interleaved_point_view(&self) -> InterleavedPointView;
 }
 
 /// An implementaion of `UntypedPoint` trait that has an internal buffer.
@@ -97,10 +93,6 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
 
     fn get_cursor(&mut self) -> Cursor<&mut [u8]> {
         Cursor::new(&mut self.buffer)
-    }
-
-    fn get_interleaved_point_view(&self) -> InterleavedPointView {
-        InterleavedPointView::from_raw_slice(&self.buffer, self.layout.clone())
     }
 
     fn get_attribute<'point, T: PrimitiveType>(
@@ -264,10 +256,6 @@ impl UntypedPoint for UntypedPointSlice<'_> {
 
     fn get_cursor(&mut self) -> Cursor<&mut [u8]> {
         Cursor::new(self.slice)
-    }
-
-    fn get_interleaved_point_view(&self) -> InterleavedPointView {
-        InterleavedPointView::from_raw_slice(&self.slice, self.layout.clone())
     }
 
     fn set_attribute<T: PrimitiveType>(

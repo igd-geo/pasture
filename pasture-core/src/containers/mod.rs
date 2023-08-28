@@ -18,20 +18,14 @@
 mod point_buffer;
 pub use self::point_buffer::*;
 
-mod point_view;
-pub use self::point_view::*;
-
 mod attribute_iterators;
 pub use self::attribute_iterators::*;
 
 mod point_iterators;
 pub use self::point_iterators::*;
 
-mod vec_buffers;
-pub use self::vec_buffers::*;
-
-mod slice_buffers;
-pub use self::slice_buffers::*;
+mod buffer_views;
+pub use self::buffer_views::*;
 
 mod untyped_point;
 pub use self::untyped_point::*;

@@ -1,752 +1,1576 @@
-use std::{borrow::Cow, mem::MaybeUninit, ops::Range};
+use std::{collections::HashMap, iter::FromIterator, ops::Range};
 
-use crate::{
-    layout::{
-        conversion::get_converter_for_attributes, PointAttributeDefinition, PointLayout, PointType,
-        PrimitiveType,
-    },
-    util::view_raw_bytes,
+use crate::layout::{
+    PointAttributeDefinition, PointAttributeMember, PointLayout, PointType, PrimitiveType,
 };
 
-use super::{
-    attr1::AttributeIteratorByRef,
-    attr1::{
-        AttributeIteratorByMut, AttributeIteratorByValue, AttributeIteratorByValueWithConversion,
-    },
-    iterators::PointIteratorByMut,
-    iterators::PointIteratorByRef,
-    iterators::PointIteratorByValue,
-    InterleavedPointBufferSlice, PerAttributePointBufferSlice, PerAttributePointBufferSliceMut,
-};
+use super::buffer_views::{AttributeView, AttributeViewMut, PointView, PointViewMut};
 
-// TODO Can we maybe impl<T: PointBufferWriteable> &T and provide some push<U> methods?
-
-/// Base trait for all containers that store point data. A PointBuffer stores any number of point entries
-/// with a layout defined by the PointBuffers associated PointLayout structure.
+/// Trait for buffers that support slicing, similar to the builtin slice type
 ///
-/// Users will rarely have to work with this base trait directly as it exposes the underlying memory-unsafe
-/// API for fast point and attribute access. Instead, prefer specific PointBuffer implementations or point views!
-pub trait PointBuffer {
-    /// Get the data for a single point from this PointBuffer and store it inside the given memory region.
-    /// Panics if point_index is out of bounds. buf must be at least as big as a single point entry in the
-    /// corresponding PointLayout of this PointBuffer
-    fn get_raw_point(&self, point_index: usize, buf: &mut [u8]);
-    /// Get the data for the given attribute of a single point from this PointBuffer and store it inside the
-    /// given memory region. Panics if point_index is out of bounds or if the attribute is not part of the point_layout
-    /// of this PointBuffer. buf must be at least as big as a single attribute entry of the given attribute.
-    fn get_raw_attribute(
-        &self,
-        point_index: usize,
-        attribute: &PointAttributeDefinition,
-        buf: &mut [u8],
-    );
-    /// Get the data for a range of points from this PointBuffer and stores it inside the given memory region.
-    /// Panics if any index in index_range is out of bounds. buf must be at least as big as the size of a single
-    /// point entry in the corresponding PointLayout of this PointBuffer multiplied by the number of point indices
-    /// in index_range
-    fn get_raw_points(&self, index_range: Range<usize>, buf: &mut [u8]);
-    // Get the data for the given attribute for a range of points from this PointBuffer and stores it inside the
-    // given memory region. Panics if any index in index_range is out of bounds or if the attribute is not part of
-    // the point_layout of this PointBuffer. buf must be at least as big as the size of a single entry of the given
-    // attribute multiplied by the number of point indices in index_range.
-    fn get_raw_attribute_range(
-        &self,
-        index_range: Range<usize>,
-        attribute: &PointAttributeDefinition,
-        buf: &mut [u8],
-    );
+/// # Note
+///
+/// If there would be better support for custom DSTs, the `BufferSlice` type could be a DST and
+/// we could use the `Index` trait instead.
+pub trait SliceBuffer<'a> {
+    /// The type of the underlying buffer of the slice. For non-sliced buffers, this will typically just be `Self`,
+    /// but `BufferSlice<'a, T>` has `T` as the `UnderlyingBuffer` instead of `Self` so that nested slicing does
+    /// not result in nested types (i.e. `BufferSlice<'a, BufferSlice<'a, ...>>`)
+    type UnderlyingBuffer: BorrowedBuffer<'a> + Sized;
 
-    /// Returns the number of unique point entries stored inside this PointBuffer
+    /// Take a immutable slice to this buffer using the given `range` of points
+    ///
+    /// # Panics
+    ///
+    /// May panic if `range` is out of bounds
+    fn slice<'b>(&'b self, range: Range<usize>) -> BufferSlice<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a;
+}
+
+/// Trait for buffers that support mutable slicing
+pub trait SliceBufferMut<'a>: SliceBuffer<'a>
+where
+    Self::UnderlyingBuffer: BorrowedMutBuffer<'a>,
+{
+    /// Take a mutable slice to this buffer using the given `range` of points
+    ///
+    /// # Panics
+    ///
+    /// May panic if `range` is out of bounds
+    fn slice_mut<'b>(
+        &'b mut self,
+        range: Range<usize>,
+    ) -> BufferSliceMut<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a;
+}
+
+pub trait BorrowedBuffer<'a> {
     fn len(&self) -> usize;
-    /// Returns true if the associated `PointBuffer` is empty, i.e. it stores zero points
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    /// Returns a reference to the underlying PointLayout of this PointBuffer
     fn point_layout(&self) -> &PointLayout;
-
-    /// Try to downcast the associated `PointBuffer` into an `InterleavedPointBuffer`
-    fn as_interleaved(&self) -> Option<&dyn InterleavedPointBuffer> {
-        None
+    fn get_point(&self, index: usize, data: &mut [u8]);
+    fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
+        let attribute_member = self
+            .point_layout()
+            .get_attribute(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        // Is safe because we get the `attribute_member` from this buffer's point layout
+        unsafe {
+            self.get_attribute_unchecked(attribute_member, index, data);
+        }
     }
-
-    /// Try to downcast the associated `PointBuffer` into an `PerAttributePointBuffer`
-    fn as_per_attribute(&self) -> Option<&dyn PerAttributePointBuffer> {
-        None
-    }
-}
-
-pub trait InterleavedMutableWriteablePointBuffer:
-    InterleavedPointBufferMut + PointBufferWriteable
-{
-}
-impl<T: InterleavedPointBufferMut + PointBufferWriteable> InterleavedMutableWriteablePointBuffer
-    for T
-{
-}
-
-pub trait PerAttributeMutableWriteablePointBuffer<'a>:
-    PerAttributePointBufferMut<'a> + PointBufferWriteable
-{
-}
-impl<'a, T: PerAttributePointBufferMut<'a> + PointBufferWriteable>
-    PerAttributeMutableWriteablePointBuffer<'a> for T
-{
-}
-
-/// Trait for all mutable `PointBuffer`s, that is all `PointBuffer`s where it is possible to push points into. Distinguishing between
-/// read-only `PointBuffer` and mutable `PointBufferMut` traits enables read-only, non-owning views of a `PointBuffer` with the same interface
-/// as an owning `PointBuffer`!
-pub trait PointBufferWriteable: PointBuffer {
-    /// Sets the data for a single point within the associated `PointBufferWriteable` to the data in `buf`.
+    /// Like `get_attribute`, but performs no check whether the attribute actually is part of this buffers `PointLayout`
+    /// or not. Because of this, this function accepts a `PointAttributeMember` instead of a `PointAttributeDefinition`,
+    /// and this `PointAttributeMember` must come from the `PointLayout` of this buffer! The benefit over `get_attribute`
+    /// is that this function skips the include checks and thus will be faster if you repeatedly want to get data for a
+    /// single attribute
     ///
-    /// # Panics
+    /// # Safety
     ///
-    /// Panics if `point_index` is out of bounds or the length of `buf` does not match the size of a single point in the
-    /// `PointLayout`
-    fn set_raw_point(&mut self, point_index: usize, buf: &[u8]);
-    /// Sets the data for a single attribute of a isngle point within the associated `PointBufferWriteable` to the data in `buf`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `point_index` is out of bounds, `attribute` is not part of the `PointLayout`, or the length of `buf` does not
-    /// match the size of a single point in the `PointLayout`
-    fn set_raw_attribute(
-        &mut self,
-        point_index: usize,
-        attribute: &PointAttributeDefinition,
-        buf: &[u8],
+    /// Requires `attribute_member` to be a part of this buffer's `PointLayout`
+    unsafe fn get_attribute_unchecked(
+        &self,
+        attribute_member: &PointAttributeMember,
+        index: usize,
+        data: &mut [u8],
     );
 
-    /// Appends the given `points` to the end of the associated `PointBuffer`
-    ///
-    /// # Panics
-    ///
-    /// Panics if `points` is neither an `InterleavedPointBuffer` nor a `PerAttributePointBuffer`. *Note:* All the builtin buffers supplied by
-    /// Pasture always implement at least one of these traits, so it is always safe to call `push` with any of the builtin buffers.
-    fn push(&mut self, points: &dyn PointBuffer);
+    fn view<T: PointType>(&'a self) -> PointView<'a, Self, T>
+    where
+        Self: Sized,
+    {
+        PointView::new(self)
+    }
 
-    /// Replaces the specified `range` in the associated `PointBuffer` with the given `replace_with` buffer.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the starting point is greater than the end point or if the end point is greater than the length of the associated `PointBuffer`.
-    /// Panics if the length of `replace_with` is less than the length of `range`
-    /// Panics if `replace_with` is neither an `InterleavedPointBuffer` nor a `PerAttributePointBuffer`. *Note:* All the builtin buffers supplied by
-    /// Pasture always implement at least one of these traits, so it is always safe to call `splice` with any of the builtin buffers.
-    fn splice(&mut self, range: Range<usize>, replace_with: &dyn PointBuffer);
+    fn view_attribute<T: PrimitiveType>(
+        &'a self,
+        attribute: &PointAttributeDefinition,
+    ) -> AttributeView<'a, Self, T>
+    where
+        Self: Sized,
+    {
+        AttributeView::new(self, attribute)
+    }
+}
 
-    /// Clears the contents of the associated `PointBufferMut`
+pub trait BorrowedMutBuffer<'a>: BorrowedBuffer<'a> {
+    fn set_point(&mut self, index: usize, point_data: &[u8]);
+    fn set_attribute(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+        attribute_data: &[u8],
+    );
+    fn swap(&mut self, from_index: usize, to_index: usize);
+
+    fn view_mut<T: PointType>(&'a mut self) -> PointViewMut<'a, Self, T>
+    where
+        Self: Sized,
+    {
+        PointViewMut::new(self)
+    }
+
+    fn view_attribute_mut<T: PrimitiveType>(
+        &'a mut self,
+        attribute: &PointAttributeDefinition,
+    ) -> AttributeViewMut<'a, Self, T>
+    where
+        Self: Sized,
+    {
+        AttributeViewMut::new(self, attribute)
+    }
+}
+
+pub trait OwningBuffer<'a>: BorrowedMutBuffer<'a> + Sized {
+    fn push_point(&mut self, point_bytes: &[u8]);
+    fn extend(&mut self, many_point_bytes: &[u8]);
+    fn resize(&mut self, count: usize);
     fn clear(&mut self);
-
-    /// Resizes this buffer to the given number of `new_points`. This will trim the buffer if `new_points` is smaller
-    /// than the current number of points, or create default-initialized points if `new_points` is larger.
-    fn resize(&mut self, new_points: usize);
-
-    /// Try to downcast the associated `PointBuffer` into an `InterleavedPointBufferMut`
-    fn as_interleaved_mut(&mut self) -> Option<&mut dyn InterleavedMutableWriteablePointBuffer> {
-        None
-    }
-
-    /// Try to downcast the associated `PointBuffer` into an `PerAttributePointBufferMut`
-    fn as_per_attribute_mut(&mut self) -> Option<&mut dyn PerAttributeMutableWriteablePointBuffer> {
-        None
-    }
 }
 
-/// Trait for `PointBuffer` types that store point data in Interleaved memory layout. In an `InterleavedPointBuffer`, all attributes
-/// for a single point are stored together in memory. To illustrate this, suppose the `PointLayout` of some point
-/// type defines the default attributes `POSITION_3D` (`Vector3<f64>`), `INTENSITY` (`u16`) and `CLASSIFICATION` (`u8`). In
-/// an `InterleavedPointBuffer`, the data layout is like this:<br>
-/// `[Vector3<f64>, u16, u8, Vector3<f64>, u16, u8, ...]`<br>
-/// ` |------Point 1-------| |------Point 2-------| |--...`<br>
-pub trait InterleavedPointBuffer: PointBuffer {
-    /// Returns a pointer to the raw memory of the point entry at the given index in this PointBuffer. In contrast
-    /// to [get_raw_point](PointBuffer::get_raw_point), this function performs no copy operations and thus can
-    /// yield better performance. Panics if point_index is out of bounds.
-    fn get_raw_point_ref(&self, point_index: usize) -> &[u8];
-    /// Returns a pointer to the raw memory of a range of point entries in this PointBuffer. In contrast to
-    /// [get_raw_point](PointBuffer::get_raw_point), this function performs no copy operations and thus can
-    /// yield better performance. Panics if any index in index_range is out of bounds.
-    fn get_raw_points_ref(&self, index_range: Range<usize>) -> &[u8];
-    /// Returns a read-only slice of the associated `InterleavedPointBuffer`
-    fn slice(&self, range: Range<usize>) -> InterleavedPointBufferSlice<'_>;
+pub trait InterleavedBuffer<'a>: BorrowedBuffer<'a> {
+    fn get_point_ref(&'a self, index: usize) -> &'a [u8];
+    fn get_point_range_ref(&'a self, range: Range<usize>) -> &'a [u8];
 }
 
-/// Trait for `InterleavedPointBuffer` types that provide mutable access to the point data
-pub trait InterleavedPointBufferMut: InterleavedPointBuffer {
-    /// Mutable version of [get_raw_point_ref](InterleavedPointBuffer::get_raw_point_ref)
-    fn get_raw_point_mut(&mut self, point_index: usize) -> &mut [u8];
-    /// Mutable version of [get_raw_points_ref](InterleavedPointBuffer::get_raw_points_ref)
-    fn get_raw_points_mut(&mut self, index_range: Range<usize>) -> &mut [u8];
+pub trait InterleavedBufferMut<'a>: InterleavedBuffer<'a> + BorrowedMutBuffer<'a> {
+    fn get_point_mut(&'a mut self, index: usize) -> &'a mut [u8];
+    fn get_point_range_mut(&'a mut self, range: Range<usize>) -> &'a mut [u8];
 }
 
-/// Trait for `PointBuffer` types that store point data in PerAttribute memory layout. In buffers of this type, the data for a single
-/// attribute of all points in stored together in memory. To illustrate this, suppose the `PointLayout` of some point
-/// type defines the default attributes `POSITION_3D` (`Vector3<f64>`), `INTENSITY` (`u16`) and `CLASSIFICATION` (`u8`). In
-/// a `PerAttributePointBuffer`, the data layout is like this:<br>
-/// `[Vector3<f64>, Vector3<f64>, Vector3<f64>, ...]`<br>
-/// `[u16, u16, u16, ...]`<br>
-/// `[u8, u8, u8, ...]`<br>
-pub trait PerAttributePointBuffer: PointBuffer {
-    /// Returns a pointer to the raw memory for the attribute entry of the given point in this PointBuffer. In contrast
-    /// to [get_raw_attribute](PointBuffer::get_raw_attribute), this function performs no copy operations and
-    /// thus can yield better performance. Panics if point_index is out of bounds or if the attribute is not part of
-    /// the point_layout of this PointBuffer.
-    fn get_raw_attribute_ref(
-        &self,
-        point_index: usize,
+pub trait ColumnarBuffer<'a>: BorrowedBuffer<'a> {
+    fn get_attribute_ref(&'a self, attribute: &PointAttributeDefinition, index: usize) -> &'a [u8];
+    fn get_attribute_range_ref(
+        &'a self,
         attribute: &PointAttributeDefinition,
-    ) -> &[u8];
-    /// Returns a pointer to the raw memory for the given attribute of a range of points in this PointBuffer. In contrast
-    /// to [get_raw_attribute_range](PointBuffer::get_raw_attribute_range), this function performs no copy operations
-    /// and thus can yield better performance. Panics if any index in index_range is out of bounds or if the attribute is
-    /// not part of the point_layout of this PointBuffer.
-    fn get_raw_attribute_range_ref(
-        &self,
-        index_range: Range<usize>,
-        attribute: &PointAttributeDefinition,
-    ) -> &[u8];
-
-    /// Returns a read-only slice of the associated `PerAttributePointBuffer`
-    fn slice(&self, range: Range<usize>) -> PerAttributePointBufferSlice<'_>;
+        range: Range<usize>,
+    ) -> &'a [u8];
 }
 
-/// Trait for `PerAttributePointBuffer` types that provide mutable access to specific attributes
-pub trait PerAttributePointBufferMut<'a>: PerAttributePointBuffer {
-    /// Mutable version of [get_raw_attribute_ref](PerAttributePointBuffer::get_raw_attribute_ref)
-    fn get_raw_attribute_mut(
-        &mut self,
-        point_index: usize,
-        attribute: &PointAttributeDefinition,
-    ) -> &mut [u8];
-    /// Mutable version of [get_raw_attribute_range_ref](PerAttributePointBuffer::get_raw_attribute_range_ref)
-    fn get_raw_attribute_range_mut(
-        &mut self,
-        index_range: Range<usize>,
-        attribute: &PointAttributeDefinition,
-    ) -> &mut [u8];
-
-    /// Sets the data for an attribute a range of points within the associated `PointBufferWriteable` to the data in `buf`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index_range` is out of bounds, `attribute` is not part of the `PointLayout`, or the length of `buf` does not
-    /// match the size of the range of attributes in the `PointLayout`
-    fn set_raw_attribute_range(
-        &mut self,
-        index_range: Range<usize>,
-        attribute: &PointAttributeDefinition,
-        buf: &[u8],
-    );
-    /// Returns a mutable slice of the associated `PerAttributePointBufferMut`
-    fn slice_mut(&'a mut self, range: Range<usize>) -> PerAttributePointBufferSliceMut<'a>;
-
-    /// Splits the associated `PerAttributePointBufferMut` into multiple disjoint mutable slices, based on the given disjoint `ranges`. This
-    /// function is similar to Vec::split_as_mut, but can split into more than two regions.
-    ///
-    /// # Note
-    ///
-    /// The lifetime bounds seem a bit weird for this function, but they are necessary. The lifetime of this `'b` of this trait determines
-    /// how long the underlying buffer (i.e. whatever stores the point data) lives. The lifetime `'p` of this function enables nested
-    /// slicing of buffers, because it is bounded to live *at most* as long as `'b`. If `'b` and `'p` were a single lifetime, then it would
-    /// require that any buffer *reference* from which we want to obtain a slice lives as long as the buffer itself. This is restrictive in
-    /// a way that is not necessary. Consider the following scenario in pseudo-code, annotated with lifetimes:
-    ///
-    /// ```ignore
-    /// 'x: {
-    /// // Assume 'buffer' contains some data
-    /// let mut buffer : PerAttributeVecPointStorage = ...;
-    ///     'y: {
-    ///         // Obtain two slices to the lower and upper half of the buffer
-    ///         let mut half_slices = buffer.disjunct_slices_mut(&[0..(buffer.len()/2), (buffer.len()/2)..buffer.len()]);
-    ///         // ... do something with the slices ...
-    ///         'z: {
-    ///             // Split the half slices in half again
-    ///             let quarter_len = buffer.len() / 4;
-    ///             let half_len = buffer.len() / 2;
-    ///             let mut lower_quarter_slices = half_slices[0].disjunct_slices_mut(&[0..quarter_len, quarter_len..half_len]);
-    ///         }
-    ///     }
-    /// }
-    /// ```
-    /// In this scenario, `buffer` lives for `'x`, while `half_slices` only lives for `'y`. The underlying data in `half_slices` however lives
-    /// as long as `buffer`. The separate lifetime bound `'p` on this function is what allows calling `disjunct_slices_mut` on `half_slices[0]`,
-    /// even though `half_slices` only lives for `'y`.
-    ///
-    /// # Panics
-    ///
-    /// If any two ranges in `ranges` overlap, or if any range in `ranges` is out of bounds
-    fn disjunct_slices_mut(
+pub trait ColumnarBufferMut<'a>: ColumnarBuffer<'a> + BorrowedMutBuffer<'a> {
+    fn get_attribute_mut(
         &'a mut self,
-        ranges: &[Range<usize>],
-    ) -> Vec<PerAttributePointBufferSliceMut<'a>>;
-
-    /// Helper method to access this `PerAttributePointBufferMut` as a `PerAttributePointBuffer`
-    fn as_per_attribute_point_buffer(&self) -> &dyn PerAttributePointBuffer;
+        attribute: &PointAttributeDefinition,
+        index: usize,
+    ) -> &'a mut [u8];
+    fn get_attribute_range_mut(
+        &'a mut self,
+        attribute: &PointAttributeDefinition,
+        range: Range<usize>,
+    ) -> &'a mut [u8];
 }
 
-/// Trait for all point buffers that own their memory and hence can be constructed using a `PointLayout` and potentially a capacity. This
-/// trait enables writing generic code that creates new `PointBuffer`s without knowing their specific type
-pub trait OwningPointBuffer: PointBuffer + Sized {
-    /// Creates a new empty `PointBuffer` with the given `PointLayout`
-    fn new(point_layout: PointLayout) -> Self;
-    /// Creates a new empty `PointBuffer` with enough pre-allocated memory to store `capacity` points with the given `PointLayout`
-    fn with_capacity(capacity: usize, point_layout: PointLayout) -> Self;
+/**
+ * Now we have a handful of specific buffer types:
+ * - VectorBuffer (which is Owning + Interleaved)
+ * - HashMapBuffer (which is Owning + Columnar)
+ * - ExternalMemoryBuffer (?)
+ * - Slice<'a, T: BorrowedBuffer<'a>> (which is Borrowed and has dependent implementations if T is interleaved and/or columnar)
+ * - SliceMut<'a, T: BorrowedMutBuffer<'a>> (which is BorrowedMut and again has dependent implementations)
+ *
+ * And some view types for typed access to the data:
+ * - PointView<'a, T: PointType, U: BorrowedBuffer<'a>> (which is NOT a point buffer but instead a typed view with specific methods)
+ * - PointViewRef<'a, T: PointType, U: InterleavedBuffer<'a>>
+ * - PointViewMut<'a, T: PointType: U: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>>
+ * - AttributeView<'a, T: PrimitiveType, U: BorrowedBuffer<'a>> (which is NOT a point buffer but instead a typed view of a single specific attribute)
+ * - AttributeViewRef<'a, T: PrimitiveType, U: ColumnarBuffer<'a>>
+ * - AttributeViewMut<'a, T: PrimitiveType, U: ColumnarBuffer<'a> + BorrowedMutBuffer<'a>>
+ */
+
+pub struct VectorBuffer {
+    storage: Vec<u8>,
+    point_layout: PointLayout,
 }
 
-/// Extension trait that provides generic methods for accessing point data in a `PointBuffer`
-pub trait PointBufferExt<B: PointBuffer + ?Sized> {
-    /// Returns the point at `index` from the associated `PointBuffer`, strongly typed to the `PointType` `T`
-    fn get_point<T: PointType>(&self, index: usize) -> T;
-    /// Returns the given `attribute` for the point at `index` from the associated `PointBuffer`, strongly typed to the `PrimitiveType` `T`
-    fn get_attribute<T: PrimitiveType>(
+impl VectorBuffer {
+    pub fn new(point_layout: PointLayout) -> Self {
+        Self {
+            point_layout,
+            storage: Default::default(),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize, point_layout: PointLayout) -> Self {
+        let required_bytes = capacity * point_layout.size_of_point_entry() as usize;
+        Self {
+            point_layout,
+            storage: Vec::with_capacity(required_bytes),
+        }
+    }
+
+    fn get_byte_range_of_point(&self, point_index: usize) -> Range<usize> {
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        (point_index * size_of_point)..((point_index + 1) * size_of_point)
+    }
+
+    fn get_byte_range_of_points(&self, points_range: Range<usize>) -> Range<usize> {
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        (points_range.start * size_of_point)..(points_range.end * size_of_point)
+    }
+
+    fn get_byte_range_of_attribute(
         &self,
-        attribute: &PointAttributeDefinition,
-        index: usize,
-    ) -> T;
-
-    /// Returns an iterator over all points in the associated `PointBuffer`, strongly typed to the `PointType` `T`
-    fn iter_point<T: PointType>(&self) -> PointIteratorByValue<'_, T, B>;
-    /// Returns an iterator over the given `attribute` of all points in the associated `PointBuffer`, strongly typed to the `PrimitiveType` `T`.
-    ///
-    /// For iterating over multiple attributes at once, use the [attributes!] macro.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.<br>
-    /// Panics if the data type of `attribute` inside the associated `PointBuffer` is not equal to `T`. If you want a conversion, use `iter_attribute_as`.
-    fn iter_attribute<'a, T: PrimitiveType>(
-        &'a self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByValue<'a, T, B>;
-    /// Returns an iterator over the given `attribute` of all points in the associated `PointBuffer`, converted to the `PrimitiveType` `T`. This iterator
-    /// supports conversion of types, so it works even if the `attribute` inside the buffer is stored as some other type `U`, as long as there is a valid
-    /// conversion from `U` to `T`. Regarding conversions, see the [conversions module](crate::layout::conversion).
-    ///
-    /// For iterating over multiple attributes at once, use the [attributes!] macro.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.<br>
-    /// Panics if no valid conversion exists from the type that the attribute is stored as inside the buffer into type `T`.
-    fn iter_attribute_as<'a, T: PrimitiveType>(
-        &'a self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByValueWithConversion<'a, T, B>;
+        point_index: usize,
+        attribute: &PointAttributeMember,
+    ) -> Range<usize> {
+        let start_byte = (point_index * self.point_layout.size_of_point_entry() as usize)
+            + attribute.offset() as usize;
+        let end_byte = start_byte + attribute.size() as usize;
+        start_byte..end_byte
+    }
 }
 
-impl<B: PointBuffer + ?Sized> PointBufferExt<B> for B {
-    fn get_point<T: PointType>(&self, index: usize) -> T {
-        let mut point = MaybeUninit::<T>::uninit();
-        unsafe {
-            self.get_raw_point(
-                index,
-                std::slice::from_raw_parts_mut(
-                    point.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T>(),
-                ),
-            );
-            point.assume_init()
-        }
+impl<'a> BorrowedBuffer<'a> for VectorBuffer
+where
+    VectorBuffer: 'a,
+{
+    fn len(&self) -> usize {
+        self.storage.len() / self.point_layout.size_of_point_entry() as usize
     }
 
-    fn get_attribute<T: PrimitiveType>(
+    fn point_layout(&self) -> &PointLayout {
+        &self.point_layout
+    }
+
+    fn get_point(&self, index: usize, data: &mut [u8]) {
+        let point_ref = self.get_point_ref(index);
+        data.copy_from_slice(point_ref);
+    }
+
+    unsafe fn get_attribute_unchecked(
         &self,
+        attribute_member: &PointAttributeMember,
+        index: usize,
+        data: &mut [u8],
+    ) {
+        let byte_range = self.get_byte_range_of_attribute(index, attribute_member);
+        data.copy_from_slice(&self.storage[byte_range]);
+    }
+}
+
+impl<'a> BorrowedMutBuffer<'a> for VectorBuffer
+where
+    VectorBuffer: 'a,
+{
+    fn set_point(&mut self, index: usize, point_data: &[u8]) {
+        let point_bytes = self.get_point_mut(index);
+        point_bytes.copy_from_slice(point_data);
+    }
+
+    fn set_attribute(
+        &mut self,
         attribute: &PointAttributeDefinition,
         index: usize,
-    ) -> T {
-        let mut attribute_data = MaybeUninit::<T>::uninit();
+        attribute_data: &[u8],
+    ) {
+        let attribute_member = self
+            .point_layout
+            .get_attribute(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        let attribute_byte_range = self.get_byte_range_of_attribute(index, attribute_member);
+        let attribute_bytes = &mut self.storage[attribute_byte_range];
+        attribute_bytes.copy_from_slice(attribute_data);
+    }
+
+    fn swap(&mut self, from_index: usize, to_index: usize) {
+        assert!(from_index < self.len());
+        assert!(to_index < self.len());
+        if from_index == to_index {
+            return;
+        }
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        // Is safe as long as 'from_index' and 'to_index' are not out of bounds, which is asserted
         unsafe {
-            self.get_raw_attribute(
-                index,
-                attribute,
-                std::slice::from_raw_parts_mut(
-                    attribute_data.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T>(),
-                ),
-            );
-            attribute_data.assume_init()
+            let from_ptr = self.storage.as_mut_ptr().add(from_index * size_of_point);
+            let to_ptr = self.storage.as_mut_ptr().add(to_index * size_of_point);
+            std::ptr::swap_nonoverlapping(from_ptr, to_ptr, size_of_point);
         }
-    }
-
-    fn iter_point<T: PointType>(&self) -> PointIteratorByValue<'_, T, B> {
-        PointIteratorByValue::new(self)
-    }
-
-    fn iter_attribute<'a, T: PrimitiveType>(
-        &'a self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByValue<'a, T, B> {
-        AttributeIteratorByValue::new(self, attribute)
-    }
-
-    fn iter_attribute_as<'a, T: PrimitiveType>(
-        &'a self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByValueWithConversion<'a, T, B> {
-        AttributeIteratorByValueWithConversion::new(self, attribute)
     }
 }
 
-/// Extension trait that provides generic methods for manipulating point and attribute data in a `PointBufferWriteable`
-pub trait PointBufferWriteableExt<B: PointBufferWriteable + ?Sized> {
-    /// Sets the point at the given index to the given `point`, strongly typed to the `PointType` `T`.
-    /// # Panics
-    /// If the `PointLayout` of `T` does not match the `PointLayout` of this buffer.
-    /// If `index` is out of bounds.
-    fn set_point<T: PointType>(&mut self, index: usize, point: T);
-    /// Sets the given `attribute` at the given index to the given `attribute_value`, strongly typed to the `PrimitiveType` `T`
-    /// # Panics
-    /// If the `PointLayout` of this buffer does not contain the given `attribute`.
-    /// If the `PointAttributeDataType` of `attribute` does not match the type `T`.
-    /// If `index` is out of bounds.
-    fn set_attribute<T: PrimitiveType>(
-        &mut self,
-        attribute: &PointAttributeDefinition,
-        index: usize,
-        attribute_value: T,
-    );
+impl<'a> OwningBuffer<'a> for VectorBuffer
+where
+    VectorBuffer: 'a,
+{
+    fn push_point(&mut self, point_bytes: &[u8]) {
+        assert_eq!(
+            point_bytes.len(),
+            self.point_layout.size_of_point_entry() as usize
+        );
+        self.storage.extend_from_slice(point_bytes);
+    }
 
-    /// Applies the given transformation `func` to all values of the attribute with the given `attribute_name` in the buffer. The function gets a mutable
-    /// borrow to the attribute value, through which the attribute value can be manipulated in-place. This is an easier alternative
-    /// to calling `get_attribute` and `set_attribute` in a loop.
-    /// **This method also performs data type conversions!** So e.g. if the underlying `PointBuffer` stores a POSITION_3D attribute as
-    /// `Vector3<f32>`, you can call this method with a function accepting e.g. `Vector3<f64>` and the data will be converted internally
-    /// using the default conversion (see `layout/conversion.rs` for more information on conversions).
-    /// # Panics
-    /// If no attribute with the name of `attribute` is present in this buffer.
-    /// If no conversion between type `T` and the underlying data type of the `attribute` in this buffer can be performed.
-    /// # Examples
-    /// ```
-    /// # use pasture_core::containers::*;
-    /// # use pasture_core::layout::*;
-    /// # use pasture_derive::PointType;
-    ///
-    /// #[repr(C)]
-    /// #[derive(PointType, Debug, PartialEq, Eq)]
-    /// struct MyPointType(#[pasture(BUILTIN_INTENSITY)] u16);
-    ///
-    /// {
-    ///   let mut storage = PerAttributeVecPointStorage::new(MyPointType::layout());
-    ///   storage.push_points(&[MyPointType(42), MyPointType(43)]);
-    ///   storage.transform_attribute(attributes::INTENSITY.name(), |_index, intensity: &mut u16| {
-    ///     *intensity *= 2;
-    ///   });
-    ///   assert_eq!(MyPointType(84), storage.get_point::<MyPointType>(0));
-    ///   assert_eq!(MyPointType(86), storage.get_point::<MyPointType>(1));
-    /// }
-    /// ```
-    fn transform_attribute<T: PrimitiveType, F: Fn(usize, &mut T) -> ()>(
-        &mut self,
-        attribute_name: &'static str,
-        func: F,
-    );
+    fn extend(&mut self, many_point_bytes: &[u8]) {
+        assert!(many_point_bytes.len() % self.point_layout.size_of_point_entry() as usize == 0);
+        self.storage.extend_from_slice(many_point_bytes);
+    }
+
+    fn resize(&mut self, count: usize) {
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        self.storage.resize(count * size_of_point, 0);
+    }
+
+    fn clear(&mut self) {
+        self.storage.clear();
+    }
 }
 
-impl<B: PointBufferWriteable + ?Sized> PointBufferWriteableExt<B> for B {
-    fn set_point<T: PointType>(&mut self, index: usize, point: T) {
-        if T::layout() != *self.point_layout() {
-            panic!("PointLayout of type T does not match PointLayout of this buffer");
+impl<'a> InterleavedBuffer<'a> for VectorBuffer
+where
+    VectorBuffer: 'a,
+{
+    fn get_point_ref(&'a self, index: usize) -> &'a [u8] {
+        &self.storage[self.get_byte_range_of_point(index)]
+    }
+
+    fn get_point_range_ref(&'a self, range: Range<usize>) -> &'a [u8] {
+        &self.storage[self.get_byte_range_of_points(range)]
+    }
+}
+
+impl<'a> InterleavedBufferMut<'a> for VectorBuffer
+where
+    VectorBuffer: 'a,
+{
+    fn get_point_mut(&'a mut self, index: usize) -> &'a mut [u8] {
+        let byte_range = self.get_byte_range_of_point(index);
+        &mut self.storage[byte_range]
+    }
+
+    fn get_point_range_mut(&'a mut self, range: Range<usize>) -> &'a mut [u8] {
+        let byte_range = self.get_byte_range_of_points(range);
+        &mut self.storage[byte_range]
+    }
+}
+
+impl<'a> SliceBuffer<'a> for VectorBuffer
+where
+    VectorBuffer: 'a,
+{
+    type UnderlyingBuffer = Self;
+
+    fn slice<'b>(&'b self, range: Range<usize>) -> BufferSlice<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        BufferSlice {
+            buffer: self,
+            point_range: range,
         }
-        let point_bytes = unsafe { view_raw_bytes(&point) };
-        self.set_raw_point(index, point_bytes);
     }
+}
 
-    fn set_attribute<T: PrimitiveType>(
-        &mut self,
-        attribute: &PointAttributeDefinition,
-        index: usize,
-        attribute_value: T,
-    ) {
-        let attribute_bytes = unsafe { view_raw_bytes(&attribute_value) };
-        self.set_raw_attribute(index, attribute, attribute_bytes);
+impl<'a> SliceBufferMut<'a> for VectorBuffer
+where
+    VectorBuffer: 'a,
+{
+    fn slice_mut<'b>(
+        &'b mut self,
+        range: Range<usize>,
+    ) -> BufferSliceMut<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        BufferSliceMut {
+            buffer: self,
+            point_range: range,
+        }
     }
+}
 
-    fn transform_attribute<T: PrimitiveType, F: Fn(usize, &mut T) -> ()>(
-        &mut self,
-        attribute_name: &'static str,
-        func: F,
-    ) {
-        let source_attribute =
-            PointAttributeDefinition::custom(Cow::Borrowed(attribute_name), T::data_type());
-        if let Some(target_attribute) = self.point_layout().get_attribute_by_name(attribute_name) {
-            // It is important that we use 'set_attribute' and 'get_attribute' here. This is the blanket implementation
-            // of 'transform_attribute', so it makes no assumptions on the memory layout of the point data. Since the
-            // attribute data might not be properly aligned, we can't get a mutable reference to the attribute value inside
-            // the buffer, since reading from such a reference will be UB. Only if the buffer is a PerAttribute buffer could
-            // we do this. Unfortunately, we can't implement the trait again for a more specific type, so we would have to
-            // do the test if the underlying buffer is PerAttribute here using a virtual call. We could implement this in
-            // the future, for now it is left here as a TODO
-            if target_attribute.datatype() == source_attribute.datatype() {
-                for point_index in 0..self.len() {
-                    let mut attribute_value: T = self.get_attribute(&source_attribute, point_index);
-                    func(point_index, &mut attribute_value);
-                    self.set_attribute(&source_attribute, point_index, attribute_value);
-                }
-            } else {
-                // If the datatypes are different, we have to convert from and to the target datatype
-                let target_attribute_definition: PointAttributeDefinition = target_attribute.into();
-                if let (Some(convert_to_t), Some(convert_from_t)) = (
-                    get_converter_for_attributes(&target_attribute_definition, &source_attribute),
-                    get_converter_for_attributes(&source_attribute, &target_attribute_definition),
-                ) {
-                    // The following code is a bit involved. Assume that 'U' is the type of the attribute stored in
-                    // the buffer (but we don't know this type at compile-time). Then the process is as follows:
-                    // 1) Get the raw bytes for the value 'U'
-                    // 2) Create a temporary variable of type 'T'
-                    // 3) Convert from 'U' to 'T'
-                    // 4) Apply the transformation function to the 'T' value
-                    // 5) Convert from 'T' to 'U'
-                    // 6) Set the raw bytes of 'U' in the buffer
-                    let mut buffer = vec![0; target_attribute_definition.size() as usize];
-                    for point_index in 0..self.len() {
-                        self.get_raw_attribute(
-                            point_index,
-                            &target_attribute_definition,
-                            buffer.as_mut_slice(),
-                        );
-
-                        let mut as_t = MaybeUninit::<T>::uninit();
-                        let mut as_t = unsafe {
-                            let tmp_value_bytes = std::slice::from_raw_parts_mut(
-                                as_t.as_mut_ptr() as *mut u8,
-                                std::mem::size_of::<T>(),
-                            );
-                            convert_to_t(buffer.as_slice(), tmp_value_bytes);
-                            as_t.assume_init()
-                        };
-
-                        func(point_index, &mut as_t);
-
-                        unsafe {
-                            convert_from_t(view_raw_bytes(&as_t), buffer.as_mut_slice());
-                        }
-
-                        self.set_raw_attribute(
-                            point_index,
-                            &target_attribute_definition,
-                            buffer.as_slice(),
-                        );
-                    }
-                } else {
-                    panic!("No conversion possible between requested attribute {} and attribute in buffer {}", source_attribute, target_attribute_definition);
-                }
-            }
+impl<T: PointType> FromIterator<T> for VectorBuffer {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let point_layout = T::layout();
+        let iter = iter.into_iter();
+        let (_, maybe_known_length) = iter.size_hint();
+        if let Some(known_length) = maybe_known_length {
+            let num_bytes = known_length * point_layout.size_of_point_entry() as usize;
+            let storage = vec![0; num_bytes];
+            let mut buffer = Self {
+                point_layout,
+                storage,
+            };
+            // Overwrite the preallocated memory of the buffer with the points in the iterator:
+            iter.enumerate().for_each(|(index, point)| {
+                let point_bytes = bytemuck::bytes_of(&point);
+                buffer.set_point(index, point_bytes);
+            });
+            buffer
         } else {
-            panic!("attribute not found in PointLayout of this buffer");
+            let mut buffer = Self {
+                point_layout,
+                storage: Default::default(),
+            };
+            iter.for_each(|point| {
+                let point_bytes = bytemuck::bytes_of(&point);
+                buffer.push_point(point_bytes);
+            });
+            buffer
         }
     }
 }
 
-/// Extension trait that provides generic methods for accessing point data in an `InterleavedPointBuffer`
-pub trait InterleavedPointBufferExt {
-    /// Returns a reference to the point at `point_index` from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if `point_index` is >= `self.len()`
-    fn get_point_ref<T: PointType>(&self, point_index: usize) -> &T;
-    /// Returns a reference to the given `range` of points from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
-    fn get_points_ref<T: PointType>(&self, range: Range<usize>) -> &[T];
-    /// Returns an iterator over references to all points within the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if the associated `InterleavedPointBuffer` does not store points with type `T`
-    fn iter_point_ref<T: PointType>(&self) -> PointIteratorByRef<'_, T>;
+pub struct HashMapBuffer {
+    attributes_storage: HashMap<PointAttributeDefinition, Vec<u8>>,
+    point_layout: PointLayout,
+    length: usize,
 }
 
-impl<B: InterleavedPointBuffer + ?Sized> InterleavedPointBufferExt for B {
-    fn get_point_ref<T: PointType>(&self, point_index: usize) -> &T {
-        let raw_point = self.get_raw_point_ref(point_index);
-        unsafe {
-            let ptr = raw_point.as_ptr() as *const T;
-            ptr.as_ref().expect("raw_point pointer was null")
+impl HashMapBuffer {
+    /// Creates a new empty `HashMapBuffer` from the given `PointLayout`
+    pub fn new(point_layout: PointLayout) -> Self {
+        let attributes_storage = point_layout
+            .attributes()
+            .map(|attribute| (attribute.attribute_definition().clone(), Vec::default()))
+            .collect();
+        Self {
+            attributes_storage,
+            point_layout,
+            length: 0,
         }
     }
 
-    fn get_points_ref<T: PointType>(&self, range: Range<usize>) -> &[T] {
-        let num_points = range.len();
-        let raw_points = self.get_raw_points_ref(range);
-        unsafe { std::slice::from_raw_parts(raw_points.as_ptr() as *const T, num_points) }
-    }
-
-    fn iter_point_ref<T: PointType>(&self) -> PointIteratorByRef<'_, T> {
-        PointIteratorByRef::new(self)
-    }
-}
-
-/// Extension trait that provides generic methods for accessing point data in an `InterleavedPointBufferMut`
-pub trait InterleavedPointBufferMutExt {
-    /// Returns a mutable reference to the point at `point_index` from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if `point_index` is >= `self.len()`
-    fn get_point_mut<T: PointType>(&mut self, point_index: usize) -> &mut T;
-    /// Returns a mutable reference to the given `range` of points from the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
-    fn get_points_mut<T: PointType>(&mut self, range: Range<usize>) -> &mut [T];
-    /// Returns an iterator over mutable references to all points within the associated `InterleavedPointBuffer`, strongly typed to the `PointType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if the associated `InterleavedPointBuffer` does not store points with type `T`
-    fn iter_point_mut<T: PointType>(&mut self) -> PointIteratorByMut<'_, T>;
-}
-
-impl<B: InterleavedPointBufferMut + ?Sized> InterleavedPointBufferMutExt for B {
-    fn get_point_mut<T: PointType>(&mut self, point_index: usize) -> &mut T {
-        let raw_point = self.get_raw_point_mut(point_index);
-        unsafe {
-            let ptr = raw_point.as_ptr() as *mut T;
-            ptr.as_mut().expect("raw_point pointer was null")
+    pub fn with_capacity(capacity: usize, point_layout: PointLayout) -> Self {
+        let attributes_storage = point_layout
+            .attributes()
+            .map(|attribute| {
+                let bytes_for_attribute = capacity * attribute.size() as usize;
+                (
+                    attribute.attribute_definition().clone(),
+                    Vec::with_capacity(bytes_for_attribute),
+                )
+            })
+            .collect();
+        Self {
+            attributes_storage,
+            point_layout,
+            length: 0,
         }
     }
 
-    fn get_points_mut<T: PointType>(&mut self, range: Range<usize>) -> &mut [T] {
-        let num_points = range.len();
-        let raw_points = self.get_raw_points_mut(range);
-        unsafe { std::slice::from_raw_parts_mut(raw_points.as_ptr() as *mut T, num_points) }
-    }
-
-    fn iter_point_mut<T: PointType>(&mut self) -> PointIteratorByMut<'_, T> {
-        PointIteratorByMut::new(self)
-    }
-}
-
-/// Extension trait that provides generic methods for accessing attribute data in an `PerAttributePointBuffer`
-pub trait PerAttributePointBufferExt {
-    /// Returns a reference to the given `attribute` of the point at `point_index` in the associated `PerAttributePointBuffer`, strongly typed to the `PrimitiveType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
-    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
-    /// Panics if `point_index` is >= `self.len()`
-    fn get_attribute_ref<T: PrimitiveType>(
-        &self,
+    fn get_byte_range_for_attribute(
         point_index: usize,
         attribute: &PointAttributeDefinition,
-    ) -> &T;
-    /// Returns a reference to the `attribute` for the `range` of points in the associated `PerAttributePointBuffer`, strongly typed to the `PrimitiveType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
-    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
-    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
-    fn get_attribute_range_ref<T: PrimitiveType>(
-        &self,
-        range: Range<usize>,
+    ) -> Range<usize> {
+        let attribute_size = attribute.size() as usize;
+        (point_index * attribute_size)..((point_index + 1) * attribute_size)
+    }
+
+    fn get_byte_range_for_attributes(
+        points_range: Range<usize>,
         attribute: &PointAttributeDefinition,
-    ) -> &[T];
-    /// Returns an iterator over references to the given `attribute` for all points in the associated `PerAttributePointBuffer`, strongly typed to the `PrimitiveType` `T`
-    fn iter_attribute_ref<'a, T: PrimitiveType>(
+    ) -> Range<usize> {
+        let attribute_size = attribute.size() as usize;
+        (points_range.start * attribute_size)..(points_range.end * attribute_size)
+    }
+}
+
+impl<'a> BorrowedBuffer<'a> for HashMapBuffer
+where
+    HashMapBuffer: 'a,
+{
+    fn len(&self) -> usize {
+        self.length
+    }
+
+    fn point_layout(&self) -> &PointLayout {
+        &self.point_layout
+    }
+
+    fn get_point(&self, index: usize, data: &mut [u8]) {
+        for attribute in self.point_layout.attributes() {
+            let attribute_storage = self
+                .attributes_storage
+                .get(attribute.attribute_definition())
+                .expect("Attribute not found within storage of this PointBuffer");
+            let src_slice = &attribute_storage
+                [Self::get_byte_range_for_attribute(index, attribute.attribute_definition())];
+            let dst_slice = &mut data[attribute.byte_range_within_point()];
+            dst_slice.copy_from_slice(src_slice);
+        }
+    }
+
+    fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
+        let memory = self
+            .attributes_storage
+            .get(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        let attribute_byte_range = Self::get_byte_range_for_attribute(index, attribute);
+        data.copy_from_slice(&memory[attribute_byte_range]);
+    }
+
+    unsafe fn get_attribute_unchecked(
+        &self,
+        attribute_member: &PointAttributeMember,
+        index: usize,
+        data: &mut [u8],
+    ) {
+        let memory = self
+            .attributes_storage
+            .get(attribute_member.attribute_definition())
+            .expect("Attribute not found in PointLayout of this buffer");
+        let attribute_byte_range =
+            Self::get_byte_range_for_attribute(index, attribute_member.attribute_definition());
+        data.copy_from_slice(&memory[attribute_byte_range]);
+    }
+}
+
+impl<'a> BorrowedMutBuffer<'a> for HashMapBuffer
+where
+    HashMapBuffer: 'a,
+{
+    fn set_point(&mut self, index: usize, point_data: &[u8]) {
+        for attribute in self.point_layout.attributes() {
+            let attribute_definition = attribute.attribute_definition();
+            let attribute_byte_range =
+                Self::get_byte_range_for_attribute(index, attribute_definition);
+            let attribute_storage = self
+                .attributes_storage
+                .get_mut(attribute_definition)
+                .expect("Attribute not found within storage of this PointBuffer");
+            let dst_slice = &mut attribute_storage[attribute_byte_range];
+            let src_slice = &point_data[attribute.byte_range_within_point()];
+            dst_slice.copy_from_slice(src_slice);
+        }
+    }
+
+    fn set_attribute(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+        attribute_data: &[u8],
+    ) {
+        let attribute_byte_range = Self::get_byte_range_for_attribute(index, attribute);
+        let attribute_storage = self
+            .attributes_storage
+            .get_mut(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        let attribute_bytes = &mut attribute_storage[attribute_byte_range];
+        attribute_bytes.copy_from_slice(attribute_data);
+    }
+
+    fn swap(&mut self, from_index: usize, to_index: usize) {
+        assert!(from_index < self.len());
+        assert!(to_index < self.len());
+        if from_index == to_index {
+            return;
+        }
+        for (attribute, storage) in self.attributes_storage.iter_mut() {
+            let src_byte_range = Self::get_byte_range_for_attribute(from_index, attribute);
+            let dst_byte_range = Self::get_byte_range_for_attribute(to_index, attribute);
+            // Is safe as long as 'from_index' and 'to_index' are not out of bounds, which is asserted
+            unsafe {
+                let src_ptr = storage.as_mut_ptr().add(src_byte_range.start);
+                let dst_ptr = storage.as_mut_ptr().add(dst_byte_range.start);
+                std::ptr::swap_nonoverlapping(src_ptr, dst_ptr, attribute.size() as usize);
+            }
+        }
+    }
+}
+
+impl<'a> OwningBuffer<'a> for HashMapBuffer
+where
+    HashMapBuffer: 'a,
+{
+    fn push_point(&mut self, point_bytes: &[u8]) {
+        for attribute in self.point_layout.attributes() {
+            let attribute_bytes = &point_bytes[attribute.byte_range_within_point()];
+            let storage = self
+                .attributes_storage
+                .get_mut(attribute.attribute_definition())
+                .expect("Attribute not found in storage of this buffer");
+            storage.extend_from_slice(attribute_bytes);
+        }
+        self.length += 1;
+    }
+
+    fn extend(&mut self, many_point_bytes: &[u8]) {
+        let point_size = self.point_layout.size_of_point_entry() as usize;
+        let num_points_added = many_point_bytes.len() / point_size;
+        for attribute in self.point_layout.attributes() {
+            let storage = self
+                .attributes_storage
+                .get_mut(attribute.attribute_definition())
+                .expect("Attribute not found in storage of this buffer");
+            for index in 0..num_points_added {
+                let point_bytes =
+                    &many_point_bytes[(index * point_size)..((index + 1) * point_size)];
+                let attribute_bytes = &point_bytes[attribute.byte_range_within_point()];
+                storage.extend_from_slice(attribute_bytes);
+            }
+        }
+        self.length += num_points_added;
+    }
+
+    fn resize(&mut self, count: usize) {
+        for (attribute, storage) in self.attributes_storage.iter_mut() {
+            let new_num_bytes = count * attribute.size() as usize;
+            storage.resize(new_num_bytes, 0);
+        }
+        self.length = count;
+    }
+
+    fn clear(&mut self) {
+        for storage in self.attributes_storage.values_mut() {
+            storage.clear();
+        }
+        self.length = 0;
+    }
+}
+
+impl<'a> ColumnarBuffer<'a> for HashMapBuffer
+where
+    HashMapBuffer: 'a,
+{
+    fn get_attribute_ref(&'a self, attribute: &PointAttributeDefinition, index: usize) -> &'a [u8] {
+        let storage_of_attribute = self
+            .attributes_storage
+            .get(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        &storage_of_attribute[Self::get_byte_range_for_attribute(index, attribute)]
+    }
+
+    fn get_attribute_range_ref(
         &'a self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByRef<'a, T>;
+        attribute: &PointAttributeDefinition,
+        range: Range<usize>,
+    ) -> &'a [u8] {
+        let storage_of_attribute = self
+            .attributes_storage
+            .get(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        &storage_of_attribute[Self::get_byte_range_for_attributes(range, attribute)]
+    }
 }
 
-impl<B: PerAttributePointBuffer + ?Sized> PerAttributePointBufferExt for B {
-    fn get_attribute_ref<T: PrimitiveType>(
-        &self,
-        point_index: usize,
+impl<'a> ColumnarBufferMut<'a> for HashMapBuffer
+where
+    HashMapBuffer: 'a,
+{
+    fn get_attribute_mut(
+        &'a mut self,
         attribute: &PointAttributeDefinition,
-    ) -> &T {
-        let raw_attribute = self.get_raw_attribute_ref(point_index, attribute);
-        unsafe {
-            let raw_ptr = raw_attribute.as_ptr() as *const T;
-            raw_ptr.as_ref().expect("raw_attribute point was null")
+        index: usize,
+    ) -> &'a mut [u8] {
+        let byte_range = Self::get_byte_range_for_attribute(index, attribute);
+        let storage_of_attribute = self
+            .attributes_storage
+            .get_mut(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        &mut storage_of_attribute[byte_range]
+    }
+
+    fn get_attribute_range_mut(
+        &'a mut self,
+        attribute: &PointAttributeDefinition,
+        range: Range<usize>,
+    ) -> &'a mut [u8] {
+        let byte_range = Self::get_byte_range_for_attributes(range, attribute);
+        let storage_of_attribute = self
+            .attributes_storage
+            .get_mut(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        &mut storage_of_attribute[byte_range]
+    }
+}
+
+impl<'a> SliceBuffer<'a> for HashMapBuffer
+where
+    HashMapBuffer: 'a,
+{
+    type UnderlyingBuffer = Self;
+
+    fn slice<'b>(&'b self, range: Range<usize>) -> BufferSlice<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        BufferSlice {
+            buffer: self,
+            point_range: range,
+        }
+    }
+}
+
+impl<'a> SliceBufferMut<'a> for HashMapBuffer
+where
+    HashMapBuffer: 'a,
+{
+    fn slice_mut<'b>(
+        &'b mut self,
+        range: Range<usize>,
+    ) -> BufferSliceMut<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        BufferSliceMut {
+            buffer: self,
+            point_range: range,
+        }
+    }
+}
+
+impl<T: PointType> FromIterator<T> for HashMapBuffer {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let point_layout = T::layout();
+        let mut buffer = Self::new(point_layout);
+        iter.into_iter().for_each(|point| {
+            let point_bytes = bytemuck::bytes_of(&point);
+            buffer.push_point(point_bytes);
+        });
+        buffer
+    }
+}
+
+pub struct ExternalMemoryBuffer<T: AsRef<[u8]>> {
+    external_memory: T,
+    point_layout: PointLayout,
+}
+
+impl<T: AsRef<[u8]>> ExternalMemoryBuffer<T> {
+    pub fn new(external_memory: T, point_layout: PointLayout) -> Self {
+        Self {
+            external_memory,
+            point_layout,
         }
     }
 
-    fn get_attribute_range_ref<T: PrimitiveType>(
-        &self,
-        range: Range<usize>,
-        attribute: &PointAttributeDefinition,
-    ) -> &[T] {
-        let num_points = range.len();
-        let raw_attributes = self.get_raw_attribute_range_ref(range, attribute);
-        unsafe { std::slice::from_raw_parts(raw_attributes.as_ptr() as *const T, num_points) }
+    fn get_byte_range_for_point(&self, point_index: usize) -> Range<usize> {
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        (point_index * size_of_point)..((point_index + 1) * size_of_point)
     }
 
-    fn iter_attribute_ref<'a, T: PrimitiveType>(
+    fn get_byte_range_for_point_range(&self, point_range: Range<usize>) -> Range<usize> {
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        (point_range.start * size_of_point)..(point_range.end * size_of_point)
+    }
+
+    fn get_byte_range_of_attribute(
+        &self,
+        point_index: usize,
+        attribute: &PointAttributeMember,
+    ) -> Range<usize> {
+        let start_byte = (point_index * self.point_layout.size_of_point_entry() as usize)
+            + attribute.offset() as usize;
+        let end_byte = start_byte + attribute.size() as usize;
+        start_byte..end_byte
+    }
+}
+
+impl<'a, T: AsRef<[u8]>> BorrowedBuffer<'a> for ExternalMemoryBuffer<T>
+where
+    ExternalMemoryBuffer<T>: 'a,
+{
+    fn len(&self) -> usize {
+        self.external_memory.as_ref().len() / self.point_layout.size_of_point_entry() as usize
+    }
+
+    fn point_layout(&self) -> &PointLayout {
+        &self.point_layout
+    }
+
+    fn get_point(&self, index: usize, data: &mut [u8]) {
+        let point_bytes = &self.external_memory.as_ref()[self.get_byte_range_for_point(index)];
+        data.copy_from_slice(point_bytes);
+    }
+
+    unsafe fn get_attribute_unchecked(
+        &self,
+        attribute_member: &PointAttributeMember,
+        index: usize,
+        data: &mut [u8],
+    ) {
+        let attribute_bytes_range = self.get_byte_range_of_attribute(index, attribute_member);
+        let attribute_bytes = &self.external_memory.as_ref()[attribute_bytes_range];
+        data.copy_from_slice(attribute_bytes);
+    }
+}
+
+impl<'a, T: AsMut<[u8]> + AsRef<[u8]>> BorrowedMutBuffer<'a> for ExternalMemoryBuffer<T>
+where
+    ExternalMemoryBuffer<T>: 'a,
+{
+    fn set_point(&mut self, index: usize, point_data: &[u8]) {
+        let point_byte_range = self.get_byte_range_for_point(index);
+        let point_memory = &mut self.external_memory.as_mut()[point_byte_range];
+        point_memory.copy_from_slice(point_data);
+    }
+
+    fn set_attribute(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+        attribute_data: &[u8],
+    ) {
+        let attribute_member = self
+            .point_layout
+            .get_attribute(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        let attribute_byte_range = self.get_byte_range_of_attribute(index, attribute_member);
+        let attribute_bytes = &mut self.external_memory.as_mut()[attribute_byte_range];
+        attribute_bytes.copy_from_slice(attribute_data);
+    }
+
+    fn swap(&mut self, from_index: usize, to_index: usize) {
+        assert!(from_index < self.len());
+        assert!(to_index < self.len());
+        if from_index == to_index {
+            return;
+        }
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        // Is safe if neither `from_index` nor `to_index` is out of bounds, which is asserted
+        unsafe {
+            let from_ptr = self
+                .external_memory
+                .as_mut()
+                .as_mut_ptr()
+                .add(from_index * size_of_point);
+            let to_ptr = self
+                .external_memory
+                .as_mut()
+                .as_mut_ptr()
+                .add(to_index * size_of_point);
+            std::ptr::swap_nonoverlapping(from_ptr, to_ptr, size_of_point);
+        }
+    }
+}
+
+impl<'a, T: AsRef<[u8]>> InterleavedBuffer<'a> for ExternalMemoryBuffer<T>
+where
+    ExternalMemoryBuffer<T>: 'a,
+{
+    fn get_point_ref(&'a self, index: usize) -> &'a [u8] {
+        let memory = self.external_memory.as_ref();
+        &memory[self.get_byte_range_for_point(index)]
+    }
+
+    fn get_point_range_ref(&'a self, range: Range<usize>) -> &'a [u8] {
+        let memory = self.external_memory.as_ref();
+        &memory[self.get_byte_range_for_point_range(range)]
+    }
+}
+
+impl<'a, T: AsRef<[u8]> + AsMut<[u8]>> InterleavedBufferMut<'a> for ExternalMemoryBuffer<T>
+where
+    ExternalMemoryBuffer<T>: 'a,
+{
+    fn get_point_mut(&'a mut self, index: usize) -> &'a mut [u8] {
+        let byte_range = self.get_byte_range_for_point(index);
+        let memory = self.external_memory.as_mut();
+        &mut memory[byte_range]
+    }
+
+    fn get_point_range_mut(&'a mut self, range: Range<usize>) -> &'a mut [u8] {
+        let byte_range = self.get_byte_range_for_point_range(range);
+        let memory = self.external_memory.as_mut();
+        &mut memory[byte_range]
+    }
+}
+
+impl<'a, T: AsRef<[u8]>> SliceBuffer<'a> for ExternalMemoryBuffer<T>
+where
+    ExternalMemoryBuffer<T>: 'a,
+{
+    type UnderlyingBuffer = Self;
+
+    fn slice<'b>(&'b self, range: Range<usize>) -> BufferSlice<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        BufferSlice {
+            buffer: self,
+            point_range: range,
+        }
+    }
+}
+
+impl<'a, T: AsRef<[u8]> + AsMut<[u8]>> SliceBufferMut<'a> for ExternalMemoryBuffer<T>
+where
+    ExternalMemoryBuffer<T>: 'a,
+{
+    fn slice_mut<'b>(
+        &'b mut self,
+        range: Range<usize>,
+    ) -> BufferSliceMut<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        BufferSliceMut {
+            buffer: self,
+            point_range: range,
+        }
+    }
+}
+
+pub struct BufferSlice<'a, T: BorrowedBuffer<'a>> {
+    buffer: &'a T,
+    point_range: Range<usize>,
+}
+
+impl<'a, T: BorrowedBuffer<'a>> BufferSlice<'a, T> {
+    fn get_and_check_global_point_index(&self, local_index: usize) -> usize {
+        assert!(local_index < self.point_range.end);
+        local_index + self.point_range.start
+    }
+
+    fn get_and_check_global_point_range(&self, local_range: Range<usize>) -> Range<usize> {
+        assert!(local_range.end <= self.point_range.end);
+        if local_range.start >= local_range.end {
+            // Doesn't matter what range we return, as long as it is empty
+            self.point_range.end..self.point_range.end
+        } else {
+            (local_range.start + self.point_range.start)..(local_range.end + self.point_range.start)
+        }
+    }
+}
+
+impl<'a, T: BorrowedBuffer<'a>> BorrowedBuffer<'a> for BufferSlice<'a, T> {
+    fn len(&self) -> usize {
+        self.point_range.end - self.point_range.start
+    }
+
+    fn point_layout(&self) -> &PointLayout {
+        self.buffer.point_layout()
+    }
+
+    fn get_point(&self, index: usize, data: &mut [u8]) {
+        self.buffer
+            .get_point(self.get_and_check_global_point_index(index), data)
+    }
+
+    fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
+        self.buffer.get_attribute(
+            attribute,
+            self.get_and_check_global_point_index(index),
+            data,
+        )
+    }
+
+    unsafe fn get_attribute_unchecked(
+        &self,
+        attribute_member: &PointAttributeMember,
+        index: usize,
+        data: &mut [u8],
+    ) {
+        self.buffer.get_attribute_unchecked(
+            attribute_member,
+            self.get_and_check_global_point_index(index),
+            data,
+        )
+    }
+}
+
+impl<'a, T: InterleavedBuffer<'a>> InterleavedBuffer<'a> for BufferSlice<'a, T> {
+    fn get_point_ref(&'a self, index: usize) -> &'a [u8] {
+        self.buffer
+            .get_point_ref(self.get_and_check_global_point_index(index))
+    }
+
+    fn get_point_range_ref(&'a self, range: Range<usize>) -> &'a [u8] {
+        self.buffer
+            .get_point_range_ref(self.get_and_check_global_point_range(range))
+    }
+}
+
+impl<'a, T: ColumnarBuffer<'a>> ColumnarBuffer<'a> for BufferSlice<'a, T> {
+    fn get_attribute_ref(&'a self, attribute: &PointAttributeDefinition, index: usize) -> &'a [u8] {
+        self.buffer
+            .get_attribute_ref(attribute, self.get_and_check_global_point_index(index))
+    }
+
+    fn get_attribute_range_ref(
         &'a self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByRef<'a, T> {
-        AttributeIteratorByRef::new(self, attribute)
+        attribute: &PointAttributeDefinition,
+        range: Range<usize>,
+    ) -> &'a [u8] {
+        self.buffer
+            .get_attribute_range_ref(attribute, self.get_and_check_global_point_range(range))
     }
 }
 
-/// Extension trait that provides generic methods for accessing attribute data in an `PerAttributePointBufferMut`
-pub trait PerAttributePointBufferMutExt {
-    /// Returns a mutable reference to the given `attribute` of the point at `point_index` in the associated `PerAttributePointBufferMut`, strongly typed to the `PrimitiveType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
-    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
-    /// Panics if `point_index` is >= `self.len()`
-    fn get_attribute_mut<T: PrimitiveType>(
-        &mut self,
-        point_index: usize,
-        attribute: &PointAttributeDefinition,
-    ) -> &mut T;
-    /// Returns a mutable reference to the `attribute` for the `range` of points in the associated `PerAttributePointBufferMut`, strongly typed to the `PrimitiveType` `T`
-    ///
-    /// # Panics
-    ///
-    /// Panics if `attribute` is not part of the `PointLayout` of the buffer.
-    /// Panics if the `attribute` inside the buffer is not stored as type `T`.
-    /// Panics if the start of `range` is greater than the end of `range`, or if the end of `range` is greater than `self.len()`
-    fn get_attribute_range_mut<T: PrimitiveType>(
-        &mut self,
-        range: Range<usize>,
-        attribute: &PointAttributeDefinition,
-    ) -> &mut [T];
-    /// Returns an iterator over mutable references to the given `attribute` for all points in the associated `PerAttributePointBufferMut`, strongly typed to the `PrimitiveType` `T`
-    fn iter_attribute_mut<'a, T: PrimitiveType>(
-        &'a mut self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByMut<'a, T>;
+impl<'a, T: BorrowedBuffer<'a> + Sized> SliceBuffer<'a> for BufferSlice<'a, T> {
+    type UnderlyingBuffer = T;
+
+    fn slice<'b>(&'b self, range: Range<usize>) -> BufferSlice<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        assert!(range.start < self.len());
+        assert!(range.end < self.len());
+        let global_range = if range.start > range.end {
+            (self.point_range.start + range.end)..(self.point_range.start + range.end)
+        } else {
+            (self.point_range.start + range.start)..(self.point_range.start + range.end)
+        };
+        BufferSlice {
+            buffer: self.buffer,
+            point_range: global_range,
+        }
+    }
 }
 
-impl<'b, B: PerAttributePointBufferMut<'b> + ?Sized> PerAttributePointBufferMutExt for B {
-    fn get_attribute_mut<T: PrimitiveType>(
+pub struct BufferSliceMut<'a, T: BorrowedMutBuffer<'a>> {
+    buffer: &'a mut T,
+    point_range: Range<usize>,
+}
+
+impl<'a, T: BorrowedMutBuffer<'a>> BufferSliceMut<'a, T> {
+    fn get_and_check_global_point_index(&self, local_index: usize) -> usize {
+        assert!(local_index < self.point_range.end);
+        local_index + self.point_range.start
+    }
+
+    fn get_and_check_global_point_range(&self, local_range: Range<usize>) -> Range<usize> {
+        assert!(local_range.end <= self.point_range.end);
+        if local_range.start >= local_range.end {
+            // Doesn't matter what range we return, as long as it is empty
+            self.point_range.end..self.point_range.end
+        } else {
+            (local_range.start + self.point_range.start)..(local_range.end + self.point_range.start)
+        }
+    }
+}
+
+impl<'a, T: BorrowedMutBuffer<'a>> BorrowedBuffer<'a> for BufferSliceMut<'a, T> {
+    fn len(&self) -> usize {
+        self.point_range.end - self.point_range.start
+    }
+
+    fn point_layout(&self) -> &PointLayout {
+        self.buffer.point_layout()
+    }
+
+    fn get_point(&self, index: usize, data: &mut [u8]) {
+        self.buffer
+            .get_point(self.get_and_check_global_point_index(index), data)
+    }
+
+    fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
+        self.buffer.get_attribute(
+            attribute,
+            self.get_and_check_global_point_index(index),
+            data,
+        )
+    }
+
+    unsafe fn get_attribute_unchecked(
+        &self,
+        attribute_member: &PointAttributeMember,
+        index: usize,
+        data: &mut [u8],
+    ) {
+        self.buffer.get_attribute_unchecked(
+            attribute_member,
+            self.get_and_check_global_point_index(index),
+            data,
+        )
+    }
+}
+
+impl<'a, T: BorrowedMutBuffer<'a>> BorrowedMutBuffer<'a> for BufferSliceMut<'a, T> {
+    fn set_point(&mut self, index: usize, point_data: &[u8]) {
+        self.buffer
+            .set_point(self.get_and_check_global_point_index(index), point_data)
+    }
+
+    fn set_attribute(
         &mut self,
-        point_index: usize,
         attribute: &PointAttributeDefinition,
-    ) -> &mut T {
-        let raw_attribute = self.get_raw_attribute_mut(point_index, attribute);
-        unsafe {
-            let raw_ptr = raw_attribute.as_ptr() as *mut T;
-            raw_ptr.as_mut().expect("raw_attribute point was null")
+        index: usize,
+        attribute_data: &[u8],
+    ) {
+        self.buffer.set_attribute(
+            attribute,
+            self.get_and_check_global_point_index(index),
+            attribute_data,
+        )
+    }
+
+    fn swap(&mut self, from_index: usize, to_index: usize) {
+        self.buffer.swap(
+            self.get_and_check_global_point_index(from_index),
+            self.get_and_check_global_point_index(to_index),
+        )
+    }
+}
+
+impl<'a, T: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>> InterleavedBuffer<'a>
+    for BufferSliceMut<'a, T>
+{
+    fn get_point_ref(&'a self, index: usize) -> &'a [u8] {
+        self.buffer
+            .get_point_ref(self.get_and_check_global_point_index(index))
+    }
+
+    fn get_point_range_ref(&'a self, range: Range<usize>) -> &'a [u8] {
+        self.buffer
+            .get_point_range_ref(self.get_and_check_global_point_range(range))
+    }
+}
+
+impl<'a, T: InterleavedBufferMut<'a> + BorrowedMutBuffer<'a>> InterleavedBufferMut<'a>
+    for BufferSliceMut<'a, T>
+{
+    fn get_point_mut(&'a mut self, index: usize) -> &'a mut [u8] {
+        self.buffer
+            .get_point_mut(self.get_and_check_global_point_index(index))
+    }
+
+    fn get_point_range_mut(&'a mut self, range: Range<usize>) -> &'a mut [u8] {
+        self.buffer
+            .get_point_range_mut(self.get_and_check_global_point_range(range))
+    }
+}
+
+impl<'a, T: ColumnarBuffer<'a> + BorrowedMutBuffer<'a>> ColumnarBuffer<'a>
+    for BufferSliceMut<'a, T>
+{
+    fn get_attribute_ref(&'a self, attribute: &PointAttributeDefinition, index: usize) -> &'a [u8] {
+        self.buffer
+            .get_attribute_ref(attribute, self.get_and_check_global_point_index(index))
+    }
+
+    fn get_attribute_range_ref(
+        &'a self,
+        attribute: &PointAttributeDefinition,
+        range: Range<usize>,
+    ) -> &'a [u8] {
+        self.buffer
+            .get_attribute_range_ref(attribute, self.get_and_check_global_point_range(range))
+    }
+}
+
+impl<'a, T: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>> ColumnarBufferMut<'a>
+    for BufferSliceMut<'a, T>
+{
+    fn get_attribute_mut(
+        &'a mut self,
+        attribute: &PointAttributeDefinition,
+        index: usize,
+    ) -> &'a mut [u8] {
+        self.buffer
+            .get_attribute_mut(attribute, self.get_and_check_global_point_index(index))
+    }
+
+    fn get_attribute_range_mut(
+        &'a mut self,
+        attribute: &PointAttributeDefinition,
+        range: Range<usize>,
+    ) -> &'a mut [u8] {
+        self.buffer
+            .get_attribute_range_mut(attribute, self.get_and_check_global_point_range(range))
+    }
+}
+
+impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + Sized> SliceBuffer<'a>
+    for BufferSliceMut<'a, T>
+{
+    type UnderlyingBuffer = T;
+
+    fn slice<'b>(&'b self, range: Range<usize>) -> BufferSlice<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        assert!(range.start < self.len());
+        assert!(range.end < self.len());
+        let global_range = if range.start > range.end {
+            (self.point_range.start + range.end)..(self.point_range.start + range.end)
+        } else {
+            (self.point_range.start + range.start)..(self.point_range.start + range.end)
+        };
+        BufferSlice {
+            buffer: self.buffer,
+            point_range: global_range,
+        }
+    }
+}
+
+impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + Sized> SliceBufferMut<'a>
+    for BufferSliceMut<'a, T>
+{
+    fn slice_mut<'b>(
+        &'b mut self,
+        range: Range<usize>,
+    ) -> BufferSliceMut<'a, Self::UnderlyingBuffer>
+    where
+        'b: 'a,
+    {
+        assert!(range.start < self.len());
+        assert!(range.end < self.len());
+        let global_range = if range.start > range.end {
+            (self.point_range.start + range.end)..(self.point_range.start + range.end)
+        } else {
+            (self.point_range.start + range.start)..(self.point_range.start + range.end)
+        };
+        BufferSliceMut {
+            buffer: self.buffer,
+            point_range: global_range,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::Vector3;
+    use pasture_derive::PointType;
+    use rand::{prelude::Distribution, thread_rng, Rng};
+
+    use crate::layout::{attributes::POSITION_3D, PointAttributeDataType};
+
+    use super::*;
+
+    #[derive(
+        PointType,
+        Default,
+        Copy,
+        Clone,
+        PartialEq,
+        Debug,
+        bytemuck::AnyBitPattern,
+        bytemuck::NoUninit,
+    )]
+    #[repr(C, packed)]
+    struct CustomPointTypeSmall {
+        #[pasture(BUILTIN_POSITION_3D)]
+        pub position: Vector3<f64>,
+        #[pasture(BUILTIN_CLASSIFICATION)]
+        pub classification: u8,
+    }
+
+    #[derive(
+        PointType,
+        Default,
+        Copy,
+        Clone,
+        PartialEq,
+        Debug,
+        bytemuck::AnyBitPattern,
+        bytemuck::NoUninit,
+    )]
+    #[repr(C, packed)]
+    struct CustomPointTypeBig {
+        #[pasture(BUILTIN_GPS_TIME)]
+        pub gps_time: f64,
+        #[pasture(BUILTIN_COLOR_RGB)]
+        pub color: Vector3<u16>,
+        #[pasture(BUILTIN_POSITION_3D)]
+        pub position: Vector3<f64>,
+        #[pasture(BUILTIN_CLASSIFICATION)]
+        pub classification: u8,
+        #[pasture(BUILTIN_INTENSITY)]
+        pub intensity: i16,
+    }
+
+    struct DefaultPointDistribution;
+
+    impl Distribution<CustomPointTypeSmall> for DefaultPointDistribution {
+        fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> CustomPointTypeSmall {
+            CustomPointTypeSmall {
+                classification: rng.gen(),
+                position: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
+            }
         }
     }
 
-    fn get_attribute_range_mut<T: PrimitiveType>(
-        &mut self,
-        range: Range<usize>,
-        attribute: &PointAttributeDefinition,
-    ) -> &mut [T] {
-        let num_points = range.len();
-        let raw_attributes = self.get_raw_attribute_range_mut(range, attribute);
-        unsafe { std::slice::from_raw_parts_mut(raw_attributes.as_ptr() as *mut T, num_points) }
+    impl Distribution<CustomPointTypeBig> for DefaultPointDistribution {
+        fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> CustomPointTypeBig {
+            CustomPointTypeBig {
+                classification: rng.gen(),
+                position: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
+                color: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
+                gps_time: rng.gen(),
+                intensity: rng.gen(),
+            }
+        }
     }
 
-    fn iter_attribute_mut<'a, T: PrimitiveType>(
-        &'a mut self,
-        attribute: &'a PointAttributeDefinition,
-    ) -> AttributeIteratorByMut<'a, T> {
-        AttributeIteratorByMut::new(self, attribute)
+    fn compare_attributes_typed<
+        'a,
+        T: PointType + std::fmt::Debug + PartialEq + Copy + Clone,
+        U: PrimitiveType + std::fmt::Debug + PartialEq,
+    >(
+        buffer: &'a impl BorrowedBuffer<'a>,
+        attribute: &PointAttributeDefinition,
+        expected_points: &'a impl BorrowedBuffer<'a>,
+    ) {
+        let collected_values = buffer
+            .view_attribute::<U>(attribute)
+            .into_iter()
+            .collect::<Vec<_>>();
+        let expected_values = expected_points
+            .view_attribute::<U>(attribute)
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(expected_values, collected_values);
+    }
+
+    /// Compare the given point attribute using the static type corresponding to the attribute's `PointAttributeDataType`
+    fn compare_attributes<'a, T: PointType + std::fmt::Debug + PartialEq + Copy + Clone>(
+        buffer: &'a impl BorrowedBuffer<'a>,
+        attribute: &PointAttributeDefinition,
+        expected_points: &'a impl BorrowedBuffer<'a>,
+    ) {
+        match attribute.datatype() {
+            PointAttributeDataType::F32 => {
+                compare_attributes_typed::<T, f32>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::F64 => {
+                compare_attributes_typed::<T, f64>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::I16 => {
+                compare_attributes_typed::<T, i16>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::I32 => {
+                compare_attributes_typed::<T, i32>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::I64 => {
+                compare_attributes_typed::<T, i64>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::I8 => {
+                compare_attributes_typed::<T, i8>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::U16 => {
+                compare_attributes_typed::<T, u16>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::U32 => {
+                compare_attributes_typed::<T, u32>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::U64 => {
+                compare_attributes_typed::<T, u64>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::U8 => {
+                compare_attributes_typed::<T, u8>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::Vec3f32 => {
+                compare_attributes_typed::<T, Vector3<f32>>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::Vec3f64 => {
+                compare_attributes_typed::<T, Vector3<f64>>(buffer, attribute, expected_points);
+            }
+            PointAttributeDataType::Vec3i32 => {
+                compare_attributes_typed::<T, Vector3<i32>>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::Vec3u16 => {
+                compare_attributes_typed::<T, Vector3<u16>>(buffer, attribute, expected_points)
+            }
+            PointAttributeDataType::Vec3u8 => {
+                compare_attributes_typed::<T, Vector3<u8>>(buffer, attribute, expected_points)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    fn test_vector_buffer_with_type<T: PointType + std::fmt::Debug + PartialEq + Copy + Clone>()
+    where
+        DefaultPointDistribution: Distribution<T>,
+    {
+        const COUNT: usize = 16;
+        let test_data: Vec<T> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+        let overwrite_data: Vec<T> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+
+        let test_data_as_buffer = test_data.iter().copied().collect::<VectorBuffer>();
+
+        {
+            let mut buffer = VectorBuffer::new(T::layout());
+            assert_eq!(0, buffer.len());
+            assert_eq!(T::layout(), *buffer.point_layout());
+            assert_eq!(0, buffer.view::<T>().into_iter().count());
+
+            for idx in 0..COUNT {
+                buffer.view_mut().push_point(test_data[idx]);
+                assert_eq!(idx + 1, buffer.len());
+                assert_eq!(test_data[idx], buffer.view().at(idx));
+            }
+
+            let mut collected_points = buffer.view().into_iter().collect::<Vec<_>>();
+            assert_eq!(test_data, collected_points);
+
+            let collected_points_by_ref = buffer.view().iter().copied().collect::<Vec<_>>();
+            assert_eq!(test_data, collected_points_by_ref);
+
+            for attribute in buffer.point_layout().attributes() {
+                compare_attributes::<T>(
+                    &buffer,
+                    attribute.attribute_definition(),
+                    &test_data_as_buffer,
+                );
+            }
+
+            let slice = buffer.slice(1..2);
+            assert_eq!(test_data[1], slice.view().at(0));
+
+            for idx in 0..COUNT {
+                *buffer.view_mut().at_mut(idx) = overwrite_data[idx];
+            }
+            collected_points = buffer.view().iter().copied().collect();
+            assert_eq!(overwrite_data, collected_points);
+        }
+    }
+
+    fn test_hashmap_buffer_with_type<T: PointType + std::fmt::Debug + PartialEq + Copy + Clone>()
+    where
+        DefaultPointDistribution: Distribution<T>,
+    {
+        const COUNT: usize = 16;
+        let test_data: Vec<T> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+        let overwrite_data: Vec<T> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+
+        let test_data_as_buffer = test_data.iter().copied().collect::<HashMapBuffer>();
+
+        {
+            let mut buffer = HashMapBuffer::new(T::layout());
+            assert_eq!(0, buffer.len());
+            assert_eq!(T::layout(), *buffer.point_layout());
+            assert_eq!(0, buffer.view::<T>().into_iter().count());
+
+            for idx in 0..COUNT {
+                buffer.view_mut().push_point(test_data[idx]);
+                assert_eq!(idx + 1, buffer.len());
+                assert_eq!(test_data[idx], buffer.view().at(idx));
+            }
+
+            let mut collected_points = buffer.view().into_iter().collect::<Vec<_>>();
+            assert_eq!(test_data, collected_points);
+
+            for attribute in buffer.point_layout().attributes() {
+                compare_attributes::<T>(
+                    &buffer,
+                    attribute.attribute_definition(),
+                    &test_data_as_buffer,
+                );
+            }
+
+            let slice = buffer.slice(1..2);
+            assert_eq!(test_data[1], slice.view().at(0));
+
+            for idx in 0..COUNT {
+                buffer.view_mut().set_at(idx, overwrite_data[idx]);
+            }
+            collected_points = buffer.view().into_iter().collect();
+            assert_eq!(overwrite_data, collected_points);
+        }
+    }
+
+    fn test_external_memory_buffer_with_type<
+        T: PointType + std::fmt::Debug + PartialEq + Copy + Clone,
+    >()
+    where
+        DefaultPointDistribution: Distribution<T>,
+    {
+        const COUNT: usize = 16;
+        let test_data: Vec<T> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+        let overwrite_data: Vec<T> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+
+        let mut memory_of_buffer: Vec<u8> =
+            vec![0; COUNT * T::layout().size_of_point_entry() as usize];
+        let mut test_data_as_buffer = ExternalMemoryBuffer::new(&mut memory_of_buffer, T::layout());
+        for (idx, point) in test_data.iter().copied().enumerate() {
+            test_data_as_buffer.view_mut().set_at(idx, point);
+        }
+
+        {
+            let mut buffer = VectorBuffer::new(T::layout());
+            assert_eq!(0, buffer.len());
+            assert_eq!(T::layout(), *buffer.point_layout());
+            assert_eq!(0, buffer.view::<T>().into_iter().count());
+
+            for idx in 0..COUNT {
+                buffer.view_mut().push_point(test_data[idx]);
+                assert_eq!(idx + 1, buffer.len());
+                assert_eq!(test_data[idx], buffer.view().at(idx));
+            }
+
+            let mut collected_points = buffer.view().into_iter().collect::<Vec<_>>();
+            assert_eq!(test_data, collected_points);
+
+            let collected_points_by_ref = buffer.view().iter().copied().collect::<Vec<_>>();
+            assert_eq!(test_data, collected_points_by_ref);
+
+            for attribute in buffer.point_layout().attributes() {
+                compare_attributes::<T>(
+                    &buffer,
+                    attribute.attribute_definition(),
+                    &test_data_as_buffer,
+                );
+            }
+
+            let slice = buffer.slice(1..2);
+            assert_eq!(test_data[1], slice.view().at(0));
+
+            for idx in 0..COUNT {
+                *buffer.view_mut().at_mut(idx) = overwrite_data[idx];
+            }
+            collected_points = buffer.view().iter().copied().collect();
+            assert_eq!(overwrite_data, collected_points);
+        }
+    }
+
+    #[test]
+    fn test_vector_buffer() {
+        test_vector_buffer_with_type::<CustomPointTypeSmall>();
+        test_vector_buffer_with_type::<CustomPointTypeBig>();
+    }
+
+    #[test]
+    fn test_hash_map_buffer() {
+        test_hashmap_buffer_with_type::<CustomPointTypeSmall>();
+        test_hashmap_buffer_with_type::<CustomPointTypeBig>();
+    }
+
+    #[test]
+    fn test_hash_map_buffer_mutate_attribute() {
+        const COUNT: usize = 16;
+        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+        let overwrite_data: Vec<CustomPointTypeBig> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+
+        let mut buffer = test_data.iter().copied().collect::<HashMapBuffer>();
+
+        for (idx, attribute) in buffer
+            .view_attribute_mut::<Vector3<f64>>(&POSITION_3D)
+            .iter_mut()
+            .enumerate()
+        {
+            *attribute = overwrite_data[idx].position;
+        }
+
+        let expected_positions = overwrite_data
+            .iter()
+            .map(|point| point.position)
+            .collect::<Vec<_>>();
+        let actual_positions = buffer
+            .view_attribute(&POSITION_3D)
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(expected_positions, actual_positions);
+    }
+
+    #[test]
+    fn test_external_memory_buffer() {
+        test_external_memory_buffer_with_type::<CustomPointTypeSmall>();
+        test_external_memory_buffer_with_type::<CustomPointTypeBig>();
     }
 }

@@ -15,7 +15,7 @@
 
 use lazy_static::lazy_static;
 use nalgebra::Vector3;
-use num_traits::{AsPrimitive, Zero};
+use num_traits::AsPrimitive;
 use std::{collections::HashMap, ops::Range};
 
 use crate::layout::{PointAttributeDataType, PointAttributeDefinition, PointLayout};
@@ -74,8 +74,10 @@ impl RawPointConverter {
                 let to_attribute = to_layout
                     .get_attribute_by_name(from_attribute.name())
                     .unwrap();
-                let conversion_fn =
-                    get_converter_for_attributes(&from_attribute.into(), &to_attribute.into());
+                let conversion_fn = get_converter_for_attributes(
+                    from_attribute.attribute_definition(),
+                    to_attribute.attribute_definition(),
+                );
                 conversion_fn.map(|conversion_fn| {
                     RawAttributeConverter::new(
                         conversion_fn,
@@ -240,47 +242,6 @@ pub fn get_generic_converter(
 
             insert_scalar_converter_using_as!(f32, f64, F32, F64, converters);
 
-            converters.insert(
-                (PointAttributeDataType::U8, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<u8>,
-            );
-            converters.insert(
-                (PointAttributeDataType::I8, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<i8>,
-            );
-            converters.insert(
-                (PointAttributeDataType::U16, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<u16>,
-            );
-            converters.insert(
-                (PointAttributeDataType::I16, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<i16>,
-            );
-            converters.insert(
-                (PointAttributeDataType::U32, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<u32>,
-            );
-            converters.insert(
-                (PointAttributeDataType::I32, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<i32>,
-            );
-            converters.insert(
-                (PointAttributeDataType::U64, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<u64>,
-            );
-            converters.insert(
-                (PointAttributeDataType::I64, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<i64>,
-            );
-            converters.insert(
-                (PointAttributeDataType::F32, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<f32>,
-            );
-            converters.insert(
-                (PointAttributeDataType::F64, PointAttributeDataType::Bool),
-                convert_numeric_to_bool::<f64>,
-            );
-
             insert_vec3_converter_using_as!(f32, f64, Vec3f32, Vec3f64, converters);
 
             insert_vec3_converter_using_as!(u8, u16, Vec3u8, Vec3u16, converters);
@@ -369,10 +330,4 @@ where
     let from_vec = from_ptr.read_unaligned();
     let to_vec = Vector3::<To>::new(from_vec[0].as_(), from_vec[1].as_(), from_vec[2].as_());
     to_ptr.write_unaligned(to_vec);
-}
-
-unsafe fn convert_numeric_to_bool<F: Copy + Zero + PartialEq>(from: &[u8], to: &mut [u8]) {
-    let from_typed = (from.as_ptr() as *const F).read_unaligned();
-    let as_bool = if from_typed != F::zero() { true } else { false };
-    (to.as_mut_ptr() as *mut bool).write_unaligned(as_bool);
 }
