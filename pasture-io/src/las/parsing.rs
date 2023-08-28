@@ -585,13 +585,15 @@ fn build_generic_memcpyable_parser(
         let extract_source_value_fn = |source_bytes: &[u8], destination_bytes: &mut [u8]| {
             destination_bytes.copy_from_slice(source_bytes);
         };
-        let type_converter =
-            get_converter_for_attributes(&source_attribute.into(), &destination_attribute.into())
-                .ok_or(anyhow!(
-                "No attribute type conversion from type {} to type {} possible",
-                source_attribute,
-                destination_attribute
-            ))?;
+        let type_converter = get_converter_for_attributes(
+            source_attribute.attribute_definition(),
+            destination_attribute.attribute_definition(),
+        )
+        .ok_or(anyhow!(
+            "No attribute type conversion from type {} to type {} possible",
+            source_attribute,
+            destination_attribute
+        ))?;
         let conversion_buffer = vec![0; source_attribute.size() as usize];
         Ok(AttributeParseFn::TypeConverted {
             extract_source_value_fn,
@@ -651,8 +653,11 @@ fn build_position_parser(
     // Since we always scale, the 'source' datatype prior to conversion is Vec3f64, NOT the source_attribute (which has
     // type Vec3i32)
     if destination_attribute.datatype() != PointAttributeDataType::Vec3f64 {
-        let converter = get_converter_for_attributes(&POSITION_3D, &destination_attribute.into())
-            .ok_or(anyhow!(
+        let converter = get_converter_for_attributes(
+            &POSITION_3D,
+            destination_attribute.attribute_definition(),
+        )
+        .ok_or(anyhow!(
             "No attribute type conversion from type {} to type {} possible for attribute {}",
             PointAttributeDataType::Vec3f64,
             destination_attribute.datatype(),
@@ -777,7 +782,7 @@ fn build_scan_direction_flag_parser(
     build_bit_attribute_parser(
         source_attribute,
         destination_attribute,
-        PointAttributeDataType::Bool,
+        PointAttributeDataType::U8,
         extract_source_value_fn,
     )
 }
@@ -796,7 +801,7 @@ fn build_edge_of_flight_line_parser(
     build_bit_attribute_parser(
         source_attribute,
         destination_attribute,
-        PointAttributeDataType::Bool,
+        PointAttributeDataType::U8,
         extract_source_value_fn,
     )
 }
@@ -1005,8 +1010,8 @@ fn build_extra_bytes_attribute(
 
             if source_attribute.datatype() != destination_attribute.datatype() {
                 let converter = get_converter_for_attributes(
-                    &source_attribute.into(),
-                    &destination_attribute.into(),
+                    source_attribute.attribute_definition(),
+                    destination_attribute.attribute_definition(),
                 )
                 .ok_or(anyhow!(
                     "No attribute type conversion from type {} to type {} possible",
@@ -1056,49 +1061,44 @@ mod tests {
     use super::*;
     use crate::las::{LasPointFormat10, LasPointFormat5};
 
-    use bitfield::bitfield;
+    use bitfield::{bitfield_bitrange, bitfield_fields};
     use las_rs::{point::Format, Builder, Transform, Vector, Version};
-    use pasture_core::{
-        layout::{PointAttributeDefinition, PointType, PrimitiveType},
-        util::{view_raw_bytes, view_raw_bytes_mut},
-    };
+    use pasture_core::layout::{PointAttributeDefinition, PointType, PrimitiveType};
     use static_assertions::const_assert_eq;
 
-    bitfield! {
-        pub struct BasicFlags(u8);
-        impl Debug;
-        pub return_number, set_return_number: 2, 0;
-        pub number_of_returns, set_number_of_returns: 5, 3;
-        pub scan_direction_flag, set_scan_direction_flag: 6;
-        pub edge_of_flight_line, set_edge_of_flight_line: 7;
-    }
+    #[derive(Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
+    #[repr(C)]
+    pub struct BasicFlags(u8);
+    bitfield_bitrange! {struct BasicFlags(u8)}
 
-    impl Copy for BasicFlags {}
-    impl Clone for BasicFlags {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
+    impl BasicFlags {
+        bitfield_fields! {
+            u8;
+            pub return_number, set_return_number: 2, 0;
+            pub number_of_returns, set_number_of_returns: 5, 3;
+            pub scan_direction_flag, set_scan_direction_flag: 6;
+            pub edge_of_flight_line, set_edge_of_flight_line: 7;
         }
     }
 
-    bitfield! {
-        pub struct ExtendedFlags(u16);
-        impl Debug;
-        pub return_number, set_return_number: 3, 0;
-        pub number_of_returns, set_number_of_returns: 7, 4;
-        pub classification_flags, set_classification_flags: 11, 8;
-        pub scanner_channel, set_scanner_channel: 13, 12;
-        pub scan_direction_flag, set_scan_direction_flag: 14;
-        pub edge_of_flight_line, set_edge_of_flight_line: 15;
-    }
+    #[derive(Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
+    #[repr(C)]
+    pub struct ExtendedFlags(u16);
+    bitfield_bitrange! {struct ExtendedFlags(u16)}
 
-    impl Copy for ExtendedFlags {}
-    impl Clone for ExtendedFlags {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
+    impl ExtendedFlags {
+        bitfield_fields! {
+            u16;
+            pub return_number, set_return_number: 3, 0;
+            pub number_of_returns, set_number_of_returns: 7, 4;
+            pub classification_flags, set_classification_flags: 11, 8;
+            pub scanner_channel, set_scanner_channel: 13, 12;
+            pub scan_direction_flag, set_scan_direction_flag: 14;
+            pub edge_of_flight_line, set_edge_of_flight_line: 15;
         }
     }
 
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     #[repr(C, packed)]
     struct RawLASPointFormat5 {
         x: i32,
@@ -1124,7 +1124,7 @@ mod tests {
     }
     const_assert_eq!(63, std::mem::size_of::<RawLASPointFormat5>());
 
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     #[repr(C, packed)]
     struct RawLASPointFormat10 {
         x: i32,
@@ -1201,7 +1201,7 @@ mod tests {
             byte_offset_to_waveform_data: raw_point.byte_offset_to_waveform_data,
             classification: raw_point.classification,
             color_rgb: Vector3::new(raw_point.red, raw_point.green, raw_point.blue),
-            edge_of_flight_line: raw_point.flags.edge_of_flight_line(),
+            edge_of_flight_line: raw_point.flags.edge_of_flight_line() as u8,
             gps_time: raw_point.gps_time,
             intensity: raw_point.intensity,
             number_of_returns: raw_point.flags.number_of_returns(),
@@ -1210,7 +1210,7 @@ mod tests {
             return_number: raw_point.flags.return_number(),
             return_point_waveform_location: raw_point.return_point_waveform_location,
             scan_angle_rank: raw_point.scan_angle_rank,
-            scan_direction_flag: raw_point.flags.scan_direction_flag(),
+            scan_direction_flag: raw_point.flags.scan_direction_flag() as u8,
             user_data: raw_point.user_data,
             wave_packet_descriptor_index: raw_point.wave_packet_desriptor_index,
             waveform_packet_size: raw_point.waveform_packet_size,
@@ -1251,7 +1251,7 @@ mod tests {
             classification: raw_point.classification,
             classification_flags: flags.classification_flags() as u8,
             color_rgb: Vector3::new(raw_point.red, raw_point.green, raw_point.blue),
-            edge_of_flight_line: flags.edge_of_flight_line(),
+            edge_of_flight_line: flags.edge_of_flight_line() as u8,
             gps_time: raw_point.gps_time,
             intensity: raw_point.intensity,
             nir: raw_point.nir,
@@ -1261,7 +1261,7 @@ mod tests {
             return_number: flags.return_number() as u8,
             return_point_waveform_location: raw_point.return_point_waveform_location,
             scan_angle: raw_point.scan_angle,
-            scan_direction_flag: flags.scan_direction_flag(),
+            scan_direction_flag: flags.scan_direction_flag() as u8,
             scanner_channel: flags.scanner_channel() as u8,
             user_data: raw_point.user_data,
             wave_packet_descriptor_index: raw_point.wave_packet_desriptor_index,
@@ -1290,7 +1290,7 @@ mod tests {
         let mut parser = PointParser::build(las_metadata, &layout)?;
 
         unsafe {
-            let destination_data = view_raw_bytes_mut(&mut actual_value);
+            let destination_data = bytemuck::bytes_of_mut(&mut actual_value);
             parser.parse_one(input_point, destination_data);
         }
 
@@ -1322,7 +1322,7 @@ mod tests {
         let mut parser = PointParser::build(las_metadata, &layout)?;
 
         unsafe {
-            let destination_data = view_raw_bytes_mut(&mut actual_value);
+            let destination_data = bytemuck::bytes_of_mut(&mut actual_value);
             parser.parse_one(input_point, destination_data);
         }
 
@@ -1491,11 +1491,11 @@ mod tests {
                 &attribute_definition.with_custom_datatype(PointAttributeDataType::U64),
             )?;
 
-            parse_scalar_attribute_in_format::<bool>(
+            parse_scalar_attribute_in_format::<u8>(
                 input_point,
                 las_metadata,
-                AsPrimitive::<f64>::as_(expected_value) != 0.0,
-                &attribute_definition.with_custom_datatype(PointAttributeDataType::Bool),
+                expected_value.as_(),
+                &attribute_definition.with_custom_datatype(PointAttributeDataType::U8),
             )?;
         }
 
@@ -1512,8 +1512,8 @@ mod tests {
 
         let mut parser = PointParser::build(&las_metadata, &target_point_layout)?;
         unsafe {
-            let source_data = view_raw_bytes(&test_point);
-            let destination_data = view_raw_bytes_mut(&mut parsed_point);
+            let source_data = bytemuck::bytes_of(&test_point);
+            let destination_data = bytemuck::bytes_of_mut(&mut parsed_point);
             parser.parse_one(source_data, destination_data);
         }
 
@@ -1528,7 +1528,7 @@ mod tests {
         // let target_point_layout = LasPointFormat5::layout();
         let las_metadata = get_test_las_metadata(Format::new(5)?)?;
 
-        let input_point_data = unsafe { view_raw_bytes(&test_point) };
+        let input_point_data = bytemuck::bytes_of(&test_point);
 
         // Parse all attributes individually
         parse_vector3_attribute_in_various_formats(
@@ -1670,8 +1670,8 @@ mod tests {
 
         let mut parser = PointParser::build(&las_metadata, &target_point_layout)?;
         unsafe {
-            let source_data = view_raw_bytes(&test_point);
-            let destination_data = view_raw_bytes_mut(&mut parsed_point);
+            let source_data = bytemuck::bytes_of(&test_point);
+            let destination_data = bytemuck::bytes_of_mut(&mut parsed_point);
             parser.parse_one(source_data, destination_data);
         }
 
@@ -1686,7 +1686,7 @@ mod tests {
         // let target_point_layout = LasPointFormat5::layout();
         let las_metadata = get_test_las_metadata(Format::new(10)?)?;
 
-        let input_point_data = unsafe { view_raw_bytes(&test_point) };
+        let input_point_data = bytemuck::bytes_of(&test_point);
 
         // Parse all attributes individually
         parse_vector3_attribute_in_various_formats(

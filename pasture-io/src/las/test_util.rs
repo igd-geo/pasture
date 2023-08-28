@@ -3,8 +3,7 @@ use std::{borrow::Cow, ops::Range, path::PathBuf};
 use anyhow::Result;
 use las_rs::point::Format;
 use pasture_core::{
-    containers::PointBuffer,
-    containers::{OwningPointBuffer, PerAttributeVecPointStorage, PointBufferExt},
+    containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, OwningBuffer},
     layout::{attributes, FieldAlignment, PointAttributeDataType, PointAttributeDefinition},
     math::AABB,
     nalgebra::{Point3, Vector3},
@@ -100,16 +99,12 @@ fn test_data_scanner_channels() -> Vec<u8> {
     vec![0, 1, 2, 3, 0, 1, 2, 3, 0, 1]
 }
 
-pub(crate) fn test_data_scan_direction_flags() -> Vec<bool> {
-    vec![
-        false, true, false, true, false, true, false, true, false, true,
-    ]
+pub(crate) fn test_data_scan_direction_flags() -> Vec<u8> {
+    vec![0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
 }
 
-pub(crate) fn test_data_edge_of_flight_lines() -> Vec<bool> {
-    vec![
-        false, true, false, true, false, true, false, true, false, true,
-    ]
+pub(crate) fn test_data_edge_of_flight_lines() -> Vec<u8> {
+    vec![0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
 }
 
 pub(crate) fn test_data_classifications() -> Vec<u8> {
@@ -190,13 +185,14 @@ pub(crate) fn test_data_extra_bytes_unsigned() -> Vec<u32> {
     vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
 
-pub(crate) fn compare_to_reference_data_range(
-    points: &dyn PointBuffer,
+pub(crate) fn compare_to_reference_data_range<'a, B: BorrowedBuffer<'a>>(
+    points: &'a B,
     point_format: Format,
     range: Range<usize>,
 ) {
     let positions = points
-        .iter_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
+        .view_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
+        .into_iter()
         .collect::<Vec<_>>();
     assert_eq!(
         &test_data_positions()[range.clone()],
@@ -205,7 +201,8 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     let intensities = points
-        .iter_attribute::<u16>(&attributes::INTENSITY)
+        .view_attribute::<u16>(&attributes::INTENSITY)
+        .into_iter()
         .collect::<Vec<_>>();
     assert_eq!(
         &test_data_intensities()[range.clone()],
@@ -214,7 +211,8 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     let return_numbers = points
-        .iter_attribute::<u8>(&attributes::RETURN_NUMBER)
+        .view_attribute::<u8>(&attributes::RETURN_NUMBER)
+        .into_iter()
         .collect::<Vec<_>>();
     let expected_return_numbers = if point_format.is_extended {
         test_data_return_numbers_extended()
@@ -228,7 +226,8 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     let number_of_returns = points
-        .iter_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
+        .view_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
+        .into_iter()
         .collect::<Vec<_>>();
     let expected_number_of_returns = if point_format.is_extended {
         test_data_number_of_returns_extended()
@@ -243,7 +242,8 @@ pub(crate) fn compare_to_reference_data_range(
 
     if point_format.is_extended {
         let classification_flags = points
-            .iter_attribute::<u8>(&attributes::CLASSIFICATION_FLAGS)
+            .view_attribute::<u8>(&attributes::CLASSIFICATION_FLAGS)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_classification_flags()[range.clone()],
@@ -252,7 +252,8 @@ pub(crate) fn compare_to_reference_data_range(
         );
 
         let scanner_channels = points
-            .iter_attribute::<u8>(&attributes::SCANNER_CHANNEL)
+            .view_attribute::<u8>(&attributes::SCANNER_CHANNEL)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_scanner_channels()[range.clone()],
@@ -262,7 +263,8 @@ pub(crate) fn compare_to_reference_data_range(
     }
 
     let scan_direction_flags = points
-        .iter_attribute::<bool>(&attributes::SCAN_DIRECTION_FLAG)
+        .view_attribute::<u8>(&attributes::SCAN_DIRECTION_FLAG)
+        .into_iter()
         .collect::<Vec<_>>();
     assert_eq!(
         &test_data_scan_direction_flags()[range.clone()],
@@ -271,7 +273,8 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     let eof = points
-        .iter_attribute::<bool>(&attributes::EDGE_OF_FLIGHT_LINE)
+        .view_attribute::<u8>(&attributes::EDGE_OF_FLIGHT_LINE)
+        .into_iter()
         .collect::<Vec<_>>();
     assert_eq!(
         &test_data_edge_of_flight_lines()[range.clone()],
@@ -280,7 +283,8 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     let classifications = points
-        .iter_attribute::<u8>(&attributes::CLASSIFICATION)
+        .view_attribute::<u8>(&attributes::CLASSIFICATION)
+        .into_iter()
         .collect::<Vec<_>>();
     assert_eq!(
         &test_data_classifications()[range.clone()],
@@ -290,7 +294,8 @@ pub(crate) fn compare_to_reference_data_range(
 
     if !point_format.is_extended {
         let scan_angle_ranks = points
-            .iter_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
+            .view_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_scan_angle_ranks()[range.clone()],
@@ -299,7 +304,8 @@ pub(crate) fn compare_to_reference_data_range(
         );
     } else {
         let scan_angles = points
-            .iter_attribute::<i16>(&attributes::SCAN_ANGLE)
+            .view_attribute::<i16>(&attributes::SCAN_ANGLE)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_scan_angles_extended()[range.clone()],
@@ -309,7 +315,8 @@ pub(crate) fn compare_to_reference_data_range(
     }
 
     let user_data = points
-        .iter_attribute::<u8>(&attributes::USER_DATA)
+        .view_attribute::<u8>(&attributes::USER_DATA)
+        .into_iter()
         .collect::<Vec<_>>();
     assert_eq!(
         &test_data_user_data()[range.clone()],
@@ -318,7 +325,8 @@ pub(crate) fn compare_to_reference_data_range(
     );
 
     let point_source_ids = points
-        .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+        .view_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+        .into_iter()
         .collect::<Vec<_>>();
     assert_eq!(
         &test_data_point_source_ids()[range.clone()],
@@ -328,7 +336,8 @@ pub(crate) fn compare_to_reference_data_range(
 
     if point_format.has_gps_time {
         let gps_times = points
-            .iter_attribute::<f64>(&attributes::GPS_TIME)
+            .view_attribute::<f64>(&attributes::GPS_TIME)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_gps_times()[range.clone()],
@@ -339,7 +348,8 @@ pub(crate) fn compare_to_reference_data_range(
 
     if point_format.has_color {
         let colors = points
-            .iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
+            .view_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_colors()[range.clone()],
@@ -350,7 +360,8 @@ pub(crate) fn compare_to_reference_data_range(
 
     if point_format.has_nir {
         let nirs = points
-            .iter_attribute::<u16>(&attributes::NIR)
+            .view_attribute::<u16>(&attributes::NIR)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_nirs()[range.clone()],
@@ -361,7 +372,8 @@ pub(crate) fn compare_to_reference_data_range(
 
     if point_format.has_waveform {
         let wp_indices = points
-            .iter_attribute::<u8>(&attributes::WAVE_PACKET_DESCRIPTOR_INDEX)
+            .view_attribute::<u8>(&attributes::WAVE_PACKET_DESCRIPTOR_INDEX)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_index()[range.clone()],
@@ -370,7 +382,8 @@ pub(crate) fn compare_to_reference_data_range(
         );
 
         let wp_offsets = points
-            .iter_attribute::<u64>(&attributes::WAVEFORM_DATA_OFFSET)
+            .view_attribute::<u64>(&attributes::WAVEFORM_DATA_OFFSET)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_offset()[range.clone()],
@@ -379,7 +392,8 @@ pub(crate) fn compare_to_reference_data_range(
         );
 
         let wp_sizes = points
-            .iter_attribute::<u32>(&attributes::WAVEFORM_PACKET_SIZE)
+            .view_attribute::<u32>(&attributes::WAVEFORM_PACKET_SIZE)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_size()[range.clone()],
@@ -388,7 +402,8 @@ pub(crate) fn compare_to_reference_data_range(
         );
 
         let wp_return_points = points
-            .iter_attribute::<f32>(&attributes::RETURN_POINT_WAVEFORM_LOCATION)
+            .view_attribute::<f32>(&attributes::RETURN_POINT_WAVEFORM_LOCATION)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_location()[range.clone()],
@@ -397,7 +412,8 @@ pub(crate) fn compare_to_reference_data_range(
         );
 
         let wp_parameters = points
-            .iter_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+            .view_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_wavepacket_parameters()[range.clone()],
@@ -408,7 +424,8 @@ pub(crate) fn compare_to_reference_data_range(
 
     if point_format.extra_bytes > 0 {
         let extra_bytes = points
-            .iter_attribute::<u32>(&DEFAULT_EXTRA_BYTES_ATTRIBUTE)
+            .view_attribute::<u32>(&DEFAULT_EXTRA_BYTES_ATTRIBUTE)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(
             &test_data_extra_bytes_unsigned()[range.clone()],
@@ -419,7 +436,10 @@ pub(crate) fn compare_to_reference_data_range(
 }
 
 /// Compare the `points` in the given `point_format` to the reference data for the format
-pub(crate) fn compare_to_reference_data(points: &dyn PointBuffer, point_format: Format) {
+pub(crate) fn compare_to_reference_data<'a, B: BorrowedBuffer<'a>>(
+    points: &'a B,
+    point_format: Format,
+) {
     compare_to_reference_data_range(points, point_format, 0..test_data_point_count());
 }
 
@@ -429,123 +449,171 @@ pub(crate) const DEFAULT_EXTRA_BYTES_ATTRIBUTE: PointAttributeDefinition =
 pub(crate) fn get_test_points_in_las_format(
     point_format: u8,
     with_extra_bytes: bool,
-) -> Result<Box<dyn PointBuffer>> {
+) -> Result<HashMapBuffer> {
     let format = Format::new(point_format)?;
     let mut layout = point_layout_from_las_point_format(&format, false)?;
     if with_extra_bytes {
         layout.add_attribute(DEFAULT_EXTRA_BYTES_ATTRIBUTE, FieldAlignment::Packed(1));
     }
 
-    let mut buffer = PerAttributeVecPointStorage::with_capacity(10, layout);
-    let mut pusher = buffer.begin_push_attributes();
-    pusher.push_attribute_range(&attributes::POSITION_3D, test_data_positions().as_slice());
-    pusher.push_attribute_range(&attributes::INTENSITY, test_data_intensities().as_slice());
-
-    if format.is_extended {
-        pusher.push_attribute_range(
-            &attributes::RETURN_NUMBER,
-            test_data_return_numbers_extended().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::NUMBER_OF_RETURNS,
-            test_data_number_of_returns_extended().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::CLASSIFICATION_FLAGS,
-            test_data_classification_flags().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::SCANNER_CHANNEL,
-            test_data_scanner_channels().as_slice(),
-        );
-    } else {
-        pusher.push_attribute_range(
-            &attributes::RETURN_NUMBER,
-            test_data_return_numbers().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::NUMBER_OF_RETURNS,
-            test_data_number_of_returns().as_slice(),
-        );
+    let mut buffer = HashMapBuffer::with_capacity(10, layout);
+    buffer.resize(10);
+    for (idx, value) in test_data_positions().iter().copied().enumerate() {
+        buffer
+            .view_attribute_mut(&attributes::POSITION_3D)
+            .set_at(idx, value);
+    }
+    for (idx, value) in test_data_intensities().iter().copied().enumerate() {
+        buffer
+            .view_attribute_mut(&attributes::INTENSITY)
+            .set_at(idx, value);
     }
 
-    pusher.push_attribute_range(
-        &attributes::SCAN_DIRECTION_FLAG,
-        test_data_scan_direction_flags().as_slice(),
-    );
-    pusher.push_attribute_range(
-        &attributes::EDGE_OF_FLIGHT_LINE,
-        test_data_edge_of_flight_lines().as_slice(),
-    );
-    pusher.push_attribute_range(
-        &attributes::CLASSIFICATION,
-        test_data_classifications().as_slice(),
-    );
-
     if format.is_extended {
-        pusher.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
-        pusher.push_attribute_range(
-            &attributes::SCAN_ANGLE,
-            test_data_scan_angles_extended().as_slice(),
-        );
+        for (idx, value) in test_data_return_numbers().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::RETURN_NUMBER)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_number_of_returns().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::NUMBER_OF_RETURNS)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_classification_flags().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::CLASSIFICATION_FLAGS)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_scanner_channels().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::SCANNER_CHANNEL)
+                .set_at(idx, value);
+        }
     } else {
-        pusher.push_attribute_range(
-            &attributes::SCAN_ANGLE_RANK,
-            test_data_scan_angle_ranks().as_slice(),
-        );
-        pusher.push_attribute_range(&attributes::USER_DATA, test_data_user_data().as_slice());
+        for (idx, value) in test_data_return_numbers().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::RETURN_NUMBER)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_number_of_returns().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::NUMBER_OF_RETURNS)
+                .set_at(idx, value);
+        }
     }
 
-    pusher.push_attribute_range(
-        &attributes::POINT_SOURCE_ID,
-        test_data_point_source_ids().as_slice(),
-    );
+    for (idx, value) in test_data_scan_direction_flags().iter().copied().enumerate() {
+        buffer
+            .view_attribute_mut(&attributes::SCAN_DIRECTION_FLAG)
+            .set_at(idx, value);
+    }
+    for (idx, value) in test_data_edge_of_flight_lines().iter().copied().enumerate() {
+        buffer
+            .view_attribute_mut(&attributes::EDGE_OF_FLIGHT_LINE)
+            .set_at(idx, value);
+    }
+    for (idx, value) in test_data_classifications().iter().copied().enumerate() {
+        buffer
+            .view_attribute_mut(&attributes::CLASSIFICATION)
+            .set_at(idx, value);
+    }
+
+    if format.is_extended {
+        for (idx, value) in test_data_user_data().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::USER_DATA)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_scan_angles_extended().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::SCAN_ANGLE)
+                .set_at(idx, value);
+        }
+    } else {
+        for (idx, value) in test_data_scan_angle_ranks().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::SCAN_ANGLE_RANK)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_user_data().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::USER_DATA)
+                .set_at(idx, value);
+        }
+    }
+
+    for (idx, value) in test_data_point_source_ids().iter().copied().enumerate() {
+        buffer
+            .view_attribute_mut(&attributes::POINT_SOURCE_ID)
+            .set_at(idx, value);
+    }
 
     if format.has_gps_time {
-        pusher.push_attribute_range(&attributes::GPS_TIME, test_data_gps_times().as_slice());
+        for (idx, value) in test_data_gps_times().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::GPS_TIME)
+                .set_at(idx, value);
+        }
     }
 
     if format.has_color {
-        pusher.push_attribute_range(&attributes::COLOR_RGB, test_data_colors().as_slice());
+        for (idx, value) in test_data_colors().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::COLOR_RGB)
+                .set_at(idx, value);
+        }
     }
 
     if format.has_nir {
-        pusher.push_attribute_range(&attributes::NIR, test_data_nirs().as_slice());
+        for (idx, value) in test_data_nirs().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::NIR)
+                .set_at(idx, value);
+        }
     }
 
     if format.has_waveform {
-        pusher.push_attribute_range(
-            &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
-            test_data_wavepacket_index().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::WAVEFORM_DATA_OFFSET,
-            test_data_wavepacket_offset().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::WAVEFORM_PACKET_SIZE,
-            test_data_wavepacket_size().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::RETURN_POINT_WAVEFORM_LOCATION,
-            test_data_wavepacket_location().as_slice(),
-        );
-        pusher.push_attribute_range(
-            &attributes::WAVEFORM_PARAMETERS,
-            test_data_wavepacket_parameters().as_slice(),
-        );
+        for (idx, value) in test_data_wavepacket_index().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::WAVE_PACKET_DESCRIPTOR_INDEX)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_wavepacket_offset().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::WAVEFORM_DATA_OFFSET)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_wavepacket_size().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::WAVEFORM_PACKET_SIZE)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_wavepacket_location().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&attributes::RETURN_POINT_WAVEFORM_LOCATION)
+                .set_at(idx, value);
+        }
+        for (idx, value) in test_data_wavepacket_parameters()
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            buffer
+                .view_attribute_mut(&attributes::WAVEFORM_PARAMETERS)
+                .set_at(idx, value);
+        }
     }
 
     if with_extra_bytes {
-        pusher.push_attribute_range(
-            &DEFAULT_EXTRA_BYTES_ATTRIBUTE,
-            test_data_extra_bytes_unsigned().as_slice(),
-        );
+        for (idx, value) in test_data_extra_bytes_unsigned().iter().copied().enumerate() {
+            buffer
+                .view_attribute_mut(&DEFAULT_EXTRA_BYTES_ATTRIBUTE)
+                .set_at(idx, value);
+        }
     }
 
-    pusher.done();
-
-    Ok(Box::new(buffer))
+    Ok(buffer)
 }
 
 pub(crate) fn _epsilon_compare_vec3f32(expected: &Vector3<f32>, actual: &Vector3<f32>) -> bool {

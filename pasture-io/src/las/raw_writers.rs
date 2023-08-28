@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use las_rs::{point::Format, Builder, Vlr};
 use laz::{LasZipCompressor, LazItemRecordBuilder, LazVlr};
-use pasture_core::{containers::PointBuffer, layout::PointLayout, nalgebra::Vector3};
+use pasture_core::{containers::BorrowedBuffer, layout::PointLayout, nalgebra::Vector3};
 
 use crate::base::PointWriter;
 
@@ -181,7 +181,10 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         Ok(())
     }
 
-    fn write_points_default_layout(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write_points_default_layout<'a, B: BorrowedBuffer<'a>>(
+        &mut self,
+        points: &'a B,
+    ) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -212,7 +215,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_raw_points(
+            points.get_point_range(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer[..points_in_cur_chunk * size_of_single_point],
             );
@@ -340,7 +343,10 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         Ok(())
     }
 
-    fn write_points_custom_layout(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write_points_custom_layout<'a, B: BorrowedBuffer<'a>>(
+        &mut self,
+        points: &'a B,
+    ) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -445,7 +451,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_raw_points(
+            points.get_point_range(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer[0..(points_in_cur_chunk * size_of_single_point)],
             );
@@ -472,43 +478,27 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
                             point_index,
                             &mut point_read,
                         )?,
-                        scan_direction_flag: if scan_direction_flag_reader(
+                        scan_direction_flag: scan_direction_flag_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
-                        edge_of_flight_line: if edge_of_flight_line_reader(
+                        )?,
+                        edge_of_flight_line: edge_of_flight_line_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
+                        )?,
                     })
                 } else {
                     BitAttributes::Regular(BitAttributesRegular {
                         return_number: return_number_reader(point_index, &mut point_read)?,
                         number_of_returns: number_of_returns_reader(point_index, &mut point_read)?,
-                        scan_direction_flag: if scan_direction_flag_reader(
+                        scan_direction_flag: scan_direction_flag_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
-                        edge_of_flight_line: if edge_of_flight_line_reader(
+                        )?,
+                        edge_of_flight_line: edge_of_flight_line_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
+                        )?,
                     })
                 };
                 write_las_bit_attributes(bit_attributes, &mut self.writer)?;
@@ -595,7 +585,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
 }
 
 impl<T: std::io::Write + std::io::Seek> PointWriter for RawLASWriter<T> {
-    fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
         if *points.point_layout() == self.default_layout {
             self.write_points_default_layout(points)
         } else {
@@ -715,7 +705,10 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         Ok(self.writer.into_inner())
     }
 
-    fn write_points_default_layout(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write_points_default_layout<'a, B: BorrowedBuffer<'a>>(
+        &mut self,
+        points: &'a B,
+    ) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -748,9 +741,9 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_raw_points(
+            points.get_point_range(
                 start_point_index..(start_point_index + points_in_cur_chunk),
-                &mut chunk_buffer,
+                &mut chunk_buffer[..(points_in_cur_chunk * size_of_single_point)],
             );
             let mut point_read = Cursor::new(chunk_buffer);
             let mut las_point_write = Cursor::new(las_point_buffer);
@@ -883,7 +876,10 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         Ok(())
     }
 
-    fn write_points_custom_layout(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write_points_custom_layout<'a, B: BorrowedBuffer<'a>>(
+        &mut self,
+        points: &'a B,
+    ) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -987,7 +983,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_raw_points(
+            points.get_point_range(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer[0..(points_in_cur_chunk * size_of_single_point)],
             );
@@ -1019,43 +1015,27 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                             point_index,
                             &mut point_read,
                         )?,
-                        scan_direction_flag: if scan_direction_flag_reader(
+                        scan_direction_flag: scan_direction_flag_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
-                        edge_of_flight_line: if edge_of_flight_line_reader(
+                        )?,
+                        edge_of_flight_line: edge_of_flight_line_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
+                        )?,
                     })
                 } else {
                     BitAttributes::Regular(BitAttributesRegular {
                         return_number: return_number_reader(point_index, &mut point_read)?,
                         number_of_returns: number_of_returns_reader(point_index, &mut point_read)?,
-                        scan_direction_flag: if scan_direction_flag_reader(
+                        scan_direction_flag: scan_direction_flag_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
-                        edge_of_flight_line: if edge_of_flight_line_reader(
+                        )?,
+                        edge_of_flight_line: edge_of_flight_line_reader(
                             point_index,
                             &mut point_read,
-                        )? {
-                            1
-                        } else {
-                            0
-                        },
+                        )?,
                     })
                 };
                 write_las_bit_attributes(bit_attributes, &mut las_point_write)?;
@@ -1173,7 +1153,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
 }
 
 impl<T: std::io::Write + std::io::Seek + Send + 'static> PointWriter for RawLAZWriter<T> {
-    fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
         if *points.point_layout() != self.default_layout {
             self.write_points_custom_layout(points)
         } else {
@@ -1195,8 +1175,6 @@ mod tests {
     use std::{fs::File, io::BufWriter};
 
     use las_rs::Builder;
-    use pasture_core::containers::{InterleavedVecPointStorage, PointBufferExt};
-    use pasture_core::layout::PointType;
     use pasture_core::math::AABB;
     use pasture_core::nalgebra::Point3;
 
@@ -1209,7 +1187,7 @@ mod tests {
             LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8, LasPointFormat9,
         },
     };
-    use pasture_core::containers::OwningPointBuffer;
+    use pasture_core::containers::*;
     use pasture_derive::PointType;
     use scopeguard::defer;
 
@@ -1241,7 +1219,7 @@ mod tests {
                         let expected_format = point_layout_from_las_point_format(&format, false)?;
                         assert_eq!(expected_format, *writer.get_default_point_layout());
 
-                        writer.write(test_data.as_ref())?;
+                        writer.write(&test_data)?;
                         writer.flush()?;
                     }
 
@@ -1251,15 +1229,19 @@ mod tests {
                         assert_eq!(Some(test_data_bounds()), metadata.bounds());
                         assert_eq!(test_data.len(), reader.remaining_points());
 
-                        let read_points = reader.read(test_data.len())?;
+                        let read_points = reader.read::<VectorBuffer>(test_data.len())?;
 
                         assert_eq!(read_points.point_layout(), test_data.point_layout());
                         assert_eq!(read_points.len(), test_data.len());
 
-                        let expected_points =
-                            test_data.iter_point::<$point_type>().collect::<Vec<_>>();
-                        let actual_points =
-                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
+                        let expected_points = test_data
+                            .view::<$point_type>()
+                            .into_iter()
+                            .collect::<Vec<_>>();
+                        let actual_points = read_points
+                            .view::<$point_type>()
+                            .into_iter()
+                            .collect::<Vec<_>>();
 
                         assert_eq!(expected_points, actual_points);
                     }
@@ -1267,8 +1249,10 @@ mod tests {
                     Ok(())
                 }
 
-                #[repr(C)]
-                #[derive(PointType)]
+                #[repr(C, packed)]
+                #[derive(
+                    PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+                )]
                 struct CustomPointType {
                     #[pasture(BUILTIN_INTENSITY)]
                     pub intensity: u16,
@@ -1298,9 +1282,7 @@ mod tests {
                     let expected_bounds =
                         AABB::from_min_max(Point3::new(0.1, 0.2, 0.3), Point3::new(0.4, 0.5, 0.6));
 
-                    let mut expected_data =
-                        InterleavedVecPointStorage::new(CustomPointType::layout());
-                    expected_data.push_points(test_data.as_slice());
+                    let expected_data = test_data.iter().copied().collect::<VectorBuffer>();
 
                     let format = Format::new($format)?;
                     let mut header_builder = Builder::from((1, 4));
@@ -1343,12 +1325,14 @@ mod tests {
 
                         assert_eq!(test_data.len(), reader.remaining_points());
 
-                        let read_points = reader.read(test_data.len())?;
+                        let read_points = reader.read::<VectorBuffer>(test_data.len())?;
 
                         assert_eq!(read_points.len(), test_data.len());
 
-                        let mut actual_points =
-                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
+                        let mut actual_points = read_points
+                            .view::<$point_type>()
+                            .into_iter()
+                            .collect::<Vec<_>>();
 
                         // Expected positions were f32, converted to f64, this might yield rounding errors, so we compare positions separately
                         for (idx, (expected, actual)) in
@@ -1419,7 +1403,7 @@ mod tests {
                         let expected_format = point_layout_from_las_point_format(&format, false)?;
                         assert_eq!(expected_format, *writer.get_default_point_layout());
 
-                        writer.write(test_data.as_ref())?;
+                        writer.write(&test_data)?;
                         writer.flush()?;
                     }
 
@@ -1430,15 +1414,19 @@ mod tests {
                         assert_eq!(Some(test_data.len()), metadata.number_of_points());
                         assert_eq!(test_data.len(), reader.remaining_points());
 
-                        let read_points = reader.read(test_data.len())?;
+                        let read_points = reader.read::<VectorBuffer>(test_data.len())?;
 
                         assert_eq!(read_points.point_layout(), test_data.point_layout());
                         assert_eq!(read_points.len(), test_data.len());
 
-                        let expected_points =
-                            test_data.iter_point::<$point_type>().collect::<Vec<_>>();
-                        let actual_points =
-                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
+                        let expected_points = test_data
+                            .view::<$point_type>()
+                            .into_iter()
+                            .collect::<Vec<_>>();
+                        let actual_points = read_points
+                            .view::<$point_type>()
+                            .into_iter()
+                            .collect::<Vec<_>>();
 
                         assert_eq!(expected_points, actual_points);
                     }
@@ -1446,8 +1434,10 @@ mod tests {
                     Ok(())
                 }
 
-                #[repr(C)]
-                #[derive(PointType)]
+                #[repr(C, packed)]
+                #[derive(
+                    PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+                )]
                 struct CustomPointType {
                     #[pasture(BUILTIN_INTENSITY)]
                     pub intensity: u16,
@@ -1477,9 +1467,7 @@ mod tests {
                     let expected_bounds =
                         AABB::from_min_max(Point3::new(0.1, 0.2, 0.3), Point3::new(0.4, 0.5, 0.6));
 
-                    let mut expected_data =
-                        InterleavedVecPointStorage::new(CustomPointType::layout());
-                    expected_data.push_points(test_data.as_slice());
+                    let expected_data = test_data.iter().copied().collect::<VectorBuffer>();
 
                     let format = Format::new($format)?;
                     let mut header_builder = Builder::from((1, 4));
@@ -1523,12 +1511,14 @@ mod tests {
                         assert_eq!(Some(test_data.len()), metadata.number_of_points());
                         assert_eq!(test_data.len(), reader.remaining_points());
 
-                        let read_points = reader.read(test_data.len())?;
+                        let read_points = reader.read::<VectorBuffer>(test_data.len())?;
 
                         assert_eq!(read_points.len(), test_data.len());
 
-                        let mut actual_points =
-                            read_points.iter_point::<$point_type>().collect::<Vec<_>>();
+                        let mut actual_points = read_points
+                            .view::<$point_type>()
+                            .into_iter()
+                            .collect::<Vec<_>>();
 
                         // Expected positions were f32, converted to f64, this might yield rounding errors, so we compare positions separately
                         for (idx, (expected, actual)) in

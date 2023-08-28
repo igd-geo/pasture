@@ -8,7 +8,9 @@ use std::convert::From;
 
 /// Point type for LAS point format 0
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat0 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -19,9 +21,9 @@ pub struct LasPointFormat0 {
     #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
     pub number_of_returns: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -42,10 +44,14 @@ impl From<Point> for LasPointFormat0 {
             return_number: las_point.return_number,
             number_of_returns: las_point.number_of_returns,
             scan_direction_flag: match las_point.scan_direction {
-                ScanDirection::RightToLeft => false,
-                ScanDirection::LeftToRight => true,
+                ScanDirection::RightToLeft => 0,
+                ScanDirection::LeftToRight => 1,
             },
-            edge_of_flight_line: las_point.is_edge_of_flight_line,
+            edge_of_flight_line: if las_point.is_edge_of_flight_line {
+                1
+            } else {
+                0
+            },
             classification: las_point.classification.into(),
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
@@ -56,7 +62,9 @@ impl From<Point> for LasPointFormat0 {
 
 /// Point type for LAS point format 1
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat1 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -67,9 +75,9 @@ pub struct LasPointFormat1 {
     #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
     pub number_of_returns: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -92,10 +100,14 @@ impl From<Point> for LasPointFormat1 {
             return_number: las_point.return_number,
             number_of_returns: las_point.number_of_returns,
             scan_direction_flag: match las_point.scan_direction {
-                ScanDirection::RightToLeft => false,
-                ScanDirection::LeftToRight => true,
+                ScanDirection::RightToLeft => 0,
+                ScanDirection::LeftToRight => 1,
             },
-            edge_of_flight_line: las_point.is_edge_of_flight_line,
+            edge_of_flight_line: if las_point.is_edge_of_flight_line {
+                1
+            } else {
+                0
+            },
             classification: las_point.classification.into(),
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
@@ -107,7 +119,9 @@ impl From<Point> for LasPointFormat1 {
 
 /// Point type for LAS point format 2
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat2 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -118,9 +132,9 @@ pub struct LasPointFormat2 {
     #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
     pub number_of_returns: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -146,10 +160,14 @@ impl From<Point> for LasPointFormat2 {
             return_number: las_point.return_number,
             number_of_returns: las_point.number_of_returns,
             scan_direction_flag: match las_point.scan_direction {
-                ScanDirection::RightToLeft => false,
-                ScanDirection::LeftToRight => true,
+                ScanDirection::RightToLeft => 0,
+                ScanDirection::LeftToRight => 1,
             },
-            edge_of_flight_line: las_point.is_edge_of_flight_line,
+            edge_of_flight_line: if las_point.is_edge_of_flight_line {
+                1
+            } else {
+                0
+            },
             classification: las_point.classification.into(),
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
@@ -161,7 +179,9 @@ impl From<Point> for LasPointFormat2 {
 
 /// Point type for LAS point format 3
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat3 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -172,9 +192,9 @@ pub struct LasPointFormat3 {
     #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
     pub number_of_returns: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -202,10 +222,14 @@ impl From<Point> for LasPointFormat3 {
             return_number: las_point.return_number,
             number_of_returns: las_point.number_of_returns,
             scan_direction_flag: match las_point.scan_direction {
-                ScanDirection::RightToLeft => false,
-                ScanDirection::LeftToRight => true,
+                ScanDirection::RightToLeft => 0,
+                ScanDirection::LeftToRight => 1,
             },
-            edge_of_flight_line: las_point.is_edge_of_flight_line,
+            edge_of_flight_line: if las_point.is_edge_of_flight_line {
+                1
+            } else {
+                0
+            },
             classification: las_point.classification.into(),
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
@@ -218,7 +242,9 @@ impl From<Point> for LasPointFormat3 {
 
 /// Point type for LAS point format 4
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat4 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -229,9 +255,9 @@ pub struct LasPointFormat4 {
     #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
     pub number_of_returns: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -265,10 +291,14 @@ impl From<Point> for LasPointFormat4 {
             return_number: las_point.return_number,
             number_of_returns: las_point.number_of_returns,
             scan_direction_flag: match las_point.scan_direction {
-                ScanDirection::RightToLeft => false,
-                ScanDirection::LeftToRight => true,
+                ScanDirection::RightToLeft => 0,
+                ScanDirection::LeftToRight => 1,
             },
-            edge_of_flight_line: las_point.is_edge_of_flight_line,
+            edge_of_flight_line: if las_point.is_edge_of_flight_line {
+                1
+            } else {
+                0
+            },
             classification: las_point.classification.into(),
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
@@ -285,7 +315,9 @@ impl From<Point> for LasPointFormat4 {
 
 /// Point type for LAS point format 5
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat5 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -296,9 +328,9 @@ pub struct LasPointFormat5 {
     #[pasture(BUILTIN_NUMBER_OF_RETURNS)]
     pub number_of_returns: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -335,10 +367,14 @@ impl From<Point> for LasPointFormat5 {
             return_number: las_point.return_number,
             number_of_returns: las_point.number_of_returns,
             scan_direction_flag: match las_point.scan_direction {
-                ScanDirection::RightToLeft => false,
-                ScanDirection::LeftToRight => true,
+                ScanDirection::RightToLeft => 0,
+                ScanDirection::LeftToRight => 1,
             },
-            edge_of_flight_line: las_point.is_edge_of_flight_line,
+            edge_of_flight_line: if las_point.is_edge_of_flight_line {
+                1
+            } else {
+                0
+            },
             classification: las_point.classification.into(),
             scan_angle_rank: las_point.scan_angle as i8,
             user_data: las_point.user_data,
@@ -356,7 +392,9 @@ impl From<Point> for LasPointFormat5 {
 
 /// Point type for LAS point format 6
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat6 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -371,9 +409,9 @@ pub struct LasPointFormat6 {
     #[pasture(BUILTIN_SCANNER_CHANNEL)]
     pub scanner_channel: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_USER_DATA)]
@@ -390,7 +428,9 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat6>(), 46);
 
 /// Point type for LAS point format 7
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat7 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -405,9 +445,9 @@ pub struct LasPointFormat7 {
     #[pasture(BUILTIN_SCANNER_CHANNEL)]
     pub scanner_channel: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_USER_DATA)]
@@ -426,7 +466,9 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat7>(), 52);
 
 /// Point type for LAS point format 8
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat8 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -441,9 +483,9 @@ pub struct LasPointFormat8 {
     #[pasture(BUILTIN_SCANNER_CHANNEL)]
     pub scanner_channel: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_USER_DATA)]
@@ -464,7 +506,9 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat8>(), 54);
 
 /// Point type for LAS point format 9
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat9 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -479,9 +523,9 @@ pub struct LasPointFormat9 {
     #[pasture(BUILTIN_SCANNER_CHANNEL)]
     pub scanner_channel: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_USER_DATA)]
@@ -508,7 +552,9 @@ const_assert_eq!(std::mem::size_of::<LasPointFormat9>(), 75);
 
 /// Point type for LAS point format 10
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, PointType)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Default, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+)]
 pub struct LasPointFormat10 {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -523,9 +569,9 @@ pub struct LasPointFormat10 {
     #[pasture(BUILTIN_SCANNER_CHANNEL)]
     pub scanner_channel: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_direction_flag: bool,
+    pub scan_direction_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_USER_DATA)]

@@ -1,5 +1,6 @@
 use pasture_core::containers::{
-    BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, SliceBuffer, SliceBufferMut,
+    BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, MakeBufferFromLayout, SliceBuffer,
+    SliceBufferMut,
 };
 use pasture_core::nalgebra::Vector3;
 use pasture_core::{
@@ -37,7 +38,7 @@ fn main() {
     // By default, our data is in interleaved format, because a struct is a form of interleaved data. So
     // let's create a buffer to hold our points:
     {
-        let mut buffer = VectorBuffer::new(SimplePoint::layout());
+        let mut buffer = VectorBuffer::new_from_layout(SimplePoint::layout());
         // We can add interleaved data like so:
         buffer.view_mut().push_point(points[0]);
         buffer.view_mut().push_point(points[1]);

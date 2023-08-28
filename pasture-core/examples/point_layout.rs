@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use pasture_core::containers::{BorrowedMutBuffer, VectorBuffer};
+use pasture_core::containers::{BorrowedMutBuffer, MakeBufferFromLayout, VectorBuffer};
 use pasture_core::layout::{
     attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
 };
@@ -110,7 +110,7 @@ fn main() {
         );
 
         //With this, we can create a `PointBuffer` that stores `CustomPointType`s
-        let mut buffer = VectorBuffer::new(layout);
+        let mut buffer = VectorBuffer::new_from_layout(layout);
         buffer.view_mut().push_point(CustomPointType {
             position: Vector3::new(1.0, 2.0, 3.0),
             intensity: 42,

@@ -6,13 +6,8 @@ use anyhow::{anyhow, Context, Result};
 use las_rs::Header;
 use las_rs::{raw, Builder, Vlr};
 use laz::LasZipDecompressor;
-use pasture_core::containers::OwningPointBuffer;
-use pasture_core::{
-    containers::InterleavedPointView,
-    containers::{InterleavedVecPointStorage, PointBuffer, PointBufferWriteable},
-    layout::PointLayout,
-    meta::Metadata,
-};
+use pasture_core::containers::OwningBuffer;
+use pasture_core::{layout::PointLayout, meta::Metadata};
 
 use super::{map_laz_err, point_layout_from_las_metadata, LASMetadata, PointParser};
 use crate::base::{PointReader, SeekToPoint};
@@ -55,7 +50,7 @@ pub(crate) trait LASReaderBase {
     fn header(&self) -> &Header;
 }
 
-pub(crate) struct RawLASReader<T: Read + Seek> {
+pub struct RawLASReader<T: Read + Seek> {
     reader: T,
     metadata: LASMetadata,
     layout: PointLayout,
@@ -115,11 +110,14 @@ impl<T: Read + Seek> RawLASReader<T> {
         &self.metadata
     }
 
-    fn read_into_default_layout(
+    fn read_into_default_layout<'a, 'b, B: OwningBuffer<'a>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'b mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'a: 'b,
+    {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
@@ -152,10 +150,7 @@ impl<T: Read + Seek> RawLASReader<T> {
                 &mut self.default_parser,
             );
 
-            point_buffer.push(&InterleavedPointView::from_raw_slice(
-                &output_points_chunk[0..bytes_in_chunk],
-                self.layout.clone(),
-            ));
+            point_buffer.extend(&output_points_chunk[0..bytes_in_chunk]);
         }
 
         self.current_point_index += num_points_to_read;
@@ -163,11 +158,14 @@ impl<T: Read + Seek> RawLASReader<T> {
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout(
+    fn read_into_custom_layout<'a, 'b, B: OwningBuffer<'a>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'b mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'a: 'b,
+    {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
@@ -215,10 +213,7 @@ impl<T: Read + Seek> RawLASReader<T> {
                 &mut parser,
             );
 
-            point_buffer.push(&InterleavedPointView::from_raw_slice(
-                &points_chunk[0..bytes_in_chunk],
-                point_buffer.point_layout().clone(),
-            ));
+            point_buffer.extend(&points_chunk[0..bytes_in_chunk]);
         }
 
         self.current_point_index += num_points_to_read;
@@ -238,21 +233,14 @@ impl<T: Read + Seek> LASReaderBase for RawLASReader<T> {
 }
 
 impl<T: Read + Seek> PointReader for RawLASReader<T> {
-    fn read(&mut self, count: usize) -> Result<Box<dyn pasture_core::containers::PointBuffer>> {
-        let num_points_to_read = usize::min(count, self.remaining_points());
-        let mut buffer =
-            InterleavedVecPointStorage::with_capacity(num_points_to_read, self.layout.clone());
-
-        self.read_into(&mut buffer, num_points_to_read)?;
-
-        Ok(Box::new(buffer))
-    }
-
-    fn read_into(
+    fn read_into<'a, 'b, B: OwningBuffer<'a>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'b mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'a: 'b,
+    {
         if *point_buffer.point_layout() != self.layout {
             self.read_into_custom_layout(point_buffer, count)
         } else {
@@ -293,7 +281,7 @@ impl<T: Read + Seek> SeekToPoint for RawLASReader<T> {
     }
 }
 
-pub(crate) struct RawLAZReader<'a, T: Read + Seek + Send + 'a> {
+pub struct RawLAZReader<'a, T: Read + Seek + Send + 'a> {
     reader: LasZipDecompressor<'a, T>,
     metadata: LASMetadata,
     layout: PointLayout,
@@ -425,11 +413,14 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         Ok(())
     }
 
-    fn read_into_default_layout(
+    fn read_into_default_layout<'b, 'c, B: OwningBuffer<'b>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'c mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'b: 'c,
+    {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
@@ -446,55 +437,55 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         let mut decompression_chunk: Vec<u8> = vec![0; decompression_chunk_size];
 
         // If the buffer is interleaved, we can directly read into the memory of the buffer and save one memcpy per chunk
-        if point_buffer.as_interleaved_mut().is_some() {
-            let first_new_point_index = point_buffer.len();
-            point_buffer.resize(num_points_to_read);
+        // if point_buffer.as_interleaved_mut().is_some() {
+        //     let first_new_point_index = point_buffer.len();
+        //     point_buffer.resize(num_points_to_read);
 
-            let interleaved_buffer = point_buffer.as_interleaved_mut().unwrap();
+        //     let interleaved_buffer = point_buffer.as_interleaved_mut().unwrap();
 
-            for chunk_index in 0..num_chunks {
-                let points_in_chunk =
-                    std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-                let first_point_index = first_new_point_index + chunk_index * chunk_size;
-                let end_of_chunk_index = first_point_index + points_in_chunk;
+        //     for chunk_index in 0..num_chunks {
+        //         let points_in_chunk =
+        //             std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
+        //         let first_point_index = first_new_point_index + chunk_index * chunk_size;
+        //         let end_of_chunk_index = first_point_index + points_in_chunk;
 
-                self.read_chunk_default_layout(
-                    interleaved_buffer.get_raw_points_mut(first_point_index..end_of_chunk_index),
-                    &mut decompression_chunk,
-                    points_in_chunk,
-                )?;
-            }
-        } else {
-            let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
+        //         self.read_chunk_default_layout(
+        //             interleaved_buffer.get_raw_points_mut(first_point_index..end_of_chunk_index),
+        //             &mut decompression_chunk,
+        //             points_in_chunk,
+        //         )?;
+        //     }
+        // } else {
+        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
 
-            for chunk_index in 0..num_chunks {
-                let points_in_chunk =
-                    std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-                let bytes_in_chunk = points_in_chunk * point_size;
+        for chunk_index in 0..num_chunks {
+            let points_in_chunk =
+                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
+            let bytes_in_chunk = points_in_chunk * point_size;
 
-                self.read_chunk_default_layout(
-                    &mut points_chunk[..],
-                    &mut decompression_chunk[..],
-                    points_in_chunk,
-                )?;
+            self.read_chunk_default_layout(
+                &mut points_chunk[..],
+                &mut decompression_chunk[..],
+                points_in_chunk,
+            )?;
 
-                point_buffer.push(&InterleavedPointView::from_raw_slice(
-                    &points_chunk[0..bytes_in_chunk],
-                    self.layout.clone(),
-                ));
-            }
+            point_buffer.extend(&points_chunk[0..bytes_in_chunk]);
         }
+        // }
 
         self.current_point_index += num_points_to_read;
 
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout(
+    fn read_into_custom_layout<'b, 'c, B: OwningBuffer<'b>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'c mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'b: 'c,
+    {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
@@ -523,10 +514,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
                 point_buffer.point_layout(),
             )?;
 
-            point_buffer.push(&InterleavedPointView::from_raw_slice(
-                &points_chunk[0..bytes_in_chunk],
-                point_buffer.point_layout().clone(),
-            ));
+            point_buffer.extend(&points_chunk[0..bytes_in_chunk]);
         }
 
         self.current_point_index += num_points_to_read;
@@ -546,21 +534,14 @@ impl<'a, T: Read + Seek + Send + 'a> LASReaderBase for RawLAZReader<'a, T> {
 }
 
 impl<'a, T: Read + Seek + Send + 'a> PointReader for RawLAZReader<'a, T> {
-    fn read(&mut self, count: usize) -> Result<Box<dyn PointBuffer>> {
-        let num_points_to_read = usize::min(count, self.remaining_points());
-        let mut buffer =
-            InterleavedVecPointStorage::with_capacity(num_points_to_read, self.layout.clone());
-
-        self.read_into(&mut buffer, num_points_to_read)?;
-
-        Ok(Box::new(buffer))
-    }
-
-    fn read_into(
+    fn read_into<'b, 'c, B: OwningBuffer<'b>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'c mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'b: 'c,
+    {
         if *point_buffer.point_layout() != self.layout {
             self.read_into_custom_layout(point_buffer, count)
         } else {
@@ -604,7 +585,6 @@ mod tests {
     use std::{fs::File, io::BufReader};
 
     use las_rs::point::Format;
-    use pasture_core::containers::PointBufferExt;
     use pasture_core::layout::attributes;
     use pasture_core::layout::PointAttributeDataType;
     use pasture_core::nalgebra::Vector3;
@@ -636,7 +616,7 @@ mod tests {
         ($name:ident, $format:expr, $reader:ident, $get_test_file:ident) => {
             mod $name {
                 use super::*;
-                use pasture_core::containers::PerAttributeVecPointStorage;
+                use pasture_core::containers::*;
                 use std::path::PathBuf;
 
                 fn get_test_file_path() -> PathBuf {
@@ -670,11 +650,11 @@ mod tests {
                     let mut reader = $reader::from_read(read)?;
                     let format = Format::new($format)?;
 
-                    let points = reader.read(10)?;
+                    let points = reader.read::<VectorBuffer>(10)?;
                     let expected_layout =
                         point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     assert_eq!(*points.point_layout(), expected_layout);
-                    compare_to_reference_data(points.as_ref(), format);
+                    compare_to_reference_data(&points, format);
 
                     assert_eq!(10, reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());
@@ -689,7 +669,7 @@ mod tests {
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = InterleavedVecPointStorage::new(layout);
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
 
                     reader.read_into(&mut buffer, 10)?;
                     compare_to_reference_data(&buffer, format);
@@ -707,7 +687,7 @@ mod tests {
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = InterleavedVecPointStorage::new(layout);
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
 
                     const POINTS_PER_CHUNK: usize = 5;
                     const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
@@ -728,13 +708,13 @@ mod tests {
                 }
 
                 #[test]
-                fn test_raw_las_reader_read_into_perattribute() -> Result<()> {
+                fn test_raw_las_reader_read_into_columnar() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
                     let mut reader = $reader::from_read(read)?;
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = PerAttributeVecPointStorage::new(layout);
+                    let mut buffer = HashMapBuffer::new(layout);
 
                     reader.read_into(&mut buffer, 10)?;
                     compare_to_reference_data(&buffer, format);
@@ -746,13 +726,13 @@ mod tests {
                 }
 
                 #[test]
-                fn test_raw_las_reader_read_into_perattribute_in_multiple_chunks() -> Result<()> {
+                fn test_raw_las_reader_read_into_columnar_in_multiple_chunks() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
                     let mut reader = $reader::from_read(read)?;
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = PerAttributeVecPointStorage::new(layout);
+                    let mut buffer = HashMapBuffer::new(layout);
 
                     const POINTS_PER_CHUNK: usize = 5;
                     const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
@@ -787,15 +767,16 @@ mod tests {
                         attributes::POINT_SOURCE_ID,
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
-                    let mut buffer = InterleavedVecPointStorage::new(layout);
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
 
                     reader.read_into(&mut buffer, 10)?;
 
                     let positions = buffer
-                        .iter_attribute::<Vector3<f32>>(
+                        .view_attribute::<Vector3<f32>>(
                             &attributes::POSITION_3D
                                 .with_custom_datatype(PointAttributeDataType::Vec3f32),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_positions = test_data_positions()
                         .into_iter()
@@ -804,10 +785,11 @@ mod tests {
                     assert_eq!(expected_positions, positions, "Positions do not match");
 
                     let classifications = buffer
-                        .iter_attribute::<u32>(
+                        .view_attribute::<u32>(
                             &attributes::CLASSIFICATION
                                 .with_custom_datatype(PointAttributeDataType::U32),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_classifications = test_data_classifications()
                         .into_iter()
@@ -819,10 +801,11 @@ mod tests {
                     );
 
                     let colors = buffer
-                        .iter_attribute::<Vector3<u8>>(
+                        .view_attribute::<Vector3<u8>>(
                             &attributes::COLOR_RGB
                                 .with_custom_datatype(PointAttributeDataType::Vec3u8),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_colors = if format.has_color {
                         test_data_colors()
@@ -837,7 +820,8 @@ mod tests {
                     assert_eq!(expected_colors, colors, "Colors do not match");
 
                     let point_source_ids = buffer
-                        .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .view_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_point_source_ids = test_data_point_source_ids();
                     assert_eq!(
@@ -846,7 +830,8 @@ mod tests {
                     );
 
                     let waveform_params = buffer
-                        .iter_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .view_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_waveform_params = if format.has_waveform {
                         test_data_wavepacket_parameters()
@@ -882,7 +867,7 @@ mod tests {
                         attributes::POINT_SOURCE_ID,
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
-                    let mut buffer = InterleavedVecPointStorage::new(layout);
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
 
                     const POINTS_PER_CHUNK: usize = 5;
                     const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
@@ -891,10 +876,11 @@ mod tests {
                     }
 
                     let positions = buffer
-                        .iter_attribute::<Vector3<f32>>(
+                        .view_attribute::<Vector3<f32>>(
                             &attributes::POSITION_3D
                                 .with_custom_datatype(PointAttributeDataType::Vec3f32),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_positions = test_data_positions()
                         .into_iter()
@@ -903,10 +889,11 @@ mod tests {
                     assert_eq!(expected_positions, positions, "Positions do not match");
 
                     let classifications = buffer
-                        .iter_attribute::<u32>(
+                        .view_attribute::<u32>(
                             &attributes::CLASSIFICATION
                                 .with_custom_datatype(PointAttributeDataType::U32),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_classifications = test_data_classifications()
                         .into_iter()
@@ -918,10 +905,11 @@ mod tests {
                     );
 
                     let colors = buffer
-                        .iter_attribute::<Vector3<u8>>(
+                        .view_attribute::<Vector3<u8>>(
                             &attributes::COLOR_RGB
                                 .with_custom_datatype(PointAttributeDataType::Vec3u8),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_colors = if format.has_color {
                         test_data_colors()
@@ -936,7 +924,8 @@ mod tests {
                     assert_eq!(expected_colors, colors, "Colors do not match");
 
                     let point_source_ids = buffer
-                        .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .view_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_point_source_ids = test_data_point_source_ids();
                     assert_eq!(
@@ -945,7 +934,8 @@ mod tests {
                     );
 
                     let waveform_params = buffer
-                        .iter_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .view_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_waveform_params = if format.has_waveform {
                         test_data_wavepacket_parameters()
@@ -975,10 +965,10 @@ mod tests {
                     let new_pos = reader.seek_point(SeekFrom::Current(seek_index as i64))?;
                     assert_eq!(seek_index, new_pos);
 
-                    let points = reader.read((10 - seek_index) as usize)?;
+                    let points = reader.read::<VectorBuffer>((10 - seek_index) as usize)?;
                     assert_eq!(10 - seek_index, points.len());
 
-                    compare_to_reference_data_range(points.as_ref(), format, seek_index..10);
+                    compare_to_reference_data_range(&points, format, seek_index..10);
 
                     Ok(())
                 }
@@ -992,7 +982,7 @@ mod tests {
                     let new_pos = reader.seek_point(SeekFrom::Current(seek_index as i64))?;
                     assert_eq!(10, new_pos);
 
-                    let points = reader.read(10)?;
+                    let points = reader.read::<VectorBuffer>(10)?;
                     assert_eq!(0, points.len());
 
                     Ok(())
@@ -1006,11 +996,11 @@ mod tests {
                     let mut format = Format::new($format)?;
                     format.extra_bytes = 4;
 
-                    let points = reader.read(10)?;
+                    let points = reader.read::<VectorBuffer>(10)?;
                     let expected_layout =
                         point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     assert_eq!(*points.point_layout(), expected_layout);
-                    compare_to_reference_data(points.as_ref(), format);
+                    compare_to_reference_data(&points, format);
 
                     assert_eq!(10, reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());

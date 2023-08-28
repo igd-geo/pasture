@@ -57,6 +57,7 @@ pub trait BorrowedBuffer<'a> {
     }
     fn point_layout(&self) -> &PointLayout;
     fn get_point(&self, index: usize, data: &mut [u8]);
+    fn get_point_range(&self, range: Range<usize>, data: &mut [u8]);
     fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
         let attribute_member = self
             .point_layout()
@@ -146,6 +147,10 @@ pub trait OwningBuffer<'a>: BorrowedMutBuffer<'a> + Sized {
     fn clear(&mut self);
 }
 
+pub trait MakeBufferFromLayout<'a>: BorrowedBuffer<'a> + Sized {
+    fn new_from_layout(point_layout: PointLayout) -> Self;
+}
+
 pub trait InterleavedBuffer<'a>: BorrowedBuffer<'a> {
     fn get_point_ref(&'a self, index: usize) -> &'a [u8];
     fn get_point_range_ref(&'a self, range: Range<usize>) -> &'a [u8];
@@ -201,13 +206,6 @@ pub struct VectorBuffer {
 }
 
 impl VectorBuffer {
-    pub fn new(point_layout: PointLayout) -> Self {
-        Self {
-            point_layout,
-            storage: Default::default(),
-        }
-    }
-
     pub fn with_capacity(capacity: usize, point_layout: PointLayout) -> Self {
         let required_bytes = capacity * point_layout.size_of_point_entry() as usize;
         Self {
@@ -238,6 +236,15 @@ impl VectorBuffer {
     }
 }
 
+impl<'a> MakeBufferFromLayout<'a> for VectorBuffer {
+    fn new_from_layout(point_layout: PointLayout) -> Self {
+        Self {
+            point_layout,
+            storage: Default::default(),
+        }
+    }
+}
+
 impl<'a> BorrowedBuffer<'a> for VectorBuffer
 where
     VectorBuffer: 'a,
@@ -253,6 +260,11 @@ where
     fn get_point(&self, index: usize, data: &mut [u8]) {
         let point_ref = self.get_point_ref(index);
         data.copy_from_slice(point_ref);
+    }
+
+    fn get_point_range(&self, range: Range<usize>, data: &mut [u8]) {
+        let points_ref = self.get_point_range_ref(range);
+        data.copy_from_slice(points_ref);
     }
 
     unsafe fn get_attribute_unchecked(
@@ -505,6 +517,25 @@ where
                 [Self::get_byte_range_for_attribute(index, attribute.attribute_definition())];
             let dst_slice = &mut data[attribute.byte_range_within_point()];
             dst_slice.copy_from_slice(src_slice);
+        }
+    }
+
+    fn get_point_range(&self, range: Range<usize>, data: &mut [u8]) {
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        for attribute in self.point_layout.attributes() {
+            let attribute_storage = self
+                .attributes_storage
+                .get(attribute.attribute_definition())
+                .expect("Attribute not found within storage of this PointBuffer");
+            for point_index in range.clone() {
+                let src_slice = &attribute_storage[Self::get_byte_range_for_attribute(
+                    point_index,
+                    attribute.attribute_definition(),
+                )];
+                let dst_point_slice = &mut data[(point_index * size_of_point)..];
+                let dst_slice = &mut dst_point_slice[attribute.byte_range_within_point()];
+                dst_slice.copy_from_slice(src_slice);
+            }
         }
     }
 
@@ -791,6 +822,12 @@ where
         data.copy_from_slice(point_bytes);
     }
 
+    fn get_point_range(&self, range: Range<usize>, data: &mut [u8]) {
+        let point_bytes =
+            &self.external_memory.as_ref()[self.get_byte_range_for_point_range(range)];
+        data.copy_from_slice(point_bytes);
+    }
+
     unsafe fn get_attribute_unchecked(
         &self,
         attribute_member: &PointAttributeMember,
@@ -955,6 +992,11 @@ impl<'a, T: BorrowedBuffer<'a>> BorrowedBuffer<'a> for BufferSlice<'a, T> {
             .get_point(self.get_and_check_global_point_index(index), data)
     }
 
+    fn get_point_range(&self, range: Range<usize>, data: &mut [u8]) {
+        self.buffer
+            .get_point_range(self.get_and_check_global_point_range(range), data)
+    }
+
     fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
         self.buffer.get_attribute(
             attribute,
@@ -1060,6 +1102,11 @@ impl<'a, T: BorrowedMutBuffer<'a>> BorrowedBuffer<'a> for BufferSliceMut<'a, T> 
     fn get_point(&self, index: usize, data: &mut [u8]) {
         self.buffer
             .get_point(self.get_and_check_global_point_index(index), data)
+    }
+
+    fn get_point_range(&self, range: Range<usize>, data: &mut [u8]) {
+        self.buffer
+            .get_point_range(self.get_and_check_global_point_range(range), data)
     }
 
     fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
@@ -1394,7 +1441,7 @@ mod tests {
         let test_data_as_buffer = test_data.iter().copied().collect::<VectorBuffer>();
 
         {
-            let mut buffer = VectorBuffer::new(T::layout());
+            let mut buffer = VectorBuffer::new_from_layout(T::layout());
             assert_eq!(0, buffer.len());
             assert_eq!(T::layout(), *buffer.point_layout());
             assert_eq!(0, buffer.view::<T>().into_iter().count());
@@ -1504,7 +1551,7 @@ mod tests {
         }
 
         {
-            let mut buffer = VectorBuffer::new(T::layout());
+            let mut buffer = VectorBuffer::new_from_layout(T::layout());
             assert_eq!(0, buffer.len());
             assert_eq!(T::layout(), *buffer.point_layout());
             assert_eq!(0, buffer.view::<T>().into_iter().count());

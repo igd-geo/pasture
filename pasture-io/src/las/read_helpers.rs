@@ -7,7 +7,6 @@ use pasture_core::{
     layout::conversion::get_converter_for_attributes,
     layout::{conversion::AttributeConversionFn, PointAttributeMember, PointLayout, PrimitiveType},
     nalgebra::Vector3,
-    util::view_raw_bytes_mut,
 };
 
 /// ReaderFn is a helper function that allows reading a single value of a specific point attribute from an arbitrary
@@ -22,7 +21,7 @@ use pasture_core::{
 /// is introduced
 pub(crate) type ReaderFn<T> = Box<dyn Fn(usize, &mut Cursor<Vec<u8>>) -> Result<T>>;
 
-fn read_attribute_in_custom_layout<T: PrimitiveType + Default>(
+fn read_attribute_in_custom_layout<T: PrimitiveType>(
     attribute_def: &PointAttributeMember,
     current_point_index: usize,
     size_of_single_point: usize,
@@ -35,11 +34,9 @@ fn read_attribute_in_custom_layout<T: PrimitiveType + Default>(
     let attribute_slice =
         &point_read.get_ref()[attribute_start..(attribute_start + attribute_size)];
 
-    let mut ret: T = Default::default();
-    let ret_slice_mut = unsafe { view_raw_bytes_mut(&mut ret) };
-
+    let mut ret: T = T::zeroed();
     unsafe {
-        converter(attribute_slice, ret_slice_mut);
+        converter(attribute_slice, bytemuck::bytes_of_mut(&mut ret));
     }
     Ok(ret)
 }
@@ -124,11 +121,11 @@ fn read_scan_direction_flag_in_default_layout(
     attribute_offset: usize,
     current_point_index: usize,
     size_of_single_point: usize,
-) -> Result<bool> {
+) -> Result<u8> {
     let attribute_start_pos =
         ((current_point_index * size_of_single_point) + attribute_offset) as u64;
     point_read.set_position(attribute_start_pos);
-    Ok(point_read.read_u8()? > 0)
+    Ok(point_read.read_u8()?)
 }
 
 fn read_edge_of_flight_line_in_default_layout(
@@ -136,11 +133,11 @@ fn read_edge_of_flight_line_in_default_layout(
     attribute_offset: usize,
     current_point_index: usize,
     size_of_single_point: usize,
-) -> Result<bool> {
+) -> Result<u8> {
     let attribute_start_pos =
         ((current_point_index * size_of_single_point) + attribute_offset) as u64;
     point_read.set_position(attribute_start_pos);
-    Ok(point_read.read_u8()? > 0)
+    Ok(point_read.read_u8()?)
 }
 
 fn read_classification_in_default_layout(
@@ -328,9 +325,11 @@ macro_rules! make_get_reader_fn {
                     } else {
                         let attribute_clone = attribute.clone();
                         let size_of_single_point = source_layout.size_of_point_entry() as usize;
-                        let converter =
-                            get_converter_for_attributes(&attribute.into(), &default_attribute)
-                                .expect("No converter for attribute found");
+                        let converter = get_converter_for_attributes(
+                            attribute.attribute_definition(),
+                            &default_attribute,
+                        )
+                        .expect("No converter for attribute found");
                         Box::new(move |current_point_index, point_read| {
                             read_attribute_in_custom_layout::<$type>(
                                 &attribute_clone,
@@ -391,14 +390,14 @@ make_get_reader_fn!(
 
 make_get_reader_fn!(
     get_scan_direction_flag_reader,
-    bool,
+    u8,
     SCAN_DIRECTION_FLAG,
     read_scan_direction_flag_in_default_layout
 );
 
 make_get_reader_fn!(
     get_edge_of_flight_line_reader,
-    bool,
+    u8,
     EDGE_OF_FLIGHT_LINE,
     read_edge_of_flight_line_in_default_layout
 );
