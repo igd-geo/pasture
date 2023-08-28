@@ -1,6 +1,10 @@
-use std::marker::PhantomData;
+use anyhow::{anyhow, Result};
+use std::{cell::RefCell, marker::PhantomData};
 
-use crate::layout::{PointAttributeDefinition, PointAttributeMember, PointType, PrimitiveType};
+use crate::layout::{
+    conversion::{get_converter_for_attributes, AttributeConversionFn},
+    PointAttributeDefinition, PointAttributeMember, PointType, PrimitiveType,
+};
 
 use super::{
     attribute_iterators::{
@@ -233,5 +237,90 @@ impl<'a, B: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
 impl<'a, B: OwningBuffer<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType> AttributeViewMut<'a, B, T> {
     pub fn push_point(&mut self, point: T) {
         self.buffer.push_point(bytemuck::bytes_of(&point));
+    }
+}
+
+/// A view over a strongly typed point attribute that supports type conversion. This means that the
+/// `PointAttributeDataType` of the attribute must not match the type `T` that this view returns
+pub struct AttributeViewConverting<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> {
+    buffer: &'a B,
+    attribute: PointAttributeMember,
+    converter_fn: AttributeConversionFn,
+    converter_buffer: RefCell<Vec<u8>>,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeViewConverting<'a, B, T> {
+    pub(crate) fn new(buffer: &'a B, attribute: &PointAttributeDefinition) -> Result<Self> {
+        let attribute_in_layout: &PointAttributeMember = buffer
+            .point_layout()
+            .get_attribute_by_name(attribute.name())
+            .expect("Attribute not found in PointLayout of buffer");
+        let converter_fn = get_converter_for_attributes(
+            attribute_in_layout.attribute_definition(),
+            &attribute.with_custom_datatype(T::data_type()),
+        )
+        .ok_or(anyhow!("Conversion between attribute types is impossible"))?;
+        let converter_buffer = vec![0; T::data_type().size() as usize];
+        Ok(Self {
+            attribute: attribute_in_layout.clone(),
+            buffer,
+            converter_fn,
+            converter_buffer: RefCell::new(converter_buffer),
+            _phantom: Default::default(),
+        })
+    }
+
+    pub fn at(&self, index: usize) -> T {
+        let mut value = T::zeroed();
+        // Is safe because we took 'attribute' from the point layout of the buffer
+        // conversion is safe because we checked the source and destination types in `new`
+        unsafe {
+            self.buffer.get_attribute_unchecked(
+                &self.attribute,
+                index,
+                self.converter_buffer.borrow_mut().as_mut_slice(),
+            );
+            (self.converter_fn)(
+                self.converter_buffer.borrow().as_slice(),
+                bytemuck::bytes_of_mut(&mut value),
+            );
+        }
+        value
+    }
+}
+
+impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> IntoIterator
+    for AttributeViewConverting<'a, B, T>
+{
+    type Item = T;
+    type IntoIter = AttributeViewConvertingIterator<'a, B, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        AttributeViewConvertingIterator {
+            current_index: 0,
+            view: self,
+        }
+    }
+}
+
+pub struct AttributeViewConvertingIterator<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> {
+    view: AttributeViewConverting<'a, B, T>,
+    current_index: usize,
+}
+
+impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> Iterator
+    for AttributeViewConvertingIterator<'a, B, T>
+{
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index == self.view.buffer.len() {
+            None
+        } else {
+            let ret = self.view.at(self.current_index);
+            self.current_index += 1;
+            Some(ret)
+        }
     }
 }

@@ -1,10 +1,14 @@
+use anyhow::Result;
 use std::{collections::HashMap, iter::FromIterator, ops::Range};
 
 use crate::layout::{
     PointAttributeDefinition, PointAttributeMember, PointLayout, PointType, PrimitiveType,
 };
 
-use super::buffer_views::{AttributeView, AttributeViewMut, PointView, PointViewMut};
+use super::{
+    buffer_views::{AttributeView, AttributeViewMut, PointView, PointViewMut},
+    AttributeViewConverting,
+};
 
 /// Trait for buffers that support slicing, similar to the builtin slice type
 ///
@@ -48,6 +52,9 @@ where
 
 pub trait BorrowedBuffer<'a> {
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn point_layout(&self) -> &PointLayout;
     fn get_point(&self, index: usize, data: &mut [u8]);
     fn get_attribute(&self, attribute: &PointAttributeDefinition, index: usize, data: &mut [u8]) {
@@ -91,6 +98,16 @@ pub trait BorrowedBuffer<'a> {
         Self: Sized,
     {
         AttributeView::new(self, attribute)
+    }
+
+    fn view_attribute_with_conversion<T: PrimitiveType>(
+        &'a self,
+        attribute: &PointAttributeDefinition,
+    ) -> Result<AttributeViewConverting<'a, Self, T>>
+    where
+        Self: Sized,
+    {
+        AttributeViewConverting::new(self, attribute)
     }
 }
 

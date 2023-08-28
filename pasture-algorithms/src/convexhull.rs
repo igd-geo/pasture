@@ -1,9 +1,6 @@
 use anyhow::{anyhow, Result};
-use pasture_core::{
-    containers::{PointBuffer, PointBufferExt},
-    layout::attributes::POSITION_3D,
-    nalgebra::Vector3,
-};
+use pasture_core::containers::BorrowedBuffer;
+use pasture_core::{layout::attributes::POSITION_3D, nalgebra::Vector3};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::usize;
@@ -41,7 +38,9 @@ impl Hash for Edge {
 /// #Panics
 ///
 /// If the PointBuffer doesn't cointain a POSITION_3D attribute.
-pub fn convex_hull_as_triangle_mesh<T: PointBuffer>(buffer: &T) -> Result<Vec<Vector3<usize>>> {
+pub fn convex_hull_as_triangle_mesh<'a, T: BorrowedBuffer<'a>>(
+    buffer: &'a T,
+) -> Result<Vec<Vector3<usize>>> {
     let triangles = create_convex_hull(buffer);
     if triangles.len() < 2 {
         return Err(anyhow!(
@@ -61,7 +60,7 @@ pub fn convex_hull_as_triangle_mesh<T: PointBuffer>(buffer: &T) -> Result<Vec<Ve
 /// #Panics
 ///
 /// If the PointBuffer doesn't cointain a POSITION_3D attribute.
-pub fn convex_hull_as_points<T: PointBuffer>(buffer: &T) -> Vec<usize> {
+pub fn convex_hull_as_points<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<usize> {
     let triangles = create_convex_hull(buffer);
     let mut points = HashSet::new();
     if triangles.len() > 1 {
@@ -82,7 +81,7 @@ pub fn convex_hull_as_points<T: PointBuffer>(buffer: &T) -> Vec<usize> {
     return point_indices;
 }
 
-fn create_convex_hull<T: PointBuffer>(buffer: &T) -> Vec<Triangle> {
+fn create_convex_hull<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<Triangle> {
     let mut triangles: Vec<Triangle> = Vec::new();
     let position_attribute = match buffer
         .point_layout()
@@ -96,12 +95,15 @@ fn create_convex_hull<T: PointBuffer>(buffer: &T) -> Vec<Triangle> {
 
     let mut pointid: usize = 0;
     if position_attribute.datatype() == POSITION_3D.datatype() {
-        for point in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+        for point in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D) {
             iteration(buffer, pointid, point, &mut triangles);
             pointid += 1;
         }
     } else {
-        for point in buffer.iter_attribute_as::<Vector3<f64>>(&POSITION_3D) {
+        for point in buffer
+            .view_attribute_with_conversion::<Vector3<f64>>(&POSITION_3D)
+            .expect("Can't convert POSITION_3D attribute")
+        {
             iteration(buffer, pointid, point, &mut triangles);
             pointid += 1;
         }
@@ -118,8 +120,8 @@ fn create_convex_hull<T: PointBuffer>(buffer: &T) -> Vec<Triangle> {
 /// If the point lies outside of the current convex hull the hull has to be extended to include the current point.
 /// If 'triangles' contain only one entry: no full triangle has been found yet. In case of linearily dependant points no second triangle is added.
 /// If all 'triangles' are in a plane with 'point' a special triangulation procedure is needed to prevent a degenerated triangle mesh.
-fn iteration<T: PointBuffer>(
-    buffer: &T,
+fn iteration<'a, T: BorrowedBuffer<'a>>(
+    buffer: &'a T,
     pointid: usize,
     point: Vector3<f64>,
     triangles: &mut Vec<Triangle>,
@@ -136,8 +138,8 @@ fn iteration<T: PointBuffer>(
         if pointid == 1 {
             first.b = pointid;
         } else {
-            let first_a = buffer.get_attribute(&POSITION_3D, first.a);
-            let first_b = buffer.get_attribute(&POSITION_3D, first.b);
+            let first_a = buffer.view_attribute(&POSITION_3D).at(first.a);
+            let first_b = buffer.view_attribute(&POSITION_3D).at(first.b);
             let ab: Vector3<f64> = first_b - first_a;
             let ab_mag_sqr = ab.magnitude_squared();
             if ab_mag_sqr == 0.0 {
@@ -174,7 +176,7 @@ fn iteration<T: PointBuffer>(
         let mut planar_triangles = Vec::new();
 
         triangles.retain(|tri| {
-            let tri_a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, tri.a);
+            let tri_a: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(tri.a);
             let pa: Vector3<f64> = tri_a - point;
             let dot = pa.dot(&tri.normal);
             if dot < 0.0 {
@@ -190,8 +192,8 @@ fn iteration<T: PointBuffer>(
 
         if outer_edges.len() > 0 || inner_edges.len() > 0 {
             for edge in outer_edges.iter() {
-                let edge_a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, edge.a);
-                let edge_b: Vector3<f64> = buffer.get_attribute(&POSITION_3D, edge.b);
+                let edge_a: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(edge.a);
+                let edge_b: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(edge.b);
                 triangles.push(Triangle {
                     a: edge.a,
                     b: edge.b,
@@ -203,10 +205,11 @@ fn iteration<T: PointBuffer>(
             // Find all edges of the triangle of which the edge-normal is facing the point.
             let mut edges_facing_point = Vec::new();
             let mut edge_triangle_id = Vec::new();
+            let position_view = buffer.view_attribute(&POSITION_3D);
             for (i, pt) in planar_triangles.iter().enumerate() {
-                let planar_a = buffer.get_attribute(&POSITION_3D, pt.a);
-                let planar_b = buffer.get_attribute(&POSITION_3D, pt.b);
-                let planar_c = buffer.get_attribute(&POSITION_3D, pt.c);
+                let planar_a = position_view.at(pt.a);
+                let planar_b = position_view.at(pt.b);
+                let planar_c = position_view.at(pt.c);
                 let dist_ab = dist_point_to_edge(point, planar_a, planar_b, pt.normal);
                 if dist_ab >= 0.0 {
                     edges_facing_point.push(Edge { a: pt.a, b: pt.b });
@@ -232,8 +235,8 @@ fn iteration<T: PointBuffer>(
             let mut edge_triangle_normals = Vec::new();
             for i in (0..edges_facing_point.len()).rev() {
                 let edg = edges_facing_point[i];
-                let edg_a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, edg.a);
-                let edg_b: Vector3<f64> = buffer.get_attribute(&POSITION_3D, edg.b);
+                let edg_a: Vector3<f64> = position_view.at(edg.a);
+                let edg_b: Vector3<f64> = position_view.at(edg.b);
                 let dist_edg_a_p = (edg_a - point).magnitude_squared();
                 let dist_edg_b_p = (edg_b - point).magnitude_squared();
                 let dist_edg_p = dist_point_to_line_segment(point, edg_a, edg_b);
@@ -246,10 +249,8 @@ fn iteration<T: PointBuffer>(
                             planar_triangles[edge_triangle_id[other_edge_id]].normal;
                         if edg_triangle_normal.dot(&other_edg_triangle_normal) > 0.0 {
                             let other_edg = edges_facing_point[other_edge_id];
-                            let other_edg_a: Vector3<f64> =
-                                buffer.get_attribute(&POSITION_3D, other_edg.a);
-                            let other_edg_b: Vector3<f64> =
-                                buffer.get_attribute(&POSITION_3D, other_edg.b);
+                            let other_edg_a: Vector3<f64> = position_view.at(other_edg.a);
+                            let other_edg_b: Vector3<f64> = position_view.at(other_edg.b);
                             let point_other_edg_a = other_edg_a - point;
                             let point_other_edg_b = other_edg_b - point;
                             let point_other_edg_a_norm =
@@ -461,8 +462,7 @@ mod tests {
     use crate::convexhull;
     use anyhow::Result;
     use pasture_core::{
-        containers::PerAttributeVecPointStorage,
-        containers::{OwningPointBuffer, PointBuffer, PointBufferExt},
+        containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer},
         layout::attributes::POSITION_3D,
         layout::PointType,
         nalgebra::Vector3,
@@ -470,7 +470,9 @@ mod tests {
     use pasture_derive::PointType;
     use rand::{distributions::Uniform, thread_rng, Rng};
 
-    #[derive(PointType, Default)]
+    #[derive(
+        PointType, Default, Copy, Clone, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+    )]
     #[repr(C)]
     struct TestPointTypeSmall {
         #[pasture(BUILTIN_POSITION_3D)]
@@ -494,8 +496,8 @@ mod tests {
         }
     }
 
-    fn test_all_points_inside_hull<T: PointBuffer>(
-        buffer: &T,
+    fn test_all_points_inside_hull<'a, T: BorrowedBuffer<'a>>(
+        buffer: &'a T,
         triangles: &Vec<convexhull::Triangle>,
     ) {
         let position_attribute = buffer
@@ -503,17 +505,21 @@ mod tests {
             .get_attribute_by_name(POSITION_3D.name())
             .unwrap();
         if position_attribute.datatype() == POSITION_3D.datatype() {
-            for point in buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+            for point in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D) {
                 for t in triangles.iter() {
-                    let a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, t.a);
+                    let a: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(t.a);
                     let pa = a - point;
                     assert!(pa.dot(&t.normal) >= -0.0000001);
                 }
             }
         } else {
-            for point in buffer.iter_attribute_as::<Vector3<f64>>(&POSITION_3D) {
+            let position_view = buffer
+                .view_attribute_with_conversion::<Vector3<f64>>(&POSITION_3D)
+                .expect("Can't convert POSITION_3D to Vector3<f64>");
+            for idx in 0..buffer.len() {
+                let point = position_view.at(idx);
                 for t in triangles.iter() {
-                    let a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, t.a);
+                    let a: Vector3<f64> = position_view.at(t.a);
                     let pa = a - point;
                     assert!(pa.dot(&t.normal) >= -0.0000001);
                 }
@@ -523,15 +529,14 @@ mod tests {
 
     #[test]
     fn test_convex_simple_triangle() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(3, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 1.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -545,18 +550,17 @@ mod tests {
 
     #[test]
     fn test_convex_simple_tet_4_points() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(4, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 1.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -576,21 +580,20 @@ mod tests {
 
     #[test]
     fn test_convex_simple_tet_5_points() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, -1.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -610,9 +613,8 @@ mod tests {
 
     #[test]
     fn test_convex_1_point() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(1, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(1, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -625,12 +627,11 @@ mod tests {
 
     #[test]
     fn test_convex_line_2_points() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(2, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(2, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -644,15 +645,14 @@ mod tests {
 
     #[test]
     fn test_convex_line_3_points() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(3, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(2.0, 0.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -666,18 +666,17 @@ mod tests {
 
     #[test]
     fn test_convex_line_4_points() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(4, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(2.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 0.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -691,18 +690,17 @@ mod tests {
 
     #[test]
     fn test_convex_plane_4_points() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(4, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 1.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -717,21 +715,20 @@ mod tests {
 
     #[test]
     fn test_convex_2d_point_in_square() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -746,21 +743,20 @@ mod tests {
 
     #[test]
     fn test_convex_2d_point_next_to_square_1() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(2.0, 0.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -775,21 +771,20 @@ mod tests {
 
     #[test]
     fn test_convex_2d_point_next_to_square_2() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 2.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -804,21 +799,20 @@ mod tests {
 
     #[test]
     fn test_convex_2d_point_next_to_square_3() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(2.0, 2.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -833,21 +827,20 @@ mod tests {
 
     #[test]
     fn test_convex_2d_point_next_to_square_4() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(5, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(5, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-2.0, 2.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -862,17 +855,16 @@ mod tests {
 
     #[test]
     fn test_convex_random_1d_points_in_box_create_box_first() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(22, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(22, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
         let mut rng = thread_rng();
         for _ in 0..20 {
-            buffer.push_point(TestPointTypeSmall {
+            buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0),
             });
         }
@@ -887,18 +879,17 @@ mod tests {
 
     #[test]
     fn test_convex_random_1d_points_in_box_create_box_last() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(22, TestPointTypeSmall::layout());
+        let mut buffer = HashMapBuffer::with_capacity(22, TestPointTypeSmall::layout());
         let mut rng = thread_rng();
         for _ in 0..20 {
-            buffer.push_point(TestPointTypeSmall {
+            buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0),
             });
         }
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
         let result = convexhull::convex_hull_as_points(&buffer);
@@ -912,23 +903,22 @@ mod tests {
 
     #[test]
     fn test_convex_random_2d_points_in_box_create_box_first() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(24, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(24, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
         let mut rng = thread_rng();
         for _ in 0..20 {
-            buffer.push_point(TestPointTypeSmall {
+            buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
                     rng.sample(Uniform::new(-0.9, 0.9)),
                     rng.sample(Uniform::new(-0.9, 0.9)),
@@ -948,24 +938,23 @@ mod tests {
 
     #[test]
     fn test_convex_2d_points_in_box_create_box_last_case_1() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(6, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(6, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.5, 0.2, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-0.5, -0.3, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -980,24 +969,23 @@ mod tests {
 
     #[test]
     fn test_convex_2d_points_in_box_create_box_last_case_2() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(6, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(6, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.2, 0.1, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-0.9, 0.3, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -1012,27 +1000,26 @@ mod tests {
 
     #[test]
     fn test_convex_2d_points_in_box_create_box_last_case_3() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(7, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(7, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-0.3, -0.3, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.9, -0.4, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.2, 0.1, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -1047,35 +1034,34 @@ mod tests {
 
     #[test]
     fn test_convex_random_points_in_box_create_box_first() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(28, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(28, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 1.0),
         });
         let mut rng = thread_rng();
         for _ in 0..20 {
-            buffer.push_point(TestPointTypeSmall {
+            buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
                     rng.sample(Uniform::new(-0.9, 0.9)),
                     rng.sample(Uniform::new(-0.9, 0.9)),
@@ -1102,11 +1088,10 @@ mod tests {
 
     #[test]
     fn test_convex_random_points_in_box_create_box_last() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(28, TestPointTypeSmall::layout());
+        let mut buffer = HashMapBuffer::with_capacity(28, TestPointTypeSmall::layout());
         let mut rng = thread_rng();
         for _ in 0..20 {
-            buffer.push_point(TestPointTypeSmall {
+            buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
                     rng.sample(Uniform::new(-0.9, 0.9)),
                     rng.sample(Uniform::new(-0.9, 0.9)),
@@ -1114,28 +1099,28 @@ mod tests {
                 ),
             });
         }
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, -1.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 1.0),
         });
         let result = convexhull::create_convex_hull(&buffer);
@@ -1157,11 +1142,10 @@ mod tests {
 
     #[test]
     fn test_convex_random_points() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(100, TestPointTypeSmall::layout());
+        let mut buffer = HashMapBuffer::with_capacity(100, TestPointTypeSmall::layout());
         let mut rng = thread_rng();
         for _ in 0..100 {
-            buffer.push_point(TestPointTypeSmall {
+            buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
                     rng.sample(Uniform::new(-100.0, 100.0)),
                     rng.sample(Uniform::new(-100.0, 100.0)),
@@ -1179,7 +1163,7 @@ mod tests {
     // Interface Tests
     #[test]
     fn test_convex_0_point_output_mesh_error() -> Result<()> {
-        let buffer = PerAttributeVecPointStorage::with_capacity(0, TestPointTypeSmall::layout());
+        let buffer = HashMapBuffer::with_capacity(0, TestPointTypeSmall::layout());
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
 
         assert_eq!(
@@ -1192,9 +1176,8 @@ mod tests {
 
     #[test]
     fn test_convex_1_point_output_mesh_error() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(1, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(1, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
@@ -1209,12 +1192,11 @@ mod tests {
 
     #[test]
     fn test_convex_2_point_output_mesh_error() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(2, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(2, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
@@ -1229,15 +1211,14 @@ mod tests {
 
     #[test]
     fn test_convex_3_point_output_mesh_error_same_point() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(3, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
@@ -1252,15 +1233,14 @@ mod tests {
 
     #[test]
     fn test_convex_3_point_output_mesh_error_line() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(3, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(2.0, 0.0, 0.0),
         });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
@@ -1275,15 +1255,14 @@ mod tests {
 
     #[test]
     fn test_convex_3_point_output_mesh_no_error() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(3, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 1.0, 0.0),
         });
         let result = convexhull::convex_hull_as_triangle_mesh(&buffer);
@@ -1298,15 +1277,14 @@ mod tests {
 
     #[test]
     fn test_convex_3_point_output_points_line() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(3, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(3, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(2.0, 0.0, 0.0),
         });
         let result = convexhull::convex_hull_as_points(&buffer);
@@ -1320,18 +1298,17 @@ mod tests {
 
     #[test]
     fn test_convex_4_point_output_point_in_triangle() -> Result<()> {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(4, TestPointTypeSmall::layout());
-        buffer.push_point(TestPointTypeSmall {
+        let mut buffer = HashMapBuffer::with_capacity(4, TestPointTypeSmall::layout());
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 0.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, -1.0, 0.0),
         });
-        buffer.push_point(TestPointTypeSmall {
+        buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(0.0, 1.0, 0.0),
         });
         let result = convexhull::convex_hull_as_points(&buffer);
@@ -1344,7 +1321,9 @@ mod tests {
         Ok(())
     }
 
-    #[derive(PointType, Default)]
+    #[derive(
+        PointType, Default, Copy, Clone, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+    )]
     #[repr(C)]
     struct TestPointTypeNoPositions {
         #[pasture(BUILTIN_INTENSITY)]
@@ -1354,9 +1333,10 @@ mod tests {
     #[test]
     #[should_panic(expected = "point buffer contains no position attribute")]
     fn test_convex_no_positions_panic() {
-        let mut buffer =
-            PerAttributeVecPointStorage::with_capacity(1, TestPointTypeNoPositions::layout());
-        buffer.push_point(TestPointTypeNoPositions { intensity: 1 });
+        let mut buffer = HashMapBuffer::with_capacity(1, TestPointTypeNoPositions::layout());
+        buffer
+            .view_mut()
+            .push_point(TestPointTypeNoPositions { intensity: 1 });
         let _result = convexhull::convex_hull_as_triangle_mesh(&buffer);
     }
 }

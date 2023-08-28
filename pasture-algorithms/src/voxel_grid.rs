@@ -1,15 +1,12 @@
 use std::{collections::HashMap, u16};
 
 use pasture_core::{
-    containers::{
-        PointBuffer, PointBufferExt, PointBufferWriteable, UntypedPoint, UntypedPointBuffer,
-    },
+    containers::{BorrowedBuffer, OwningBuffer, UntypedPoint, UntypedPointBuffer},
     layout::{
         attributes::{self, POSITION_3D},
-        PointAttributeDataType, PointAttributeDefinition,
+        PointAttributeDataType, PointAttributeDefinition, PointLayout,
     },
     nalgebra::Vector3,
-    util::view_raw_bytes,
 };
 
 use crate::bounds::calculate_bounds;
@@ -88,8 +85,8 @@ fn create_markers_for_axis(
 /// # use pasture_algorithms::voxel_grid::voxelgrid_filter;
 /// # use pasture_core::{containers::*, layout::{attributes, PointType}, nalgebra::{Scalar, Vector3}};
 /// # use pasture_derive::PointType;
-/// # #[repr(C)]
-/// # #[derive(PointType)]
+/// #[repr(C)]
+/// #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// # struct SimplePoint {
 /// #    #[pasture(BUILTIN_POSITION_3D)]
 /// #   pub position: Vector3<f64>,
@@ -101,19 +98,18 @@ fn create_markers_for_axis(
 ///         points.push(SimplePoint{position: Vector3::new(0.0, f64::from(i), f64::from(j))});
 ///     }
 /// }
-/// let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-/// buffer.push_points(&points);
-/// let mut filtered = PerAttributeVecPointStorage::new(buffer.point_layout().clone());
+/// let buffer = points.into_iter().collect::<HashMapBuffer>();
+/// let mut filtered = HashMapBuffer::new(buffer.point_layout().clone());
 /// voxelgrid_filter(&buffer, 1.5, 1.5, 1.5, &mut filtered);
 /// // filtered now has fewer points than buffer
 /// assert!(filtered.len() < buffer.len() / 2);
 /// ```
-pub fn voxelgrid_filter<PB: PointBuffer, PBW: PointBufferWriteable>(
-    buffer: &PB,
+pub fn voxelgrid_filter<'a, 'b, PB: BorrowedBuffer<'a>, PBW: OwningBuffer<'b>>(
+    buffer: &'a PB,
     leafsize_x: f64,
     leafsize_y: f64,
     leafsize_z: f64,
-    filtered_buffer: &mut PBW,
+    filtered_buffer: &'b mut PBW,
 ) {
     if !buffer
         .point_layout()
@@ -133,7 +129,8 @@ pub fn voxelgrid_filter<PB: PointBuffer, PBW: PointBufferWriteable>(
 
     // create the VoxelGrid
     for (i, p) in buffer
-        .iter_attribute::<Vector3<f64>>(&POSITION_3D)
+        .view_attribute::<Vector3<f64>>(&POSITION_3D)
+        .into_iter()
         .enumerate()
     {
         // get position of p's leaf
@@ -157,15 +154,15 @@ pub fn voxelgrid_filter<PB: PointBuffer, PBW: PointBufferWriteable>(
         let layout = filtered_buffer.point_layout().clone();
         // using untyped point for now -> in future maybe different
         let mut centroid = UntypedPointBuffer::new(&layout);
-        set_all_attributes(filtered_buffer, &mut centroid, v, buffer);
-        filtered_buffer.push(&centroid.get_interleaved_point_view());
+        set_all_attributes(&layout, &mut centroid, v, buffer);
+        filtered_buffer.push_point(centroid.get_cursor().into_inner());
     }
 }
 
 /// calculates the attribute attribute_definition via max-pooling
-fn centroid_max_pool<T: PointBuffer>(
+fn centroid_max_pool<'a, T: BorrowedBuffer<'a>>(
     v: &Voxel,
-    buffer: &T,
+    buffer: &'a T,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> f64 {
@@ -174,36 +171,35 @@ fn centroid_max_pool<T: PointBuffer>(
     for p in &v.points {
         match point_type {
             PointAttributeDataType::U8 => {
-                value = buffer.get_attribute::<u8>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<u8>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::I8 => {
-                value = buffer.get_attribute::<i8>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<i8>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::U16 => {
-                value = buffer.get_attribute::<u16>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<u16>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::I16 => {
-                value = buffer.get_attribute::<i16>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<i16>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::U32 => {
-                value = buffer.get_attribute::<u32>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<u32>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::I32 => {
-                value = buffer.get_attribute::<i32>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<i32>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::U64 => {
-                value = buffer.get_attribute::<u64>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<u64>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::I64 => {
-                value = buffer.get_attribute::<i64>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<i64>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::F32 => {
-                value = buffer.get_attribute::<f32>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<f32>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::F64 => {
-                value = buffer.get_attribute::<f64>(attribute_definition, *p) as f64;
+                value = buffer.view_attribute::<f64>(attribute_definition).at(*p) as f64;
             }
-            PointAttributeDataType::Bool => panic!("Max pooling not possible with booleans."),
             _ => unimplemented!(),
         }
         if value > curr_max {
@@ -214,28 +210,20 @@ fn centroid_max_pool<T: PointBuffer>(
 }
 
 /// returns the most common value in the voxel for attribute_definition
-fn centroid_most_common<T: PointBuffer>(
+fn centroid_most_common<'a, T: BorrowedBuffer<'a>>(
     v: &Voxel,
-    buffer: &T,
+    buffer: &'a T,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> isize {
     let mut map = HashMap::new();
     for p in &v.points {
         match point_type {
-            PointAttributeDataType::Bool => {
-                *map.entry(
-                    buffer
-                        .get_attribute::<bool>(attribute_definition, *p)
-                        //TODO: converting the attribute to a string is a workaround. In future this should be replaced by a generic method that works on PrimitiveType
-                        .to_string(),
-                )
-                .or_insert(0) += 1;
-            }
             PointAttributeDataType::U8 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<u8>(attribute_definition, *p)
+                        .view_attribute::<u8>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -243,7 +231,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::I8 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<i8>(attribute_definition, *p)
+                        .view_attribute::<i8>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -251,7 +240,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::U16 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<u16>(attribute_definition, *p)
+                        .view_attribute::<u16>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -259,7 +249,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::I16 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<i16>(attribute_definition, *p)
+                        .view_attribute::<i16>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -267,7 +258,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::U32 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<u32>(attribute_definition, *p)
+                        .view_attribute::<u32>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -275,7 +267,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::I32 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<i32>(attribute_definition, *p)
+                        .view_attribute::<i32>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -283,7 +276,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::U64 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<u64>(attribute_definition, *p)
+                        .view_attribute::<u64>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -291,7 +285,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::I64 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<i64>(attribute_definition, *p)
+                        .view_attribute::<i64>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -299,7 +294,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::F32 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<f32>(attribute_definition, *p)
+                        .view_attribute::<f32>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -307,7 +303,8 @@ fn centroid_most_common<T: PointBuffer>(
             PointAttributeDataType::F64 => {
                 *map.entry(
                     buffer
-                        .get_attribute::<f64>(attribute_definition, *p)
+                        .view_attribute::<f64>(attribute_definition)
+                        .at(*p)
                         .to_string(),
                 )
                 .or_insert(0) += 1
@@ -318,30 +315,20 @@ fn centroid_most_common<T: PointBuffer>(
     let mut highest_count = 0;
     let mut curr_key: String = "".to_string();
     for (key, value) in map {
-        if point_type == PointAttributeDataType::Bool {}
         if value > highest_count {
             highest_count = value;
             curr_key = key;
         }
     }
-    if point_type == PointAttributeDataType::Bool {
-        let most_common = curr_key.parse::<bool>().unwrap();
-        if most_common {
-            1
-        } else {
-            0
-        }
-    } else {
-        let most_common = curr_key.parse::<isize>().unwrap();
-        most_common
-    }
+    let most_common = curr_key.parse::<isize>().unwrap();
+    most_common
 }
 
 /// returns the average value in the voxel for attribute_definition
 /// vector types only
-fn centroid_average_vec<T: PointBuffer>(
+fn centroid_average_vec<'a, T: BorrowedBuffer<'a>>(
     v: &Voxel,
-    buffer: &T,
+    buffer: &'a T,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> Vector3<f64> {
@@ -351,25 +338,33 @@ fn centroid_average_vec<T: PointBuffer>(
     for p in &v.points {
         match point_type {
             PointAttributeDataType::Vec3u8 => {
-                let vec = buffer.get_attribute::<Vector3<u8>>(attribute_definition, *p);
+                let vec = buffer
+                    .view_attribute::<Vector3<u8>>(attribute_definition)
+                    .at(*p);
                 x_sum += vec.x as f64;
                 y_sum += vec.y as f64;
                 z_sum += vec.z as f64;
             }
             PointAttributeDataType::Vec3u16 => {
-                let vec = buffer.get_attribute::<Vector3<u16>>(attribute_definition, *p);
+                let vec = buffer
+                    .view_attribute::<Vector3<u16>>(attribute_definition)
+                    .at(*p);
                 x_sum += vec.x as f64;
                 y_sum += vec.y as f64;
                 z_sum += vec.z as f64;
             }
             PointAttributeDataType::Vec3f32 => {
-                let vec = buffer.get_attribute::<Vector3<f32>>(attribute_definition, *p);
+                let vec = buffer
+                    .view_attribute::<Vector3<f32>>(attribute_definition)
+                    .at(*p);
                 x_sum += vec.x as f64;
                 y_sum += vec.y as f64;
                 z_sum += vec.z as f64;
             }
             PointAttributeDataType::Vec3f64 => {
-                let vec = buffer.get_attribute::<Vector3<f64>>(attribute_definition, *p);
+                let vec = buffer
+                    .view_attribute::<Vector3<f64>>(attribute_definition)
+                    .at(*p);
                 x_sum += vec.x;
                 y_sum += vec.y;
                 z_sum += vec.z;
@@ -389,45 +384,44 @@ fn centroid_average_vec<T: PointBuffer>(
 
 /// returns the average value in the voxel for attribute_definition
 /// numeric types only
-fn centroid_average_num<PB: PointBuffer>(
+fn centroid_average_num<'a, PB: BorrowedBuffer<'a>>(
     v: &mut Voxel,
-    buffer: &PB,
+    buffer: &'a PB,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> f64 {
     let mut sum = 0.0;
     for p in &v.points {
         match point_type {
-            PointAttributeDataType::Bool => panic!("Boolean type cannot be averaged."),
             PointAttributeDataType::U8 => {
-                sum += buffer.get_attribute::<u8>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<u8>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::I8 => {
-                sum += buffer.get_attribute::<i8>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<i8>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::U16 => {
-                sum += buffer.get_attribute::<u16>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<u16>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::I16 => {
-                sum += buffer.get_attribute::<i16>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<i16>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::U32 => {
-                sum += buffer.get_attribute::<u32>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<u32>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::I32 => {
-                sum += buffer.get_attribute::<i32>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<i32>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::U64 => {
-                sum += buffer.get_attribute::<u64>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<u64>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::I64 => {
-                sum += buffer.get_attribute::<i64>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<i64>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::F32 => {
-                sum += buffer.get_attribute::<f32>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<f32>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::F64 => {
-                sum += buffer.get_attribute::<f64>(attribute_definition, *p) as f64
+                sum += buffer.view_attribute::<f64>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::Vec3u8 => panic!("For vector types use centroid_average_vec."),
             PointAttributeDataType::Vec3u16 => panic!("For vector types use centroid_average_vec."),
@@ -443,31 +437,30 @@ fn centroid_average_num<PB: PointBuffer>(
 
 /// sets all attributes of the point-buffer for the centroid
 /// currently, only standard builtin types work.
-fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
-    filtered_buffer: &PBW,
+fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
+    target_layout: &PointLayout,
     centroid: &mut UntypedPointBuffer,
     v: &mut Voxel,
-    buffer: &PB,
+    buffer: &'a PB,
 ) {
     //TODO: for now we just check that the layout of the filtered_buffer does not contain any waveform values.
     // A future version of this algorithm should take a separate object that contains a mapping between point attributes and the desired type of 'reduction function'.
     // This way we could store defaults in this object but have the users overwrite the defaults with whatever they want.
-    let l = filtered_buffer.point_layout();
-    if l.has_attribute(&attributes::WAVEFORM_DATA_OFFSET)
-        || l.has_attribute(&attributes::WAVEFORM_PACKET_SIZE)
-        || l.has_attribute(&attributes::WAVEFORM_PARAMETERS)
-        || l.has_attribute(&attributes::WAVE_PACKET_DESCRIPTOR_INDEX)
-        || l.has_attribute(&attributes::RETURN_POINT_WAVEFORM_LOCATION)
+    if target_layout.has_attribute(&attributes::WAVEFORM_DATA_OFFSET)
+        || target_layout.has_attribute(&attributes::WAVEFORM_PACKET_SIZE)
+        || target_layout.has_attribute(&attributes::WAVEFORM_PARAMETERS)
+        || target_layout.has_attribute(&attributes::WAVE_PACKET_DESCRIPTOR_INDEX)
+        || target_layout.has_attribute(&attributes::RETURN_POINT_WAVEFORM_LOCATION)
     {
         panic!("Waveform data currently not supported!");
     }
 
-    for a in filtered_buffer.point_layout().attributes() {
+    for a in target_layout.attributes() {
         if &a.name() == &attributes::POSITION_3D.name()
             && a.datatype() == attributes::POSITION_3D.datatype()
         {
             let position = centroid_average_vec(v, buffer, &attributes::POSITION_3D, a.datatype());
-            let pos_slice = unsafe { view_raw_bytes(&position) };
+            let pos_slice = bytemuck::bytes_of(&position);
             centroid
                 .set_raw_attribute(&attributes::POSITION_3D, pos_slice)
                 .unwrap();
@@ -476,7 +469,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let average =
                 centroid_average_num::<PB>(v, buffer, &attributes::INTENSITY, a.datatype()) as u16;
-            let avg_slice = unsafe { view_raw_bytes(&average) };
+            let avg_slice = bytemuck::bytes_of(&average);
             centroid
                 .set_raw_attribute(&attributes::INTENSITY, avg_slice)
                 .unwrap();
@@ -486,7 +479,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::RETURN_NUMBER, a.datatype())
                     as u8;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::RETURN_NUMBER, mc_slice)
                 .unwrap();
@@ -496,7 +489,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::NUMBER_OF_RETURNS, a.datatype())
                     as u8;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::NUMBER_OF_RETURNS, mc_slice)
                 .unwrap();
@@ -506,7 +499,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let max =
                 centroid_max_pool::<PB>(v, buffer, &attributes::CLASSIFICATION_FLAGS, a.datatype())
                     as u8;
-            let m_slice = unsafe { view_raw_bytes(&max) };
+            let m_slice = bytemuck::bytes_of(&max);
             centroid
                 .set_raw_attribute(&attributes::CLASSIFICATION_FLAGS, m_slice)
                 .unwrap();
@@ -516,7 +509,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::SCANNER_CHANNEL, a.datatype())
                     as u8;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::SCANNER_CHANNEL, mc_slice)
                 .unwrap();
@@ -529,7 +522,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 &attributes::SCAN_DIRECTION_FLAG,
                 a.datatype(),
             ) != 0;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::SCAN_DIRECTION_FLAG, mc_slice)
                 .unwrap();
@@ -542,7 +535,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
                 &attributes::EDGE_OF_FLIGHT_LINE,
                 a.datatype(),
             ) != 0;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::EDGE_OF_FLIGHT_LINE, mc_slice)
                 .unwrap();
@@ -552,7 +545,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::CLASSIFICATION, a.datatype())
                     as u8;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::CLASSIFICATION, mc_slice)
                 .unwrap();
@@ -562,7 +555,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::SCAN_ANGLE_RANK, a.datatype())
                     as i8;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::SCAN_ANGLE_RANK, mc_slice)
                 .unwrap();
@@ -571,7 +564,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::SCAN_ANGLE, a.datatype()) as i16;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::SCAN_ANGLE, mc_slice)
                 .unwrap();
@@ -580,7 +573,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::USER_DATA, a.datatype()) as u8;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::USER_DATA, mc_slice)
                 .unwrap();
@@ -590,7 +583,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
             let most_common =
                 centroid_most_common::<PB>(v, buffer, &attributes::POINT_SOURCE_ID, a.datatype())
                     as u16;
-            let mc_slice = unsafe { view_raw_bytes(&most_common) };
+            let mc_slice = bytemuck::bytes_of(&most_common);
             centroid
                 .set_raw_attribute(&attributes::POINT_SOURCE_ID, mc_slice)
                 .unwrap();
@@ -599,7 +592,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let color = centroid_average_vec(v, buffer, &attributes::COLOR_RGB, a.datatype());
             let color_u16 = Vector3::new(color.x as u16, color.y as u16, color.z as u16);
-            let col_slice = unsafe { view_raw_bytes(&color_u16) };
+            let col_slice = bytemuck::bytes_of(&color_u16);
             centroid
                 .set_raw_attribute(&attributes::COLOR_RGB, col_slice)
                 .unwrap();
@@ -608,7 +601,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let max =
                 centroid_max_pool::<PB>(v, buffer, &attributes::GPS_TIME, a.datatype()) as f64;
-            let m_slice = unsafe { view_raw_bytes(&max) };
+            let m_slice = bytemuck::bytes_of(&max);
             centroid
                 .set_raw_attribute(&attributes::GPS_TIME, m_slice)
                 .unwrap();
@@ -616,7 +609,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let average =
                 centroid_average_num::<PB>(v, buffer, &attributes::NIR, a.datatype()) as u16;
-            let avg_slice = unsafe { view_raw_bytes(&average) };
+            let avg_slice = bytemuck::bytes_of(&average);
             centroid
                 .set_raw_attribute(&attributes::NIR, avg_slice)
                 .unwrap();
@@ -669,7 +662,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let max =
                 centroid_max_pool::<PB>(v, buffer, &attributes::POINT_ID, a.datatype()) as u64;
-            let m_slice = unsafe { view_raw_bytes(&max) };
+            let m_slice = bytemuck::bytes_of(&max);
             centroid
                 .set_raw_attribute(&attributes::POINT_ID, m_slice)
                 .unwrap();
@@ -678,7 +671,7 @@ fn set_all_attributes<PB: PointBuffer, PBW: PointBufferWriteable>(
         {
             let normal = centroid_average_vec(v, buffer, &attributes::NORMAL, a.datatype());
             let normal_f32 = Vector3::new(normal.x as f32, normal.y as f32, normal.z as f32);
-            let nor_slice = unsafe { view_raw_bytes(&normal_f32) };
+            let nor_slice = bytemuck::bytes_of(&normal_f32);
             centroid
                 .set_raw_attribute(&attributes::NORMAL, nor_slice)
                 .unwrap();
@@ -708,15 +701,15 @@ mod tests {
 
     use crate::voxel_grid::voxelgrid_filter;
     use pasture_core::{
-        containers::{OwningPointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferExt},
-        layout::{attributes, PointType},
+        containers::{BorrowedBuffer, HashMapBuffer},
+        layout::attributes,
         nalgebra::Vector3,
     };
     use pasture_derive::PointType;
     use rand::{prelude::ThreadRng, Rng};
 
-    #[repr(C)]
-    #[derive(PointType, Debug)]
+    #[repr(C, packed)]
+    #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     pub struct CompletePoint {
         #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
@@ -731,9 +724,9 @@ mod tests {
         #[pasture(BUILTIN_SCANNER_CHANNEL)]
         pub scanner_channel: u8,
         #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-        pub scan_dir_flag: bool,
+        pub scan_dir_flag: u8,
         #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-        pub edge_of_flight_line: bool,
+        pub edge_of_flight_line: u8,
         #[pasture(BUILTIN_CLASSIFICATION)]
         pub classification: u8,
         #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -769,7 +762,7 @@ mod tests {
         Vector3::new(rng.gen_range(11..120), rng.gen_range(11..120), 42)
     }
 
-    fn setup_point_cloud() -> PerAttributeVecPointStorage {
+    fn setup_point_cloud() -> HashMapBuffer {
         let mut rng = rand::thread_rng();
         let mut points = vec![];
         // create vertices between 0.0 and 10.0
@@ -780,8 +773,8 @@ mod tests {
             num_of_returns: rng.gen_range(20..80),
             classification_flags: rng.gen_range(7..20),
             scanner_channel: rng.gen_range(7..20),
-            scan_dir_flag: rng.gen_bool(0.47),
-            edge_of_flight_line: rng.gen_bool(0.81),
+            scan_dir_flag: rng.gen_range(0..47),
+            edge_of_flight_line: rng.gen_range(0..81),
             classification: rng.gen_range(121..200),
             scan_angle_rank: rng.gen_range(-121..20),
             scan_angle: rng.gen_range(-21..8),
@@ -803,8 +796,8 @@ mod tests {
             num_of_returns: rng.gen_range(20..80),
             classification_flags: rng.gen_range(7..20),
             scanner_channel: rng.gen_range(7..20),
-            scan_dir_flag: rng.gen_bool(0.47),
-            edge_of_flight_line: rng.gen_bool(0.81),
+            scan_dir_flag: rng.gen_range(0..47),
+            edge_of_flight_line: rng.gen_range(0..81),
             classification: rng.gen_range(121..200),
             scan_angle_rank: rng.gen_range(-121..20),
             scan_angle: rng.gen_range(-21..8),
@@ -840,8 +833,8 @@ mod tests {
                         classification_flags: 3,
                         scanner_channel: rng.gen_range(7..20),
                         // most_common bool
-                        scan_dir_flag: false,
-                        edge_of_flight_line: rng.gen_bool(0.81),
+                        scan_dir_flag: 0,
+                        edge_of_flight_line: rng.gen_range(0..81),
                         classification: rng.gen_range(121..200),
                         scan_angle_rank: rng.gen_range(-121..20),
                         scan_angle: rng.gen_range(-21..8),
@@ -868,8 +861,8 @@ mod tests {
                         num_of_returns: rng.gen_range(20..80),
                         classification_flags: 7,
                         scanner_channel: rng.gen_range(7..20),
-                        scan_dir_flag: false,
-                        edge_of_flight_line: rng.gen_bool(0.81),
+                        scan_dir_flag: 0,
+                        edge_of_flight_line: rng.gen_range(0..81),
                         classification: rng.gen_range(121..200),
                         scan_angle_rank: rng.gen_range(-121..20),
                         scan_angle: rng.gen_range(-21..8),
@@ -896,8 +889,8 @@ mod tests {
                         num_of_returns: rng.gen_range(20..80),
                         classification_flags: 133,
                         scanner_channel: rng.gen_range(7..20),
-                        scan_dir_flag: true,
-                        edge_of_flight_line: rng.gen_bool(0.81),
+                        scan_dir_flag: 1,
+                        edge_of_flight_line: rng.gen_range(0..81),
                         classification: rng.gen_range(121..200),
                         scan_angle_rank: rng.gen_range(-121..20),
                         scan_angle: rng.gen_range(-21..8),
@@ -915,32 +908,40 @@ mod tests {
                 }
             }
         }
-        let mut buffer = PerAttributeVecPointStorage::new(CompletePoint::layout());
-        buffer.push_points(&points);
-        buffer
+        points.into_iter().collect()
     }
 
     #[test]
     fn test_voxel_grid_filter() {
         let buffer = setup_point_cloud();
         assert!(buffer.len() == 3002);
-        let mut filtered = PerAttributeVecPointStorage::new(buffer.point_layout().clone());
+        let mut filtered = HashMapBuffer::new(buffer.point_layout().clone());
         voxelgrid_filter(&buffer, 1.0, 1.0, 1.0, &mut filtered);
         // filtered now has only 1000 points
         assert!(filtered.len() == 1000);
 
         // average_vec
-        let first_pos = filtered.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D, 1);
+        let first_pos = filtered
+            .view_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
+            .at(1);
         assert!(first_pos.x > 0.59 && first_pos.x < 0.61);
         assert!(first_pos.y > 0.59 && first_pos.y < 0.61);
         assert!(first_pos.z > 1.59 && first_pos.z < 1.61);
         // average_num
-        assert!(filtered.get_attribute::<u16>(&attributes::INTENSITY, 1) == 4);
+        assert!(filtered.view_attribute::<u16>(&attributes::INTENSITY).at(1) == 4);
         // most_common num
-        assert!(filtered.get_attribute::<u8>(&attributes::RETURN_NUMBER, 1) == 42);
+        assert!(
+            filtered
+                .view_attribute::<u8>(&attributes::RETURN_NUMBER)
+                .at(1)
+                == 42
+        );
         // max_pool
-        assert!(filtered.get_attribute::<u8>(&attributes::CLASSIFICATION_FLAGS, 1) == 133);
-        // most_common bool
-        assert!(!filtered.get_attribute::<bool>(&attributes::SCAN_DIRECTION_FLAG, 1));
+        assert!(
+            filtered
+                .view_attribute::<u8>(&attributes::CLASSIFICATION_FLAGS)
+                .at(1)
+                == 133
+        );
     }
 }
