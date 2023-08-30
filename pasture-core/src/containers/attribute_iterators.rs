@@ -4,15 +4,18 @@ use crate::layout::{PointAttributeDefinition, PointAttributeMember, PrimitiveTyp
 
 use super::point_buffer::{BorrowedBuffer, ColumnarBuffer, ColumnarBufferMut};
 
-pub struct AttributeIteratorByValue<'a, T: PrimitiveType, B: BorrowedBuffer<'a>> {
-    buffer: &'a B,
-    attribute_member: &'a PointAttributeMember,
+pub struct AttributeIteratorByValue<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>>
+where
+    'a: 'b,
+{
+    buffer: &'b B,
+    attribute_member: &'b PointAttributeMember,
     current_index: usize,
-    _phantom: PhantomData<T>,
+    _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, T: PrimitiveType, B: BorrowedBuffer<'a>> AttributeIteratorByValue<'a, T, B> {
-    pub(crate) fn new(buffer: &'a B, attribute: &PointAttributeDefinition) -> Self {
+impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>> AttributeIteratorByValue<'a, 'b, T, B> {
+    pub(crate) fn new(buffer: &'b B, attribute: &PointAttributeDefinition) -> Self {
         Self {
             attribute_member: buffer
                 .point_layout()
@@ -25,7 +28,9 @@ impl<'a, T: PrimitiveType, B: BorrowedBuffer<'a>> AttributeIteratorByValue<'a, T
     }
 }
 
-impl<'a, T: PrimitiveType, B: BorrowedBuffer<'a>> Iterator for AttributeIteratorByValue<'a, T, B> {
+impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>> Iterator
+    for AttributeIteratorByValue<'a, 'b, T, B>
+{
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -54,10 +59,13 @@ pub struct AttributeIteratorByRef<'a, T: PrimitiveType> {
 }
 
 impl<'a, T: PrimitiveType> AttributeIteratorByRef<'a, T> {
-    pub(crate) fn new<B: ColumnarBuffer<'a>>(
+    pub(crate) fn new<'b, B: ColumnarBuffer<'b>>(
         buffer: &'a B,
         attribute: &PointAttributeDefinition,
-    ) -> Self {
+    ) -> Self
+    where
+        'b: 'a,
+    {
         let attribute_memory = buffer.get_attribute_range_ref(attribute, 0..buffer.len());
         Self {
             attribute_data: bytemuck::cast_slice(attribute_memory),
@@ -86,10 +94,13 @@ pub struct AttributeIteratorByMut<'a, T: PrimitiveType> {
 }
 
 impl<'a, T: PrimitiveType> AttributeIteratorByMut<'a, T> {
-    pub(crate) fn new<B: ColumnarBufferMut<'a>>(
+    pub(crate) fn new<'b, B: ColumnarBufferMut<'b>>(
         buffer: &'a mut B,
         attribute: &PointAttributeDefinition,
-    ) -> Self {
+    ) -> Self
+    where
+        'b: 'a,
+    {
         let attribute_memory = buffer.get_attribute_range_mut(attribute, 0..buffer.len());
         Self {
             attribute_data: bytemuck::cast_slice_mut(attribute_memory),

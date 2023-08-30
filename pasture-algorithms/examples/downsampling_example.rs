@@ -1,6 +1,6 @@
 use pasture_algorithms::voxel_grid::voxelgrid_filter;
 use pasture_core::{
-    containers::{BorrowedBuffer, HashMapBuffer},
+    containers::{BorrowedBuffer, HashMapBuffer, MakeBufferFromLayout},
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
@@ -109,7 +109,7 @@ fn main() -> () {
         .collect::<HashMapBuffer>();
 
     println!("done generating pointcloud, size: {}", buffer.len());
-    let mut filtered = HashMapBuffer::new(buffer.point_layout().clone());
+    let mut filtered = HashMapBuffer::new_from_layout(buffer.point_layout().clone());
     voxelgrid_filter(&buffer, 0.9, 0.9, 0.9, &mut filtered);
     println!("done filtering pointcloud");
     println!("filtered cloud size: {:?}", filtered.len());

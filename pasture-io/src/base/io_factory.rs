@@ -1,29 +1,69 @@
-use std::{fs::File, io::BufReader, path::Path};
+use std::{
+    fs::File,
+    io::{BufReader, BufWriter},
+    path::Path,
+};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use pasture_core::layout::PointLayout;
 
 // use crate::las::{LASReader, LASWriter};
 
-use crate::las::LASReader;
+use crate::{
+    las::{LASReader, LASWriter},
+    tiles3d::{PntsReader, PntsWriter},
+};
 
-use super::PointReader;
+use super::{PointReader, PointWriter};
+
+#[derive(Debug)]
+enum SupportedFileExtensions {
+    LAS,
+    Tiles3D,
+    ASCII,
+}
+
+/// Returns a lookup value for the file extension of the given file path
+fn get_extension_lookup(path: &Path) -> Result<SupportedFileExtensions> {
+    let extension = path.extension().ok_or_else(|| {
+        anyhow!(
+            "File extension could not be determined from path {}",
+            path.display()
+        )
+    })?;
+    let extension_str = extension.to_str().ok_or_else(|| {
+        anyhow!(
+            "File extension of path {} is no valid Unicode string",
+            path.display()
+        )
+    })?;
+    match extension_str.to_lowercase().as_str() {
+        "las" | "laz" => Ok(SupportedFileExtensions::LAS),
+        "pnts" => Ok(SupportedFileExtensions::Tiles3D),
+        "txt" => Ok(SupportedFileExtensions::ASCII),
+        other => Err(anyhow!("Unsupported file extension {other}")),
+    }
+}
 
 pub enum GenericPointReader {
     LAS(LASReader<'static, BufReader<File>>),
     // ASCII(),
-    // Tiles3D(),
+    Tiles3D(PntsReader<BufReader<File>>),
 }
 
 impl GenericPointReader {
     pub fn open_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let extension_str = Self::get_extension_lookup(path.as_ref())?;
-        match extension_str.as_str() {
-            "las" => {
+        let extension = get_extension_lookup(path.as_ref())?;
+        match extension {
+            SupportedFileExtensions::LAS => {
                 let reader = LASReader::from_path(path)?;
                 Ok(Self::LAS(reader))
             }
-            _ => Err(anyhow!("Unsupported file extension {extension_str}")),
+            SupportedFileExtensions::Tiles3D => {
+                let reader = PntsReader::from_path(path)?;
+                Ok(Self::Tiles3D(reader))
+            }
+            _ => Err(anyhow!("Unsupported file extension {extension:#?}")),
         }
     }
 
@@ -32,23 +72,8 @@ impl GenericPointReader {
     pub fn point_count(&self) -> Option<usize> {
         match self {
             GenericPointReader::LAS(reader) => reader.get_metadata().number_of_points(),
+            GenericPointReader::Tiles3D(reader) => reader.get_metadata().number_of_points(),
         }
-    }
-
-    fn get_extension_lookup(path: &Path) -> Result<String> {
-        let extension = path.extension().ok_or_else(|| {
-            anyhow!(
-                "File extension could not be determined from path {}",
-                path.display()
-            )
-        })?;
-        let extension_str = extension.to_str().ok_or_else(|| {
-            anyhow!(
-                "File extension of path {} is no valid Unicode string",
-                path.display()
-            )
-        })?;
-        Ok(extension_str.to_lowercase())
     }
 }
 
@@ -63,26 +88,76 @@ impl PointReader for GenericPointReader {
     {
         match self {
             GenericPointReader::LAS(reader) => reader.read_into(point_buffer, count),
+            GenericPointReader::Tiles3D(reader) => reader.read_into(point_buffer, count),
         }
     }
 
     fn get_metadata(&self) -> &dyn pasture_core::meta::Metadata {
         match self {
             GenericPointReader::LAS(reader) => reader.get_metadata(),
+            GenericPointReader::Tiles3D(reader) => reader.get_metadata(),
         }
     }
 
     fn get_default_point_layout(&self) -> &PointLayout {
         match self {
             GenericPointReader::LAS(reader) => reader.get_default_point_layout(),
+            GenericPointReader::Tiles3D(reader) => reader.get_default_point_layout(),
         }
     }
 }
 
 pub enum GenericPointWriter {
-    LAS(),
+    LAS(LASWriter<BufWriter<File>>),
     // ASCII(),
-    // Tiles3D(),
+    Tiles3D(PntsWriter<BufWriter<File>>),
+}
+
+impl GenericPointWriter {
+    pub fn open_file<P: AsRef<Path>>(path: P, point_layout: &PointLayout) -> Result<Self> {
+        let extension = get_extension_lookup(path.as_ref())?;
+        match extension {
+            SupportedFileExtensions::LAS => {
+                let writer = LASWriter::from_path_and_point_layout(path, point_layout)?;
+                Ok(Self::LAS(writer))
+            }
+            SupportedFileExtensions::Tiles3D => {
+                let file = BufWriter::new(File::create(path.as_ref()).context(format!(
+                    "Could not open file {} for writing",
+                    path.as_ref().display()
+                ))?);
+                let writer = PntsWriter::from_write_and_layout(file, point_layout.clone());
+                Ok(Self::Tiles3D(writer))
+            }
+            _ => Err(anyhow!("Unsupported file extension {extension:#?}")),
+        }
+    }
+}
+
+impl PointWriter for GenericPointWriter {
+    fn write<'a, B: pasture_core::containers::BorrowedBuffer<'a>>(
+        &mut self,
+        points: &'a B,
+    ) -> Result<()> {
+        match self {
+            GenericPointWriter::LAS(writer) => writer.write(points),
+            GenericPointWriter::Tiles3D(writer) => writer.write(points),
+        }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        match self {
+            GenericPointWriter::LAS(writer) => writer.flush(),
+            GenericPointWriter::Tiles3D(writer) => writer.flush(),
+        }
+    }
+
+    fn get_default_point_layout(&self) -> &PointLayout {
+        match self {
+            GenericPointWriter::LAS(writer) => writer.get_default_point_layout(),
+            GenericPointWriter::Tiles3D(writer) => writer.get_default_point_layout(),
+        }
+    }
 }
 
 // type ReaderFactoryFn = dyn Fn(&Path) -> Result<GenericPointReader>;

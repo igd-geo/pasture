@@ -4,14 +4,19 @@ use crate::layout::PointType;
 
 use super::point_buffer::{BorrowedBuffer, InterleavedBuffer, InterleavedBufferMut};
 
-pub struct PointIteratorByValue<'a, T: PointType, B: BorrowedBuffer<'a>> {
-    buffer: &'a B,
+pub struct PointIteratorByValue<'a, 'b, T: PointType, B: BorrowedBuffer<'a>>
+where
+    'a: 'b,
+{
+    buffer: &'b B,
     current_index: usize,
-    _phantom: PhantomData<T>,
+    _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, T: PointType, B: BorrowedBuffer<'a>> From<&'a B> for PointIteratorByValue<'a, T, B> {
-    fn from(value: &'a B) -> Self {
+impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> From<&'b B>
+    for PointIteratorByValue<'a, 'b, T, B>
+{
+    fn from(value: &'b B) -> Self {
         Self {
             buffer: value,
             current_index: 0,
@@ -20,7 +25,7 @@ impl<'a, T: PointType, B: BorrowedBuffer<'a>> From<&'a B> for PointIteratorByVal
     }
 }
 
-impl<'a, T: PointType, B: BorrowedBuffer<'a>> Iterator for PointIteratorByValue<'a, T, B> {
+impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> Iterator for PointIteratorByValue<'a, 'b, T, B> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -41,7 +46,10 @@ pub struct PointIteratorByRef<'a, T: PointType> {
     current_index: usize,
 }
 
-impl<'a, T: PointType, B: InterleavedBuffer<'a>> From<&'a B> for PointIteratorByRef<'a, T> {
+impl<'a, 'b, T: PointType, B: InterleavedBuffer<'b>> From<&'a B> for PointIteratorByRef<'a, T>
+where
+    'b: 'a,
+{
     fn from(value: &'a B) -> Self {
         let points_memory = value.get_point_range_ref(0..value.len());
         Self {
@@ -71,7 +79,11 @@ pub struct PointIteratorByMut<'a, T: PointType> {
     _phantom: PhantomData<T>,
 }
 
-impl<'a, T: PointType, B: InterleavedBufferMut<'a>> From<&'a mut B> for PointIteratorByMut<'a, T> {
+impl<'a, 'b, T: PointType, B: InterleavedBufferMut<'b>> From<&'a mut B>
+    for PointIteratorByMut<'a, T>
+where
+    'b: 'a,
+{
     fn from(value: &'a mut B) -> Self {
         let memory_for_all_points = value.get_point_range_mut(0..value.len());
         Self {

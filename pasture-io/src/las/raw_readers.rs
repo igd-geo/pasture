@@ -150,7 +150,11 @@ impl<T: Read + Seek> RawLASReader<T> {
                 &mut self.default_parser,
             );
 
-            point_buffer.extend(&output_points_chunk[0..bytes_in_chunk]);
+            // Safe because we know that `point_buffer` has the default point layout for the current LAS point
+            // record format, and `parse_chunk` is guaranteed to output data in the matching binary format
+            unsafe {
+                point_buffer.push_points(&output_points_chunk[0..bytes_in_chunk]);
+            }
         }
 
         self.current_point_index += num_points_to_read;
@@ -213,7 +217,11 @@ impl<T: Read + Seek> RawLASReader<T> {
                 &mut parser,
             );
 
-            point_buffer.extend(&points_chunk[0..bytes_in_chunk]);
+            // Safe because `parse_chunk` is guaranteed to output data in the matching `PointLayout` for
+            // `point_buffer`
+            unsafe {
+                point_buffer.push_points(&points_chunk[0..bytes_in_chunk]);
+            }
         }
 
         self.current_point_index += num_points_to_read;
@@ -469,7 +477,10 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
                 points_in_chunk,
             )?;
 
-            point_buffer.extend(&points_chunk[0..bytes_in_chunk]);
+            // Safe because `read_chunk_default_layout` outputs data in the matching `PointLayout` of `point_buffer`
+            unsafe {
+                point_buffer.push_points(&points_chunk[0..bytes_in_chunk]);
+            }
         }
         // }
 
@@ -514,7 +525,10 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
                 point_buffer.point_layout(),
             )?;
 
-            point_buffer.extend(&points_chunk[0..bytes_in_chunk]);
+            // Safe because `read_chunk_custom_layout` outputs data in the matching `PointLayout` of `point_buffer`
+            unsafe {
+                point_buffer.push_points(&points_chunk[0..bytes_in_chunk]);
+            }
         }
 
         self.current_point_index += num_points_to_read;
@@ -714,7 +728,7 @@ mod tests {
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = HashMapBuffer::new(layout);
+                    let mut buffer = HashMapBuffer::new_from_layout(layout);
 
                     reader.read_into(&mut buffer, 10)?;
                     compare_to_reference_data(&buffer, format);
@@ -732,7 +746,7 @@ mod tests {
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = HashMapBuffer::new(layout);
+                    let mut buffer = HashMapBuffer::new_from_layout(layout);
 
                     const POINTS_PER_CHUNK: usize = 5;
                     const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;

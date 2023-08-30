@@ -54,15 +54,18 @@ pub fn read_all_into<'a, B: OwningBuffer<'a>, P: AsRef<Path>>(
 
 /// Writes all points in the given `buffer` into the file at `path`
 pub fn write_all<'a, B: BorrowedBuffer<'a>, P: AsRef<Path>>(buffer: &'a B, path: P) -> Result<()> {
-    todo!()
-
-    // let io_factory = IOFactory::default();
-    // let mut writer = io_factory
-    //     .make_writer(path.as_ref(), buffer.point_layout())
-    //     .context(format!(
-    //         "Could not create appropriate writer for point cloud file {}",
-    //         path.as_ref().display()
-    //     ))?;
-    // writer.write(buffer).context("Failed to write points")?;
-    // writer.flush()
+    let mut writer =
+        GenericPointWriter::open_file(path.as_ref(), buffer.point_layout()).context(format!(
+            "Could not create appropriate writer for point cloud file {}",
+            path.as_ref().display()
+        ))?;
+    writer.write(buffer).context(format!(
+        "Failed to write points to file {}",
+        path.as_ref().display()
+    ))?;
+    writer.flush().context(format!(
+        "Failed to flush points to file {}",
+        path.as_ref().display()
+    ))?;
+    Ok(())
 }

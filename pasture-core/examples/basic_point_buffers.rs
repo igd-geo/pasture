@@ -89,7 +89,7 @@ fn main() {
     // sometimes this is not possible due to memory layout concerns or general performance.
     // Let's try a different type of buffer:
     {
-        let mut buffer = HashMapBuffer::new(SimplePoint::layout());
+        let mut buffer = HashMapBuffer::new_from_layout(SimplePoint::layout());
         // This buffer stores points with a different memory layout internally (Columnar as opposed to Interleaved). We can
         // still add our strongly typed points to it:
         buffer.view_mut().push_point(points[0]);

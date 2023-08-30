@@ -155,7 +155,10 @@ pub fn voxelgrid_filter<'a, 'b, PB: BorrowedBuffer<'a>, PBW: OwningBuffer<'b>>(
         // using untyped point for now -> in future maybe different
         let mut centroid = UntypedPointBuffer::new(&layout);
         set_all_attributes(&layout, &mut centroid, v, buffer);
-        filtered_buffer.push_point(centroid.get_cursor().into_inner());
+        // This is safe because the `centroid` has the same `PointLayout` as `filtered_buffer`
+        unsafe {
+            filtered_buffer.push_points(centroid.get_cursor().into_inner());
+        }
     }
 }
 
@@ -701,7 +704,7 @@ mod tests {
 
     use crate::voxel_grid::voxelgrid_filter;
     use pasture_core::{
-        containers::{BorrowedBuffer, HashMapBuffer},
+        containers::{BorrowedBuffer, HashMapBuffer, MakeBufferFromLayout},
         layout::attributes,
         nalgebra::Vector3,
     };
@@ -915,7 +918,7 @@ mod tests {
     fn test_voxel_grid_filter() {
         let buffer = setup_point_cloud();
         assert!(buffer.len() == 3002);
-        let mut filtered = HashMapBuffer::new(buffer.point_layout().clone());
+        let mut filtered = HashMapBuffer::new_from_layout(buffer.point_layout().clone());
         voxelgrid_filter(&buffer, 1.0, 1.0, 1.0, &mut filtered);
         // filtered now has only 1000 points
         assert!(filtered.len() == 1000);

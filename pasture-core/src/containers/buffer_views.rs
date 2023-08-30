@@ -18,13 +18,20 @@ use super::{
     OwningBuffer,
 };
 
-pub struct PointView<'a, B: BorrowedBuffer<'a>, T: PointType> {
-    buffer: &'a B,
-    _phantom: PhantomData<T>,
+pub struct PointView<'a, 'b, B: BorrowedBuffer<'a>, T: PointType>
+where
+    'a: 'b,
+{
+    buffer: &'b B,
+    _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, B: BorrowedBuffer<'a>, T: PointType> PointView<'a, B, T> {
-    pub(crate) fn new(buffer: &'a B) -> Self {
+impl<'a, 'b, B: BorrowedBuffer<'a>, T: PointType> PointView<'a, 'b, B, T>
+where
+    'a: 'b,
+{
+    pub(crate) fn new(buffer: &'b B) -> Self {
+        assert_eq!(T::layout(), *buffer.point_layout());
         Self {
             buffer,
             _phantom: Default::default(),
@@ -39,32 +46,45 @@ impl<'a, B: BorrowedBuffer<'a>, T: PointType> PointView<'a, B, T> {
     }
 }
 
-impl<'a, B: InterleavedBuffer<'a>, T: PointType> PointView<'a, B, T> {
+impl<'a, 'b, B: InterleavedBuffer<'a>, T: PointType> PointView<'a, 'b, B, T>
+where
+    'a: 'b,
+{
     pub fn at_ref(&self, index: usize) -> &T {
         bytemuck::from_bytes(self.buffer.get_point_ref(index))
     }
 
-    pub fn iter(&self) -> PointIteratorByRef<'a, T> {
+    pub fn iter<'c>(&'c self) -> PointIteratorByRef<'c, T>
+    where
+        'b: 'c,
+    {
         self.buffer.into()
     }
 }
 
-impl<'a, B: BorrowedBuffer<'a>, T: PointType> IntoIterator for PointView<'a, B, T> {
+impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PointType> IntoIterator for PointView<'a, 'b, B, T>
+where
+    'a: 'b,
+{
     type Item = T;
-    type IntoIter = PointIteratorByValue<'a, T, B>;
+    type IntoIter = PointIteratorByValue<'a, 'b, T, B>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.buffer.into()
     }
 }
 
-pub struct PointViewMut<'a, B: BorrowedMutBuffer<'a>, T: PointType> {
-    buffer: &'a mut B,
-    _phantom: PhantomData<T>,
+pub struct PointViewMut<'a, 'b, B: BorrowedMutBuffer<'a>, T: PointType>
+where
+    'a: 'b,
+{
+    buffer: &'b mut B,
+    _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, B: BorrowedMutBuffer<'a>, T: PointType> PointViewMut<'a, B, T> {
-    pub(crate) fn new(buffer: &'a mut B) -> Self {
+impl<'a, 'b, B: BorrowedMutBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
+    pub(crate) fn new(buffer: &'b mut B) -> Self {
+        assert_eq!(T::layout(), *buffer.point_layout());
         Self {
             buffer,
             _phantom: Default::default(),
@@ -83,40 +103,61 @@ impl<'a, B: BorrowedMutBuffer<'a>, T: PointType> PointViewMut<'a, B, T> {
     }
 }
 
-impl<'a, B: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>, T: PointType> PointViewMut<'a, B, T> {
-    pub fn at_ref(&'a self, index: usize) -> &'a T {
+impl<'a, 'b, B: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>, T: PointType>
+    PointViewMut<'a, 'b, B, T>
+{
+    pub fn at_ref<'c>(&'c self, index: usize) -> &'c T
+    where
+        'b: 'c,
+    {
         bytemuck::from_bytes(self.buffer.get_point_ref(index))
     }
 
-    pub fn iter(&'a self) -> PointIteratorByRef<'a, T> {
+    pub fn iter<'c>(&'c self) -> PointIteratorByRef<'c, T>
+    where
+        'b: 'c,
+    {
         (&*self.buffer).into()
     }
 }
 
-impl<'a, B: InterleavedBufferMut<'a>, T: PointType> PointViewMut<'a, B, T> {
-    pub fn at_mut(&'a mut self, index: usize) -> &'a mut T {
+impl<'a, 'b, B: InterleavedBufferMut<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
+    pub fn at_mut<'c>(&'c mut self, index: usize) -> &'c mut T
+    where
+        'b: 'c,
+    {
         bytemuck::from_bytes_mut(self.buffer.get_point_mut(index))
     }
 
-    pub fn iter_mut(&'a mut self) -> PointIteratorByMut<'a, T> {
+    pub fn iter_mut<'c>(&'c mut self) -> PointIteratorByMut<'c, T>
+    where
+        'b: 'c,
+    {
         self.buffer.into()
     }
 }
 
-impl<'a, B: OwningBuffer<'a>, T: PointType> PointViewMut<'a, B, T> {
+impl<'a, 'b, B: OwningBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
     pub fn push_point(&mut self, point: T) {
-        self.buffer.push_point(bytemuck::bytes_of(&point));
+        // Safe because we know that a `PointViewMut` can never be created for a `T` that is different from
+        // the `PointLayout` of the underlying buffer (see the check in `new`)
+        unsafe {
+            self.buffer.push_points(bytemuck::bytes_of(&point));
+        }
     }
 }
 
-pub struct AttributeView<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> {
-    buffer: &'a B,
-    attribute: &'a PointAttributeMember,
-    _phantom: PhantomData<T>,
+pub struct AttributeView<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType>
+where
+    'a: 'b,
+{
+    buffer: &'b B,
+    attribute: &'b PointAttributeMember,
+    _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeView<'a, B, T> {
-    pub(crate) fn new(buffer: &'a B, attribute: &PointAttributeDefinition) -> Self {
+impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeView<'a, 'b, B, T> {
+    pub(crate) fn new(buffer: &'b B, attribute: &PointAttributeDefinition) -> Self {
         Self {
             attribute: buffer
                 .point_layout()
@@ -141,36 +182,53 @@ impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeView<'a, B, T> {
     }
 }
 
-impl<'a, B: ColumnarBuffer<'a>, T: PrimitiveType> AttributeView<'a, B, T> {
-    pub fn at_ref(&self, index: usize) -> &'a T {
+impl<'a, 'b, B: ColumnarBuffer<'a>, T: PrimitiveType> AttributeView<'a, 'b, B, T>
+where
+    'a: 'b,
+{
+    pub fn at_ref<'c>(&'c self, index: usize) -> &'c T
+    where
+        'b: 'c,
+    {
         bytemuck::from_bytes(
             self.buffer
                 .get_attribute_ref(self.attribute.attribute_definition(), index),
         )
     }
 
-    pub fn iter(&self) -> AttributeIteratorByRef<'a, T> {
+    pub fn iter<'c>(&'c self) -> AttributeIteratorByRef<'c, T>
+    where
+        'b: 'c,
+    {
         AttributeIteratorByRef::new(self.buffer, self.attribute.attribute_definition())
     }
 }
 
-impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> IntoIterator for AttributeView<'a, B, T> {
+impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PrimitiveType> IntoIterator
+    for AttributeView<'a, 'b, B, T>
+{
     type Item = T;
-    type IntoIter = AttributeIteratorByValue<'a, T, B>;
+    type IntoIter = AttributeIteratorByValue<'a, 'b, T, B>;
 
     fn into_iter(self) -> Self::IntoIter {
         AttributeIteratorByValue::new(self.buffer, self.attribute.attribute_definition())
     }
 }
 
-pub struct AttributeViewMut<'a, B: BorrowedMutBuffer<'a>, T: PrimitiveType> {
-    buffer: &'a mut B,
+pub struct AttributeViewMut<'a, 'b, B: BorrowedMutBuffer<'a>, T: PrimitiveType>
+where
+    'a: 'b,
+{
+    buffer: &'b mut B,
     attribute: PointAttributeMember,
-    _phantom: PhantomData<T>,
+    _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, B: BorrowedMutBuffer<'a>, T: PrimitiveType> AttributeViewMut<'a, B, T> {
-    pub(crate) fn new(buffer: &'a mut B, attribute: &PointAttributeDefinition) -> Self {
+impl<'a, 'b, B: BorrowedMutBuffer<'a>, T: PrimitiveType> AttributeViewMut<'a, 'b, B, T>
+where
+    'a: 'b,
+{
+    pub(crate) fn new(buffer: &'b mut B, attribute: &PointAttributeDefinition) -> Self {
         Self {
             attribute: buffer
                 .point_layout()
@@ -204,54 +262,59 @@ impl<'a, B: BorrowedMutBuffer<'a>, T: PrimitiveType> AttributeViewMut<'a, B, T> 
     }
 }
 
-impl<'a, B: ColumnarBuffer<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
-    AttributeViewMut<'a, B, T>
+impl<'a, 'b, B: ColumnarBuffer<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
+    AttributeViewMut<'a, 'b, B, T>
+where
+    'a: 'b,
 {
-    pub fn at_ref(&'a self, index: usize) -> &'a T {
+    pub fn at_ref(&'b self, index: usize) -> &'b T {
         bytemuck::from_bytes(
             self.buffer
                 .get_attribute_ref(self.attribute.attribute_definition(), index),
         )
     }
 
-    pub fn iter(&'a self) -> AttributeIteratorByRef<'a, T> {
+    pub fn iter(&'b self) -> AttributeIteratorByRef<'b, T> {
         AttributeIteratorByRef::new(self.buffer, self.attribute.attribute_definition())
     }
 }
 
-impl<'a, B: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
-    AttributeViewMut<'a, B, T>
+impl<'a, 'b, B: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
+    AttributeViewMut<'a, 'b, B, T>
 {
-    pub fn at_mut(&'a mut self, index: usize) -> &'a mut T {
+    pub fn at_mut(&'b mut self, index: usize) -> &'b mut T {
         bytemuck::from_bytes_mut(
             self.buffer
                 .get_attribute_mut(self.attribute.attribute_definition(), index),
         )
     }
 
-    pub fn iter_mut(&'a mut self) -> AttributeIteratorByMut<'a, T> {
+    pub fn iter_mut(&'b mut self) -> AttributeIteratorByMut<'b, T> {
         AttributeIteratorByMut::new(self.buffer, self.attribute.attribute_definition())
     }
 }
 
-impl<'a, B: OwningBuffer<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType> AttributeViewMut<'a, B, T> {
-    pub fn push_point(&mut self, point: T) {
-        self.buffer.push_point(bytemuck::bytes_of(&point));
-    }
-}
+// impl<'a, B: OwningBuffer<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType> AttributeViewMut<'a, B, T> {
+//     pub fn push_point(&mut self, point: T) {
+//         self.buffer.push_point(bytemuck::bytes_of(&point));
+//     }
+// }
 
 /// A view over a strongly typed point attribute that supports type conversion. This means that the
 /// `PointAttributeDataType` of the attribute must not match the type `T` that this view returns
-pub struct AttributeViewConverting<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> {
-    buffer: &'a B,
+pub struct AttributeViewConverting<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType>
+where
+    'a: 'b,
+{
+    buffer: &'b B,
     attribute: PointAttributeMember,
     converter_fn: AttributeConversionFn,
     converter_buffer: RefCell<Vec<u8>>,
-    _phantom: PhantomData<T>,
+    _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeViewConverting<'a, B, T> {
-    pub(crate) fn new(buffer: &'a B, attribute: &PointAttributeDefinition) -> Result<Self> {
+impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeViewConverting<'a, 'b, B, T> {
+    pub(crate) fn new(buffer: &'b B, attribute: &PointAttributeDefinition) -> Result<Self> {
         let attribute_in_layout: &PointAttributeMember = buffer
             .point_layout()
             .get_attribute_by_name(attribute.name())
@@ -290,11 +353,11 @@ impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeViewConverting<'a, B,
     }
 }
 
-impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> IntoIterator
-    for AttributeViewConverting<'a, B, T>
+impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> IntoIterator
+    for AttributeViewConverting<'a, 'b, B, T>
 {
     type Item = T;
-    type IntoIter = AttributeViewConvertingIterator<'a, B, T>;
+    type IntoIter = AttributeViewConvertingIterator<'a, 'b, B, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         AttributeViewConvertingIterator {
@@ -304,13 +367,13 @@ impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> IntoIterator
     }
 }
 
-pub struct AttributeViewConvertingIterator<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> {
-    view: AttributeViewConverting<'a, B, T>,
+pub struct AttributeViewConvertingIterator<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> {
+    view: AttributeViewConverting<'a, 'b, B, T>,
     current_index: usize,
 }
 
-impl<'a, B: BorrowedBuffer<'a>, T: PrimitiveType> Iterator
-    for AttributeViewConvertingIterator<'a, B, T>
+impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> Iterator
+    for AttributeViewConvertingIterator<'a, 'b, B, T>
 {
     type Item = T;
 
