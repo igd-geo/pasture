@@ -14,7 +14,7 @@ use crate::{
     tiles3d::{PntsReader, PntsWriter},
 };
 
-use super::{PointReader, PointWriter};
+use super::{PointReader, PointWriter, SeekToPoint};
 
 #[derive(Debug)]
 enum SupportedFileExtensions {
@@ -99,6 +99,15 @@ impl PointReader for GenericPointReader {
         match self {
             GenericPointReader::LAS(reader) => reader.get_default_point_layout(),
             GenericPointReader::Tiles3D(reader) => reader.get_default_point_layout(),
+        }
+    }
+}
+
+impl SeekToPoint for GenericPointReader {
+    fn seek_point(&mut self, position: std::io::SeekFrom) -> Result<usize> {
+        match self {
+            GenericPointReader::LAS(reader) => reader.seek_point(position),
+            GenericPointReader::Tiles3D(reader) => reader.seek_point(position),
         }
     }
 }

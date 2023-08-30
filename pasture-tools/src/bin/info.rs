@@ -1,15 +1,10 @@
-use std::{
-    path::{Path, PathBuf},
-    time::Instant,
-};
+use std::{path::PathBuf, time::Instant};
 
 use anyhow::Result;
 use clap::{App, Arg};
 use pasture_algorithms::minmax::minmax_attribute;
 use pasture_core::{
-    containers::InterleavedVecPointStorage,
-    containers::PointBufferWriteable,
-    containers::{OwningPointBuffer, PointBuffer},
+    containers::{BorrowedBuffer, OwningBuffer, VectorBuffer},
     layout::attributes::NIR,
     layout::attributes::NUMBER_OF_RETURNS,
     layout::attributes::POINT_SOURCE_ID,
@@ -24,7 +19,7 @@ use pasture_core::{
     math::MinMax,
     nalgebra::Vector3,
 };
-use pasture_io::base::{IOFactory, PointReadAndSeek};
+use pasture_io::base::{GenericPointReader, PointReader, SeekToPoint};
 
 struct Args {
     pub input_file: PathBuf,
@@ -61,11 +56,6 @@ fn get_args() -> Result<Args> {
     })
 }
 
-fn open_file(file: &Path) -> Result<Box<dyn PointReadAndSeek>> {
-    let factory: IOFactory = Default::default();
-    factory.make_reader(file)
-}
-
 fn print_attributes(point_layout: &PointLayout) {
     println!("Attributes");
     for attribute in point_layout.attributes() {
@@ -93,7 +83,7 @@ macro_rules! minmax_chunk {
     };
 }
 
-fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
+fn analyze_file<R: PointReader + SeekToPoint>(reader: &mut R) -> Result<()> {
     print_attributes(reader.get_default_point_layout());
 
     let total_points = reader.point_count()?;
@@ -106,10 +96,8 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
     println!("Analyzing minimum and maximum values for all point attributes...");
 
     let chunk_size = 1_000_000;
-    let mut buffer = InterleavedVecPointStorage::with_capacity(
-        chunk_size,
-        reader.get_default_point_layout().clone(),
-    );
+    let mut buffer =
+        VectorBuffer::with_capacity(chunk_size, reader.get_default_point_layout().clone());
     let num_chunks = (total_points + chunk_size - 1) / chunk_size;
     //let num_chunks = 4;
 
@@ -140,18 +128,8 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
         minmax_chunk!(minmax_intensity, buffer, INTENSITY, u16);
         minmax_chunk!(minmax_return_number, buffer, RETURN_NUMBER, u8);
         minmax_chunk!(minmax_number_of_returns, buffer, NUMBER_OF_RETURNS, u8);
-        minmax_chunk!(
-            minmax_scan_direction_flag,
-            buffer,
-            SCAN_DIRECTION_FLAG,
-            bool
-        );
-        minmax_chunk!(
-            minmax_edge_of_flight_line,
-            buffer,
-            EDGE_OF_FLIGHT_LINE,
-            bool
-        );
+        minmax_chunk!(minmax_scan_direction_flag, buffer, SCAN_DIRECTION_FLAG, u8);
+        minmax_chunk!(minmax_edge_of_flight_line, buffer, EDGE_OF_FLIGHT_LINE, u8);
         minmax_chunk!(minmax_classification, buffer, CLASSIFICATION, u8);
         minmax_chunk!(minmax_scan_angle_rank, buffer, SCAN_ANGLE_RANK, i8);
         minmax_chunk!(minmax_user_data, buffer, USER_DATA, u8);
@@ -217,13 +195,13 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
 
 fn main() -> Result<()> {
     let args = get_args()?;
-    let mut reader = open_file(&args.input_file)?;
+    let mut reader = GenericPointReader::open_file(&args.input_file)?;
     let meta = reader.get_metadata();
     println!("pasture info report for {}", args.input_file.display());
     println!("{}", meta);
 
     if args.detailed {
-        analyze_file(reader.as_mut())?;
+        analyze_file(&mut reader)?;
     }
 
     Ok(())

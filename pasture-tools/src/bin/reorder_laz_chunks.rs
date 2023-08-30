@@ -12,11 +12,7 @@ use log::{info, warn};
 use morton_index::{dimensions::OctantOrdering, FixedDepthMortonIndex3D64};
 use pasture_algorithms::bounds::calculate_bounds;
 use pasture_core::{
-    containers::PointBuffer,
-    containers::{
-        InterleavedVecPointStorage, PerAttributeVecPointStorage, PointBufferExt,
-        PointBufferWriteable, OwningPointBuffer,
-    },
+    containers::{BorrowedBuffer, HashMapBuffer, OwningBuffer, SliceBuffer, VectorBuffer},
     layout::attributes::POSITION_3D,
     math::AABB,
     nalgebra::{Point3, Vector3},
@@ -142,8 +138,8 @@ fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> FixedDepthM
 }
 
 fn hilbertize_chunk(
-    input_buffer: &InterleavedVecPointStorage,
-    output_buffer: &mut PerAttributeVecPointStorage,
+    input_buffer: &VectorBuffer,
+    output_buffer: &mut HashMapBuffer,
     point_count: usize,
     file_bounds_cubed: &AABB<f64>,
     take_first_n: usize,
@@ -161,7 +157,9 @@ fn hilbertize_chunk(
     };
 
     let mut indexed_morton_indices = {
-        let positions = input_buffer.iter_attribute::<Vector3<f64>>(&POSITION_3D);
+        let positions = input_buffer
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
+            .into_iter();
 
         positions
             .map(|pos| reversed_morton_index(&Point3::new(pos.x, pos.y, pos.z), &bounds))
@@ -181,7 +179,7 @@ fn hilbertize_chunk(
     // could we do with the standard algorithms
 
     for (source_index, _) in indexed_morton_indices.iter().take(take_first_n) {
-        output_buffer.push(&input_buffer.slice(*source_index..*source_index + 1));
+        output_buffer.append(&input_buffer.slice(*source_index..*source_index + 1));
     }
 }
 
@@ -191,12 +189,10 @@ fn reorder_file(laz_file: &Path, args: &Args) -> Result<()> {
     let chunk_size = 50_000;
     let mut reader = LASReader::from_path(laz_file)?;
 
-    let mut input_buffer = InterleavedVecPointStorage::with_capacity(
-        chunk_size,
-        reader.get_default_point_layout().clone(),
-    );
+    let mut input_buffer =
+        VectorBuffer::with_capacity(chunk_size, reader.get_default_point_layout().clone());
     let mut output_buffer =
-        PerAttributeVecPointStorage::with_capacity(chunk_size, input_buffer.point_layout().clone());
+        HashMapBuffer::with_capacity(chunk_size, input_buffer.point_layout().clone());
 
     let mut remaining_points = reader.remaining_points();
     let chunks = (remaining_points + (chunk_size - 1)) / chunk_size;
