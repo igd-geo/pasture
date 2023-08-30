@@ -1,15 +1,15 @@
 use super::PointDataType;
 use crate::base::PointWriter;
 use anyhow::{Context, Result};
-use pasture_core::containers::{UntypedPoint, UntypedPointSlice};
+use pasture_core::containers::{BorrowedBuffer, UntypedPoint, UntypedPointSlice};
 use pasture_core::layout::{attributes, PointLayout};
 use pasture_core::nalgebra::Vector3;
 // combined trait to handle the PointWriter trait aswell as the AsciiFormat trait
 pub trait PointWriterFormatting: PointWriter + AsciiFormat {}
-pub trait AsciiFormat{
+pub trait AsciiFormat {
     fn set_delimiter(&mut self, delimiter: &str);
     fn set_precision(&mut self, precision: usize);
-} 
+}
 pub(crate) struct RawAsciiWriter<T: std::io::Write + std::io::Seek> {
     writer: T,
     delimiter: String,
@@ -38,11 +38,10 @@ impl<T: std::io::Write + std::io::Seek> AsciiFormat for RawAsciiWriter<T> {
         self.precision = precision;
     }
 }
-impl<T: std::io::Write + std::io::Seek> PointWriterFormatting for RawAsciiWriter<T> {
-}
+impl<T: std::io::Write + std::io::Seek> PointWriterFormatting for RawAsciiWriter<T> {}
 
 impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
-    fn write(&mut self, points: &dyn pasture_core::containers::PointBuffer) -> anyhow::Result<()> {
+    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> anyhow::Result<()> {
         //let point = UntypedPointBuffer::new(&self.default_layout);
         let buffer_layout = points.point_layout();
 
@@ -60,7 +59,7 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
                 points.len() - (chunk_index * num_points_in_chunk),
             );
             let start_point_index = chunk_index * num_points_in_chunk;
-            points.get_raw_points(
+            points.get_point_range(
                 start_point_index..(start_point_index + points_in_cur_chunk),
                 &mut chunk_buffer[..points_in_cur_chunk * size_of_single_point],
             );
@@ -164,15 +163,17 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
                         }
                         PointDataType::EdgeOfFlightLine => {
                             let edge_of_flight_line =
-                                point.get_attribute::<bool>(&attributes::EDGE_OF_FLIGHT_LINE)?;
-                            self.writer
-                                .write((if edge_of_flight_line { "1" } else { "0" }).as_bytes())?;
+                                point.get_attribute::<u8>(&attributes::EDGE_OF_FLIGHT_LINE)?;
+                            self.writer.write(
+                                (if edge_of_flight_line > 0 { "1" } else { "0" }).as_bytes(),
+                            )?;
                         }
                         PointDataType::ScanDirectionFlag => {
                             let scan_direction_flag =
-                                point.get_attribute::<bool>(&attributes::SCAN_DIRECTION_FLAG)?;
-                            self.writer
-                                .write((if scan_direction_flag { "1" } else { "0" }).as_bytes())?;
+                                point.get_attribute::<u8>(&attributes::SCAN_DIRECTION_FLAG)?;
+                            self.writer.write(
+                                (if scan_direction_flag > 0 { "1" } else { "0" }).as_bytes(),
+                            )?;
                         }
                         PointDataType::ScanAngleRank => {
                             let scan_angle_rank =
@@ -212,10 +213,6 @@ fn trim_unnecessary_tailing_zeros(slice: &str) -> &str {
     &slice[start..end]
 }
 
-
-
-
-
 #[cfg(test)]
 mod tests {
     use std::{
@@ -229,7 +226,7 @@ mod tests {
     use anyhow::Result;
     use itertools::Itertools;
     use pasture_core::containers::{
-        InterleavedVecPointStorage, PointBufferWriteable, UntypedPointBuffer, OwningPointBuffer,
+        MakeBufferFromLayout, OwningBuffer, UntypedPointBuffer, VectorBuffer,
     };
     use scopeguard::defer;
 
@@ -238,14 +235,16 @@ mod tests {
         // create point buffer with one point
         let layout =
             PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
-        let mut buffer = InterleavedVecPointStorage::new(layout.clone());
+        let mut buffer = VectorBuffer::new_from_layout(layout.clone());
         let mut point = UntypedPointBuffer::new(&layout);
         point.set_attribute(
             &attributes::POSITION_3D,
             &Vector3::<f32>::new(1.1, 2.2, 3.3),
         )?;
         point.set_attribute(&attributes::INTENSITY, &32_u16)?;
-        buffer.push(&point.get_interleaved_point_view());
+        unsafe {
+            buffer.push_points(point.get_buffer());
+        }
         let out_path = "./test_ascii_writer.txt";
         defer! {
             std::fs::remove_file(out_path).expect("Could not remove test file");
@@ -267,7 +266,7 @@ mod tests {
                 BufWriter::new(File::create(&out_path)?),
                 "xyzirncuRGBtpedaI",
             )?;
-            writer.write(&*test_data)?;
+            writer.write(&test_data)?;
             writer.flush()?;
         }
         //Check result file
@@ -294,23 +293,27 @@ mod tests {
         RawAsciiWriter::from_write(writer, "xyzQ").unwrap();
     }
 
-
     #[test]
     #[should_panic(expected = "Cannot find attribute.")]
     fn test_attribute_not_found_error() {
         // create point buffer with one point
         let layout =
             PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
-        let mut buffer = InterleavedVecPointStorage::new(layout.clone());
+        let mut buffer = VectorBuffer::new_from_layout(layout.clone());
         let mut point = UntypedPointBuffer::new(&layout);
-        point.set_attribute(&attributes::INTENSITY, &32_u16).unwrap();
-        buffer.push(&point.get_interleaved_point_view());
+        point
+            .set_attribute(&attributes::INTENSITY, &32_u16)
+            .unwrap();
+        unsafe {
+            buffer.push_points(point.get_buffer());
+        }
         let out_path = "./test_ascii_writer_attribute_error.txt";
         defer! {
             std::fs::remove_file(out_path).expect("Could not remove test file");
         }
         let mut writer =
-            RawAsciiWriter::from_write(BufWriter::new(File::create(&out_path).unwrap()), "e").unwrap();
+            RawAsciiWriter::from_write(BufWriter::new(File::create(&out_path).unwrap()), "e")
+                .unwrap();
         writer.write(&buffer).unwrap();
     }
 }

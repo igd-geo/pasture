@@ -562,6 +562,68 @@ impl<T: PointType> FromIterator<T> for VectorBuffer {
     }
 }
 
+/// Helper struct to push point data into a `HashMapBuffer` attribute by attribute
+pub struct HashMapBufferAttributePusher<'a> {
+    attributes_storage: HashMap<PointAttributeDefinition, Vec<u8>>,
+    num_new_points: Option<usize>,
+    buffer: &'a mut HashMapBuffer,
+}
+
+impl<'a> HashMapBufferAttributePusher<'a> {
+    pub(crate) fn new(buffer: &'a mut HashMapBuffer) -> Self {
+        let attributes_storage = buffer
+            .point_layout()
+            .attributes()
+            .map(|attribute| (attribute.attribute_definition().clone(), vec![]))
+            .collect();
+        Self {
+            attributes_storage,
+            num_new_points: None,
+            buffer,
+        }
+    }
+
+    pub fn push_attribute_range<T: PrimitiveType>(
+        &mut self,
+        attribute: &PointAttributeDefinition,
+        data: &[T],
+    ) {
+        assert_eq!(T::data_type(), attribute.datatype());
+        let storage = self
+            .attributes_storage
+            .get_mut(attribute)
+            .expect("Attribute not found in PointLayout of this buffer");
+        if let Some(point_count) = self.num_new_points {
+            assert_eq!(point_count, data.len());
+        } else {
+            self.num_new_points = Some(data.len());
+        }
+        storage.extend_from_slice(bytemuck::cast_slice(data));
+    }
+
+    pub fn done(self) {
+        let num_new_points = self.num_new_points.unwrap_or(0);
+        if num_new_points == 0 {
+            return;
+        }
+
+        // Check that all attributes are complete! We don't have to check the exact size of the vectors,
+        // as this is checked in `push_attribute_range`, it is sufficient to verify that no vector is empty
+        assert!(self
+            .attributes_storage
+            .values()
+            .all(|vector| !vector.is_empty()));
+
+        for (attribute, mut data) in self.attributes_storage {
+            // Can safely unwrap, because self.attributes_storage was initialized from the `PointLayout` of the buffer!
+            let buffer_storage = self.buffer.attributes_storage.get_mut(&attribute).unwrap();
+            buffer_storage.append(&mut data);
+        }
+
+        self.buffer.length += num_new_points;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HashMapBuffer {
     attributes_storage: HashMap<PointAttributeDefinition, Vec<u8>>,
@@ -586,6 +648,10 @@ impl HashMapBuffer {
             point_layout,
             length: 0,
         }
+    }
+
+    pub fn begin_push_attributes(&mut self) -> HashMapBufferAttributePusher<'_> {
+        HashMapBufferAttributePusher::new(self)
     }
 
     fn get_byte_range_for_attribute(

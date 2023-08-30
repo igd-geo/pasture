@@ -2,12 +2,9 @@ use anyhow::{bail, Context, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
 use itertools::{EitherOrBoth::*, Itertools};
 use pasture_core::layout::attributes;
+use pasture_core::layout::PointAttributeDefinition;
+use pasture_core::layout::PointLayout;
 use pasture_core::meta::Metadata;
-use pasture_core::{containers::PointBufferWriteable, layout::PointLayout};
-use pasture_core::{
-    containers::{InterleavedVecPointStorage, PointBuffer},
-    layout::PointAttributeDefinition,
-};
 use std::collections::HashSet;
 use std::io::{BufRead, Read};
 use std::iter::FromIterator;
@@ -16,7 +13,7 @@ use std::str::FromStr;
 use super::AsciiMetadata;
 use super::PointDataType;
 use crate::base::PointReader;
-use pasture_core::containers::{UntypedPoint, UntypedPointBuffer, OwningPointBuffer};
+use pasture_core::containers::{UntypedPoint, UntypedPointBuffer};
 
 pub(crate) struct RawAsciiReader<T: Read + BufRead> {
     reader: T,
@@ -298,11 +295,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
             )
         })
     }
-
-   
 }
-
-
 
 fn generate_parse_error(datatype: &PointDataType, character: char) -> String {
     format!(
@@ -313,17 +306,14 @@ fn generate_parse_error(datatype: &PointDataType, character: char) -> String {
 }
 
 impl<T: Read + BufRead> PointReader for RawAsciiReader<T> {
-    fn read(&mut self, count: usize) -> Result<Box<dyn PointBuffer>> {
-        let mut buffer =
-            InterleavedVecPointStorage::with_capacity(count, self.point_layout.clone());
-        self.read_into(&mut buffer, count)?;
-        Ok(Box::new(buffer))
-    }
-    fn read_into(
+    fn read_into<'a, 'b, B: pasture_core::containers::OwningBuffer<'a>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'b mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'a: 'b,
+    {
         let layout = point_buffer.point_layout().clone();
         let mut temp_point = UntypedPointBuffer::new(&layout);
         //read line by line
@@ -333,13 +323,17 @@ impl<T: Read + BufRead> PointReader for RawAsciiReader<T> {
             Self::parse_point(&mut temp_point, &line, &self.delimiter, &self.parse_layout)
                 .with_context(|| format!("ReadError in line {}.", index))?;
             //put it in the buffer
-            point_buffer.push(&temp_point.get_interleaved_point_view());
+            unsafe {
+                point_buffer.push_points(temp_point.get_buffer());
+            }
         }
         Ok(count)
     }
+
     fn get_default_point_layout(&self) -> &PointLayout {
         &self.point_layout
     }
+
     fn get_metadata(&self) -> &dyn Metadata {
         &self.metadata
     }
@@ -367,7 +361,7 @@ mod tests {
         test_data_user_data,
     };
     use anyhow::Result;
-    use pasture_core::containers::PointBufferExt;
+    use pasture_core::containers::{BorrowedBuffer, MakeBufferFromLayout, VectorBuffer};
     use pasture_core::layout::{attributes, PointType};
     use pasture_core::nalgebra::Vector3;
     use pasture_derive::PointType;
@@ -378,81 +372,91 @@ mod tests {
         let path = get_test_file_path("10_points_ascii_all_attributes.txt");
         let reader = BufReader::new(File::open(path)?);
         let mut ascii_reader = RawAsciiReader::from_read(reader, "xyzirncuRGBtpedaI", ", ")?;
-        let buffer = ascii_reader.read(10)?;
-        let interleaved_buffer = buffer
-            .as_interleaved()
-            .ok_or_else(|| anyhow::anyhow!("DowncastError"))?;
+        let interleaved_buffer = ascii_reader.read::<VectorBuffer>(10)?;
 
         let positions = interleaved_buffer
-            .iter_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
+            .view_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_positions(), positions);
 
         let intensities = interleaved_buffer
-            .iter_attribute::<u16>(&attributes::INTENSITY)
+            .view_attribute::<u16>(&attributes::INTENSITY)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_intensities(), intensities);
 
         let return_numbers = interleaved_buffer
-            .iter_attribute::<u8>(&attributes::RETURN_NUMBER)
+            .view_attribute::<u8>(&attributes::RETURN_NUMBER)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_return_numbers(), return_numbers);
 
         let number_of_returns = interleaved_buffer
-            .iter_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
+            .view_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_number_of_returns(), number_of_returns);
 
         let classifications = interleaved_buffer
-            .iter_attribute::<u8>(&attributes::CLASSIFICATION)
+            .view_attribute::<u8>(&attributes::CLASSIFICATION)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_classifications(), classifications);
 
         let user_datas = interleaved_buffer
-            .iter_attribute::<u8>(&attributes::USER_DATA)
+            .view_attribute::<u8>(&attributes::USER_DATA)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_user_data(), user_datas);
 
         let colors = interleaved_buffer
-            .iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
+            .view_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_colors(), colors);
 
         let gps_times = interleaved_buffer
-            .iter_attribute::<f64>(&attributes::GPS_TIME)
+            .view_attribute::<f64>(&attributes::GPS_TIME)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_gps_times(), gps_times);
 
         let point_source_ids = interleaved_buffer
-            .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+            .view_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_point_source_ids(), point_source_ids);
 
         let edge_of_flight_lines = interleaved_buffer
-            .iter_attribute::<bool>(&attributes::EDGE_OF_FLIGHT_LINE)
+            .view_attribute::<u8>(&attributes::EDGE_OF_FLIGHT_LINE)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_edge_of_flight_lines(), edge_of_flight_lines);
 
         let scan_direction_flags = interleaved_buffer
-            .iter_attribute::<bool>(&attributes::SCAN_DIRECTION_FLAG)
+            .view_attribute::<u8>(&attributes::SCAN_DIRECTION_FLAG)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_scan_direction_flags(), scan_direction_flags);
 
         let scan_angle_ranks = interleaved_buffer
-            .iter_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
+            .view_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_scan_angle_ranks(), scan_angle_ranks);
 
         let nirs = interleaved_buffer
-            .iter_attribute::<u16>(&attributes::NIR)
+            .view_attribute::<u16>(&attributes::NIR)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_nirs(), nirs);
 
         Ok(())
     }
 
-    #[repr(C)]
-    #[derive(PointType, Debug)]
+    #[repr(C, packed)]
+    #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     struct TestPointAll {
         #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
@@ -473,9 +477,9 @@ mod tests {
         #[pasture(BUILTIN_POINT_SOURCE_ID)]
         pub point_source_id: u16,
         #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-        pub edge_of_flight_line: bool,
+        pub edge_of_flight_line: u8,
         #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-        pub scan_direction_flag: bool,
+        pub scan_direction_flag: u8,
         #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
         pub scan_angle_rank: i8,
         #[pasture(BUILTIN_NIR)]
@@ -487,79 +491,91 @@ mod tests {
         let path = get_test_file_path("10_points_ascii_all_attributes.txt");
         let reader = BufReader::new(File::open(path)?);
         let mut ascii_reader = RawAsciiReader::from_read(reader, "xyzirncuRGBtpedaI", ", ")?;
-        let mut buffer = InterleavedVecPointStorage::new(TestPointAll::layout());
+        let mut buffer = VectorBuffer::new_from_layout(TestPointAll::layout());
         ascii_reader.read_into(&mut buffer, 10)?;
 
-        
         let positions = buffer
-        .iter_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
-        .collect::<Vec<_>>();
+            .view_attribute::<Vector3<f64>>(&attributes::POSITION_3D)
+            .into_iter()
+            .collect::<Vec<_>>();
         assert_eq!(test_data_positions(), positions);
 
         let intensities = buffer
-            .iter_attribute::<u16>(&attributes::INTENSITY)
+            .view_attribute::<u16>(&attributes::INTENSITY)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_intensities(), intensities);
 
         let return_numbers = buffer
-            .iter_attribute::<u8>(&attributes::RETURN_NUMBER)
+            .view_attribute::<u8>(&attributes::RETURN_NUMBER)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_return_numbers(), return_numbers);
 
         let number_of_returns = buffer
-            .iter_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
+            .view_attribute::<u8>(&attributes::NUMBER_OF_RETURNS)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_number_of_returns(), number_of_returns);
 
         let classifications = buffer
-            .iter_attribute::<u8>(&attributes::CLASSIFICATION)
+            .view_attribute::<u8>(&attributes::CLASSIFICATION)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_classifications(), classifications);
 
         let user_datas = buffer
-            .iter_attribute::<u8>(&attributes::USER_DATA)
+            .view_attribute::<u8>(&attributes::USER_DATA)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_user_data(), user_datas);
 
         let colors = buffer
-            .iter_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
+            .view_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_colors(), colors);
 
         let gps_times = buffer
-            .iter_attribute::<f64>(&attributes::GPS_TIME)
+            .view_attribute::<f64>(&attributes::GPS_TIME)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_gps_times(), gps_times);
 
         let point_source_ids = buffer
-            .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+            .view_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_point_source_ids(), point_source_ids);
 
         let edge_of_flight_lines = buffer
-            .iter_attribute::<bool>(&attributes::EDGE_OF_FLIGHT_LINE)
+            .view_attribute::<u8>(&attributes::EDGE_OF_FLIGHT_LINE)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_edge_of_flight_lines(), edge_of_flight_lines);
 
         let scan_direction_flags = buffer
-            .iter_attribute::<bool>(&attributes::SCAN_DIRECTION_FLAG)
+            .view_attribute::<u8>(&attributes::SCAN_DIRECTION_FLAG)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_scan_direction_flags(), scan_direction_flags);
 
         let scan_angle_ranks = buffer
-            .iter_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
+            .view_attribute::<i8>(&attributes::SCAN_ANGLE_RANK)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_scan_angle_ranks(), scan_angle_ranks);
 
         let nirs = buffer
-            .iter_attribute::<u16>(&attributes::NIR)
+            .view_attribute::<u16>(&attributes::NIR)
+            .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(test_data_nirs(), nirs);
         Ok(())
     }
 
-    #[repr(C)]
-    #[derive(PointType, Debug)]
+    #[repr(C, packed)]
+    #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     struct TestPointDifferent {
         #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
@@ -574,14 +590,17 @@ mod tests {
         let path = get_test_file_path("10_points_ascii.txt");
         let reader = BufReader::new(File::open(path)?);
         let mut ascii_reader = RawAsciiReader::from_read(reader, "xyzieRGB", ", ")?;
-        let mut buffer = InterleavedVecPointStorage::new(TestPointDifferent::layout());
+        let mut buffer = VectorBuffer::new_from_layout(TestPointDifferent::layout());
         ascii_reader.read_into(&mut buffer, 10)?;
 
         let position_expected = test_data_positions();
-        for (index, point) in buffer.iter_point::<TestPointDifferent>().enumerate() {
-            assert_eq!(point.position, position_expected[index]);
-            assert_eq!(point.classification, 0);
-            assert_eq!(point.user_data, 0);
+        for (index, point) in buffer.view::<TestPointDifferent>().into_iter().enumerate() {
+            let position = point.position;
+            let classification = point.classification;
+            let user_data = point.user_data;
+            assert_eq!(position, position_expected[index]);
+            assert_eq!(classification, 0);
+            assert_eq!(user_data, 0);
         }
         Ok(())
     }
@@ -600,7 +619,7 @@ mod tests {
         let path = get_test_file_path("10_points_ascii.txt");
         let reader = BufReader::new(File::open(path).unwrap());
         let ascii_reader = RawAsciiReader::from_read(reader, "ssssssssx", ", ");
-        ascii_reader.unwrap().read(10).unwrap();
+        ascii_reader.unwrap().read::<VectorBuffer>(10).unwrap();
     }
 
     #[test]
@@ -609,7 +628,7 @@ mod tests {
         let path = get_test_file_path("10_points_ascii_parsing_errors.txt");
         let reader = BufReader::new(File::open(path).unwrap());
         let ascii_reader = RawAsciiReader::from_read(reader, "sssi", ", ");
-        ascii_reader.unwrap().read(10).unwrap();
+        ascii_reader.unwrap().read::<VectorBuffer>(10).unwrap();
     }
     #[test]
     #[should_panic(expected = "ParseError expected bool found")]
@@ -617,7 +636,7 @@ mod tests {
         let path = get_test_file_path("10_points_ascii_parsing_errors.txt");
         let reader = BufReader::new(File::open(path).unwrap());
         let ascii_reader = RawAsciiReader::from_read(reader, "sssse", ", ");
-        ascii_reader.unwrap().read(10).unwrap();
+        ascii_reader.unwrap().read::<VectorBuffer>(10).unwrap();
     }
 
     #[test]
@@ -626,6 +645,6 @@ mod tests {
         let path = get_test_file_path("10_points_ascii_parsing_errors.txt");
         let reader = BufReader::new(File::open(path).unwrap());
         let ascii_reader = RawAsciiReader::from_read(reader, "x", ", ");
-        ascii_reader.unwrap().read(10).unwrap();
+        ascii_reader.unwrap().read::<VectorBuffer>(10).unwrap();
     }
 }

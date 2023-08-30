@@ -20,7 +20,6 @@ use super::{PointReader, PointWriter};
 enum SupportedFileExtensions {
     LAS,
     Tiles3D,
-    ASCII,
 }
 
 /// Returns a lookup value for the file extension of the given file path
@@ -40,14 +39,12 @@ fn get_extension_lookup(path: &Path) -> Result<SupportedFileExtensions> {
     match extension_str.to_lowercase().as_str() {
         "las" | "laz" => Ok(SupportedFileExtensions::LAS),
         "pnts" => Ok(SupportedFileExtensions::Tiles3D),
-        "txt" => Ok(SupportedFileExtensions::ASCII),
         other => Err(anyhow!("Unsupported file extension {other}")),
     }
 }
 
 pub enum GenericPointReader {
     LAS(LASReader<'static, BufReader<File>>),
-    // ASCII(),
     Tiles3D(PntsReader<BufReader<File>>),
 }
 
@@ -63,7 +60,6 @@ impl GenericPointReader {
                 let reader = PntsReader::from_path(path)?;
                 Ok(Self::Tiles3D(reader))
             }
-            _ => Err(anyhow!("Unsupported file extension {extension:#?}")),
         }
     }
 
@@ -109,7 +105,6 @@ impl PointReader for GenericPointReader {
 
 pub enum GenericPointWriter {
     LAS(LASWriter<BufWriter<File>>),
-    // ASCII(),
     Tiles3D(PntsWriter<BufWriter<File>>),
 }
 
@@ -129,7 +124,6 @@ impl GenericPointWriter {
                 let writer = PntsWriter::from_write_and_layout(file, point_layout.clone());
                 Ok(Self::Tiles3D(writer))
             }
-            _ => Err(anyhow!("Unsupported file extension {extension:#?}")),
         }
     }
 }

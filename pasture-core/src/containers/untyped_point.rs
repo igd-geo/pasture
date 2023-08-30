@@ -37,6 +37,8 @@ pub trait UntypedPoint {
     fn get_layout(&self) -> &PointLayout;
     // To handle byte manipulation.
     fn get_cursor(&mut self) -> Cursor<&mut [u8]>;
+    /// Access the underlying memory buffer of the untyped point
+    fn get_buffer(&self) -> &[u8];
 }
 
 /// An implementaion of `UntypedPoint` trait that has an internal buffer.
@@ -89,6 +91,10 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
 
     fn get_layout(&self) -> &PointLayout {
         self.layout
+    }
+
+    fn get_buffer(&self) -> &[u8] {
+        &self.buffer
     }
 
     fn get_cursor(&mut self) -> Cursor<&mut [u8]> {
@@ -256,6 +262,10 @@ impl UntypedPoint for UntypedPointSlice<'_> {
 
     fn get_cursor(&mut self) -> Cursor<&mut [u8]> {
         Cursor::new(self.slice)
+    }
+
+    fn get_buffer(&self) -> &[u8] {
+        self.slice
     }
 
     fn set_attribute<T: PrimitiveType>(
