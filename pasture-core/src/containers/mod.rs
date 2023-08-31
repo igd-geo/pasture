@@ -48,6 +48,7 @@
 //! To illustrate this, here is an example. Given the following point type:
 //!
 //! ```
+//! use nalgebra::Vector3;
 //! // (skipped necessary derives for brevity)
 //! struct Point {
 //!    position: Vector3<f64>,

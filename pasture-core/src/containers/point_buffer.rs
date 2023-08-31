@@ -60,6 +60,7 @@ pub trait BorrowedBuffer<'a> {
     ///
     /// ```
     /// use pasture_core::containers::*;
+    /// use pasture_core::layout::*;
     ///
     /// let buffer = VectorBuffer::new_from_layout(PointLayout::default());
     /// assert_eq!(0, buffer.len());
@@ -71,6 +72,7 @@ pub trait BorrowedBuffer<'a> {
     ///
     /// ```
     /// use pasture_core::containers::*;
+    /// use pasture_core::layout::*;
     ///
     /// let buffer = VectorBuffer::new_from_layout(PointLayout::default());
     /// assert!(buffer.is_empty());
@@ -487,6 +489,7 @@ pub trait ColumnarBufferMut<'a>: ColumnarBuffer<'a> + BorrowedMutBuffer<'a> {
 pub struct VectorBuffer {
     storage: Vec<u8>,
     point_layout: PointLayout,
+    length: usize,
 }
 
 impl VectorBuffer {
@@ -497,6 +500,7 @@ impl VectorBuffer {
         Self {
             point_layout,
             storage: Vec::with_capacity(required_bytes),
+            length: 0,
         }
     }
 
@@ -527,6 +531,7 @@ impl<'a> MakeBufferFromLayout<'a> for VectorBuffer {
         Self {
             point_layout,
             storage: Default::default(),
+            length: 0,
         }
     }
 }
@@ -536,7 +541,7 @@ where
     VectorBuffer: 'a,
 {
     fn len(&self) -> usize {
-        self.storage.len() / self.point_layout.size_of_point_entry() as usize
+        self.length
     }
 
     fn point_layout(&self) -> &PointLayout {
@@ -609,20 +614,25 @@ where
     VectorBuffer: 'a,
 {
     unsafe fn push_points(&mut self, point_bytes: &[u8]) {
-        assert_eq!(
-            (point_bytes.len() % self.point_layout.size_of_point_entry() as usize),
-            0
-        );
-        self.storage.extend_from_slice(point_bytes);
+        let size_of_point = self.point_layout.size_of_point_entry() as usize;
+        if size_of_point == 0 {
+            assert_eq!(0, point_bytes.len());
+        } else {
+            assert_eq!(point_bytes.len() % size_of_point, 0);
+            self.storage.extend_from_slice(point_bytes);
+            self.length += point_bytes.len() / size_of_point;
+        }
     }
 
     fn resize(&mut self, count: usize) {
         let size_of_point = self.point_layout.size_of_point_entry() as usize;
         self.storage.resize(count * size_of_point, 0);
+        self.length = count;
     }
 
     fn clear(&mut self) {
         self.storage.clear();
+        self.length = 0;
     }
 
     fn append_interleaved<'b, B: InterleavedBuffer<'b>>(&mut self, other: &'_ B) {
@@ -730,6 +740,7 @@ impl<T: PointType> FromIterator<T> for VectorBuffer {
             let mut buffer = Self {
                 point_layout,
                 storage,
+                length: known_length,
             };
             // Overwrite the preallocated memory of the buffer with the points in the iterator:
             iter.enumerate().for_each(|(index, point)| {
@@ -744,6 +755,7 @@ impl<T: PointType> FromIterator<T> for VectorBuffer {
             let mut buffer = Self {
                 point_layout,
                 storage: Default::default(),
+                length: 0,
             };
             iter.for_each(|point| {
                 let point_bytes = bytemuck::bytes_of(&point);
@@ -1214,14 +1226,26 @@ impl<T: PointType> FromIterator<T> for HashMapBuffer {
 pub struct ExternalMemoryBuffer<T: AsRef<[u8]>> {
     external_memory: T,
     point_layout: PointLayout,
+    length: usize,
 }
 
 impl<T: AsRef<[u8]>> ExternalMemoryBuffer<T> {
     /// Creates a new `ExternalMemoryBuffer` from the given `external_memory` resource and the given `PointLayout`
     pub fn new(external_memory: T, point_layout: PointLayout) -> Self {
+        let length = match point_layout.size_of_point_entry() {
+            0 => {
+                assert_eq!(0, external_memory.as_ref().len());
+                0
+            }
+            point_size => {
+                assert!(external_memory.as_ref().len() % point_size as usize == 0);
+                external_memory.as_ref().len() / point_size as usize
+            }
+        };
         Self {
             external_memory,
             point_layout,
+            length,
         }
     }
 
@@ -1252,7 +1276,7 @@ where
     ExternalMemoryBuffer<T>: 'a,
 {
     fn len(&self) -> usize {
-        self.external_memory.as_ref().len() / self.point_layout.size_of_point_entry() as usize
+        self.length
     }
 
     fn point_layout(&self) -> &PointLayout {
@@ -2246,6 +2270,25 @@ mod tests {
                 HashMapBuffer::new_from_layout(CustomPointTypeBig::layout());
             hashmap_buffer.append_interleaved(&expected_buffer_interleaved);
             assert_eq!(expected_buffer_columnar, hashmap_buffer);
+        }
+    }
+
+    #[test]
+    fn test_buffers_from_empty_layout() {
+        let empty_layout = PointLayout::default();
+
+        {
+            let buffer = VectorBuffer::new_from_layout(empty_layout.clone());
+            assert_eq!(0, buffer.len());
+        }
+        {
+            let buffer = HashMapBuffer::new_from_layout(empty_layout.clone());
+            assert_eq!(0, buffer.len());
+        }
+        {
+            let empty_memory = Vec::default();
+            let buffer = ExternalMemoryBuffer::new(&empty_memory, empty_layout.clone());
+            assert_eq!(0, buffer.len());
         }
     }
 }
