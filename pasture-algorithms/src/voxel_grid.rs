@@ -99,7 +99,7 @@ fn create_markers_for_axis(
 ///     }
 /// }
 /// let buffer = points.into_iter().collect::<HashMapBuffer>();
-/// let mut filtered = HashMapBuffer::new(buffer.point_layout().clone());
+/// let mut filtered = HashMapBuffer::new_from_layout(buffer.point_layout().clone());
 /// voxelgrid_filter(&buffer, 1.5, 1.5, 1.5, &mut filtered);
 /// // filtered now has fewer points than buffer
 /// assert!(filtered.len() < buffer.len() / 2);

@@ -13,34 +13,41 @@ To this end, `pasture` chooses flexibility over simplicity. If you are looking f
 Add this to your `Cargo.toml`:
 ```
 [dependencies]
-pasture-core = "0.1.0"
+pasture-core = "0.3.0"
 # You probably also want I/O support
-pasture-io = "0.1.0"
+pasture-io = "0.3.0"
 ```
 
 Here is an example on how to load a pointcloud from an LAS file and do something with it:
 
 ```Rust
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use pasture_core::{
-    containers::PointBufferExt, layout::attributes::POSITION_3D, nalgebra::Vector3,
+    containers::{BorrowedBuffer, VectorBuffer},
+    layout::attributes::POSITION_3D,
+    nalgebra::Vector3,
 };
-use pasture_io::{base::PointReader, las::LASReader};
+use pasture_io::base::{read_all};
 
 fn main() -> Result<()> {
-    let mut las_reader = LASReader::from_path("pointcloud.las").context("Could not open LAS file")?;
-    let num_points = las_reader.remaining_points();
-    let points = las_reader
-        .read(10)
-        .context("Error while reading points")?;
+    // Reading a point cloud file is as simple as calling `read_all`
+    let points = read_all::<VectorBuffer, _>("pointcloud.las").context("Failed to read points")?;
 
-    // Print the first 10 positions as Vector3<f64> values
-    for position in points.iter_attribute::<Vector3<f64>>(&POSITION_3D).take(10) {
-        println!("{}", position);
+    if points.point_layout().has_attribute(&POSITION_3D) {
+        for position in points
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
+            .into_iter()
+            .take(10)
+        {
+            println!("({};{};{})", position.x, position.y, position.z);
+        }
+    } else {
+        bail!("Point cloud files has no positions!");
     }
 
     Ok(())
 }
+
 ```
 
 For more examples, check out the [`pasture_core` examples](pasture-core/examples) and the [`pasture_io` examples](pasture-io/examples).

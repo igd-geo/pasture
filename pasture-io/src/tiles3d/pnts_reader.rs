@@ -332,23 +332,25 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
                         self.reader.read_exact(src_buf.as_mut_slice())?;
                         unsafe {
                             conversion_fn(src_buf.as_slice(), dst_buf.as_mut_slice());
+                            point_buffer.set_attribute(
+                                target_attribute_def,
+                                point_index,
+                                dst_buf.as_slice(),
+                            );
                         }
-                        point_buffer.set_attribute(
-                            target_attribute_def,
-                            point_index,
-                            dst_buf.as_slice(),
-                        );
                     }
                 } else {
                     let mut buf: Vec<u8> = vec![0; attribute.size() as usize];
                     let target_attribute_def = target_attribute.attribute_definition();
                     for point_index in 0..num_to_read {
                         self.reader.read_exact(buf.as_mut_slice())?;
-                        point_buffer.set_attribute(
-                            &target_attribute_def,
-                            point_index,
-                            buf.as_slice(),
-                        );
+                        unsafe {
+                            point_buffer.set_attribute(
+                                &target_attribute_def,
+                                point_index,
+                                buf.as_slice(),
+                            );
+                        }
                     }
                 }
             }

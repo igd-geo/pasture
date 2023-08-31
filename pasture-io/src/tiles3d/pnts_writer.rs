@@ -365,18 +365,20 @@ impl<W: Write + Seek> PointWriter for PntsWriter<W> {
                         if let Some(conversion_fn) = maybe_converter {
                             unsafe {
                                 conversion_fn(buf.as_slice(), converted_buf.as_mut_slice());
+                                self.cached_points.set_attribute(
+                                    &dst_attribute_def,
+                                    base_point_index + point_index,
+                                    converted_buf.as_slice(),
+                                );
                             }
-                            self.cached_points.set_attribute(
-                                &dst_attribute_def,
-                                base_point_index + point_index,
-                                converted_buf.as_slice(),
-                            );
                         } else {
-                            self.cached_points.set_attribute(
-                                &dst_attribute_def,
-                                base_point_index + point_index,
-                                buf.as_slice(),
-                            )
+                            unsafe {
+                                self.cached_points.set_attribute(
+                                    &dst_attribute_def,
+                                    base_point_index + point_index,
+                                    buf.as_slice(),
+                                )
+                            }
                         }
                     }
                 }

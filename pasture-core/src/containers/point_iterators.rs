@@ -4,6 +4,7 @@ use crate::layout::PointType;
 
 use super::point_buffer::{BorrowedBuffer, InterleavedBuffer, InterleavedBufferMut};
 
+/// Iterator over strongly typed points by value
 pub struct PointIteratorByValue<'a, 'b, T: PointType, B: BorrowedBuffer<'a>>
 where
     'a: 'b,
@@ -41,6 +42,7 @@ impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> Iterator for PointIteratorByVa
     }
 }
 
+/// Iterator over strongly typed points by immutable borrow
 pub struct PointIteratorByRef<'a, T: PointType> {
     point_data: &'a [T],
     current_index: usize,
@@ -73,6 +75,7 @@ impl<'a, T: PointType> Iterator for PointIteratorByRef<'a, T> {
     }
 }
 
+/// Iterator over strongly typed points by mutable borrow
 pub struct PointIteratorByMut<'a, T: PointType> {
     point_data: &'a mut [T],
     current_index: usize,

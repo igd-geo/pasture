@@ -4,6 +4,8 @@ use crate::layout::{PointAttributeDefinition, PointAttributeMember, PrimitiveTyp
 
 use super::point_buffer::{BorrowedBuffer, ColumnarBuffer, ColumnarBufferMut};
 
+/// An iterator over strongly typed attribute data in a point buffer. Returns attribute data
+/// by value and makes assumptions about the memory layout of the underlying buffer
 pub struct AttributeIteratorByValue<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>>
 where
     'a: 'b,
@@ -53,6 +55,8 @@ impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>> Iterator
     }
 }
 
+/// Like [`AttributeIteratorByValue`], but returns attribute data by immutable reference. Can only be
+/// constructed from a buffer that implements [`ColumnarBuffer`]
 pub struct AttributeIteratorByRef<'a, T: PrimitiveType> {
     attribute_data: &'a [T],
     current_index: usize,
@@ -88,6 +92,8 @@ impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByRef<'a, T> {
     }
 }
 
+/// Like [`AttributeIteratorByRef`], but returns attribute data by mutable reference, allowing mutation
+/// of the attribute data in-place. Can only be constructed from a buffer that implements [`ColumnarBufferMut`]
 pub struct AttributeIteratorByMut<'a, T: PrimitiveType> {
     attribute_data: &'a mut [T],
     current_index: usize,

@@ -18,6 +18,19 @@ use super::{
     OwningBuffer,
 };
 
+/// A strongly typed view over the point data of a buffer. This allows accessing the point data in
+/// the buffer using type `T` instead of only through raw memory (i.e. as `&[u8]`). This type makes
+/// no assumptions about the memory layout of the underlying buffer, so it only provides access to
+/// the point data by value. The `PointView` supports no type conversion, so `T::layout()` must match
+/// the `PointLayout` of the buffer. You cannot create instances of `PointView` directly but instead
+/// have to use [`BorrowedBuffer::view`] function and its variations, which perform the necessary type
+/// checks internally!
+///
+/// # Lifetime bounds
+///
+/// Since the `PointView` borrows the buffer internally, and the buffer itself has a borrow lifetime,
+/// `PointView` stores two lifetimes so that it can borrow its buffer for a potentially shorter lifetime
+/// `'b` than the lifetime `'a` of the buffer itself.
 pub struct PointView<'a, 'b, B: BorrowedBuffer<'a>, T: PointType>
 where
     'a: 'b,
@@ -38,6 +51,11 @@ where
         }
     }
 
+    /// Access the point at `index`
+    ///
+    /// # Panics
+    ///
+    /// If `index` is out of bounds
     pub fn at(&self, index: usize) -> T {
         let mut point = T::zeroed();
         self.buffer
@@ -50,10 +68,26 @@ impl<'a, 'b, B: InterleavedBuffer<'a>, T: PointType> PointView<'a, 'b, B, T>
 where
     'a: 'b,
 {
-    pub fn at_ref(&self, index: usize) -> &T {
+    /// Access the point at `index` by reference
+    ///
+    /// # Lifetime bounds
+    ///
+    /// Just as the `PointView` can borrow its underlying buffer for a shorter lifetime `'b` than
+    /// the lifetime `'a` of the buffer, it should be possible to borrow a single point from a `PointView`
+    /// for a shorter lifetime `'c` than the lifetime `'b` of the `PointView`, hence the additional
+    /// lifetime bounds.
+    ///
+    /// # Panics
+    ///
+    /// If `index` is out of bounds
+    pub fn at_ref<'c>(&'c self, index: usize) -> &'c T
+    where
+        'b: 'c,
+    {
         bytemuck::from_bytes(self.buffer.get_point_ref(index))
     }
 
+    /// Return an iterator over strongly typed point data by reference
     pub fn iter<'c>(&'c self) -> PointIteratorByRef<'c, T>
     where
         'b: 'c,
@@ -74,6 +108,9 @@ where
     }
 }
 
+/// Like [`PointView`], but provides mutable access to the strongly typed point data. For buffers with unknown
+/// memory layout, this means that you have to use [`PointViewMut::set_at`], but if the underlying buffer
+/// implements [`InterleavedBufferMut`], you can also get a mutable borrow the a strongly typed point!
 pub struct PointViewMut<'a, 'b, B: BorrowedMutBuffer<'a>, T: PointType>
 where
     'a: 'b,
@@ -91,6 +128,11 @@ impl<'a, 'b, B: BorrowedMutBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> 
         }
     }
 
+    /// Access the point at `index`
+    ///
+    /// # Panics
+    ///
+    /// If `index` is out of bounds
     pub fn at(&self, index: usize) -> T {
         let mut point = T::zeroed();
         self.buffer
@@ -98,14 +140,27 @@ impl<'a, 'b, B: BorrowedMutBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> 
         point
     }
 
+    /// Sets the data for the point at `index`
+    ///
+    /// # Panics
+    ///
+    /// If `index` is out of bounds
     pub fn set_at(&mut self, index: usize, point: T) {
-        self.buffer.set_point(index, bytemuck::bytes_of(&point));
+        // Safe because `new` asserts that the point layout of `T` and `buffer` match
+        unsafe {
+            self.buffer.set_point(index, bytemuck::bytes_of(&point));
+        }
     }
 }
 
 impl<'a, 'b, B: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>, T: PointType>
     PointViewMut<'a, 'b, B, T>
 {
+    /// Access the point at `index` as an immutable reference
+    ///
+    /// # Panics
+    ///
+    /// If `index` is out of bounds
     pub fn at_ref<'c>(&'c self, index: usize) -> &'c T
     where
         'b: 'c,
@@ -113,6 +168,7 @@ impl<'a, 'b, B: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>, T: PointType>
         bytemuck::from_bytes(self.buffer.get_point_ref(index))
     }
 
+    /// Return an iterator over point data by immutable reference
     pub fn iter<'c>(&'c self) -> PointIteratorByRef<'c, T>
     where
         'b: 'c,
@@ -122,6 +178,11 @@ impl<'a, 'b, B: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>, T: PointType>
 }
 
 impl<'a, 'b, B: InterleavedBufferMut<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
+    /// Access the point at `index` as a mutable reference
+    ///
+    /// # Panics
+    ///
+    /// If `index` is out of bounds
     pub fn at_mut<'c>(&'c mut self, index: usize) -> &'c mut T
     where
         'b: 'c,
@@ -129,6 +190,7 @@ impl<'a, 'b, B: InterleavedBufferMut<'a>, T: PointType> PointViewMut<'a, 'b, B, 
         bytemuck::from_bytes_mut(self.buffer.get_point_mut(index))
     }
 
+    /// Returns an iterator over point data by mutable reference
     pub fn iter_mut<'c>(&'c mut self) -> PointIteratorByMut<'c, T>
     where
         'b: 'c,
@@ -138,6 +200,7 @@ impl<'a, 'b, B: InterleavedBufferMut<'a>, T: PointType> PointViewMut<'a, 'b, B, 
 }
 
 impl<'a, 'b, B: OwningBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
+    /// Push the given `point` into the underlying buffer
     pub fn push_point(&mut self, point: T) {
         // Safe because we know that a `PointViewMut` can never be created for a `T` that is different from
         // the `PointLayout` of the underlying buffer (see the check in `new`)
@@ -147,6 +210,12 @@ impl<'a, 'b, B: OwningBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
     }
 }
 
+/// A strongly typed view over attribute data of a point buffer. This allows accessing the data for a specific
+/// attribute of a `PointType` using the strong type `T` instead of as raw memory (i.e. `&[u8]`). This type makes
+/// no assumptions about the memory layout of the underlying buffer, so it only provides access to the attribute
+/// data by value. Just as with the [`PointView`] type, you cannot create instances of `AttributeView` directly.
+/// Instead, use the [`BorrowedBuffer::view_attribute`] function and its variations, which perform the necessary
+/// type checking.
 pub struct AttributeView<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType>
 where
     'a: 'b,
@@ -158,6 +227,7 @@ where
 
 impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeView<'a, 'b, B, T> {
     pub(crate) fn new(buffer: &'b B, attribute: &PointAttributeDefinition) -> Self {
+        assert_eq!(T::data_type(), attribute.datatype());
         Self {
             attribute: buffer
                 .point_layout()
@@ -168,6 +238,11 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeView<'a, 'b, B, T
         }
     }
 
+    /// Get the attribute value at `index`
+    ///
+    /// # Panics
+    ///
+    ///  If `index` is out of bounds
     pub fn at(&self, index: usize) -> T {
         let mut attribute = T::zeroed();
         // Is safe because we get the attribute_member from the PointLayout of the buffer in `new`
@@ -186,6 +261,11 @@ impl<'a, 'b, B: ColumnarBuffer<'a>, T: PrimitiveType> AttributeView<'a, 'b, B, T
 where
     'a: 'b,
 {
+    /// Get the attribute value at `index` as an immutable borrow
+    ///
+    /// # Panics
+    ///
+    ///  If `index` is out of bounds
     pub fn at_ref<'c>(&'c self, index: usize) -> &'c T
     where
         'b: 'c,
@@ -196,6 +276,7 @@ where
         )
     }
 
+    /// Returns an iterator over attribute values by immutable reference
     pub fn iter<'c>(&'c self) -> AttributeIteratorByRef<'c, T>
     where
         'b: 'c,
@@ -215,6 +296,7 @@ impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PrimitiveType> IntoIterator
     }
 }
 
+/// Like [`AttributeView`], but provides mutable access to the attribute data
 pub struct AttributeViewMut<'a, 'b, B: BorrowedMutBuffer<'a>, T: PrimitiveType>
 where
     'a: 'b,
@@ -229,6 +311,7 @@ where
     'a: 'b,
 {
     pub(crate) fn new(buffer: &'b mut B, attribute: &PointAttributeDefinition) -> Self {
+        assert_eq!(T::data_type(), attribute.datatype());
         Self {
             attribute: buffer
                 .point_layout()
@@ -240,6 +323,11 @@ where
         }
     }
 
+    /// Get the attribute value at `index`
+    ///
+    /// # Panics
+    ///
+    ///  If `index` is out of bounds
     pub fn at(&self, index: usize) -> T {
         let mut attribute = T::zeroed();
         // Is safe because we get the attribute_member from the PointLayout of the buffer in `new`
@@ -253,12 +341,20 @@ where
         attribute
     }
 
+    /// Sets the value of the attribute at `index` to `attribute_value`
+    ///
+    /// # Panics
+    ///
+    ///  If `index` is out of bounds
     pub fn set_at(&mut self, index: usize, attribute_value: T) {
-        self.buffer.set_attribute(
-            self.attribute.attribute_definition(),
-            index,
-            bytemuck::bytes_of(&attribute_value),
-        );
+        // Safe because `new` checks that the data type of `T` and `self.attribute` match
+        unsafe {
+            self.buffer.set_attribute(
+                self.attribute.attribute_definition(),
+                index,
+                bytemuck::bytes_of(&attribute_value),
+            );
+        }
     }
 }
 
@@ -267,14 +363,26 @@ impl<'a, 'b, B: ColumnarBuffer<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
 where
     'a: 'b,
 {
-    pub fn at_ref(&'b self, index: usize) -> &'b T {
+    /// Get the attribute value at `index` as an immutable borrow
+    ///
+    /// # Panics
+    ///
+    ///  If `index` is out of bounds
+    pub fn at_ref<'c>(&'c self, index: usize) -> &'c T
+    where
+        'b: 'c,
+    {
         bytemuck::from_bytes(
             self.buffer
                 .get_attribute_ref(self.attribute.attribute_definition(), index),
         )
     }
 
-    pub fn iter(&'b self) -> AttributeIteratorByRef<'b, T> {
+    /// Returns an iterator over attribute values as immutable borrows
+    pub fn iter<'c>(&'c self) -> AttributeIteratorByRef<'c, T>
+    where
+        'b: 'c,
+    {
         AttributeIteratorByRef::new(self.buffer, self.attribute.attribute_definition())
     }
 }
@@ -282,6 +390,11 @@ where
 impl<'a, 'b, B: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
     AttributeViewMut<'a, 'b, B, T>
 {
+    /// Get the attribute value at `index` as a mutable borrow
+    ///
+    /// # Panics
+    ///
+    ///  If `index` is out of bounds
     pub fn at_mut(&'b mut self, index: usize) -> &'b mut T {
         bytemuck::from_bytes_mut(
             self.buffer
@@ -289,19 +402,16 @@ impl<'a, 'b, B: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
         )
     }
 
+    /// Returns an iterator over attribute values as mutable borrows
     pub fn iter_mut(&'b mut self) -> AttributeIteratorByMut<'b, T> {
         AttributeIteratorByMut::new(self.buffer, self.attribute.attribute_definition())
     }
 }
 
-// impl<'a, B: OwningBuffer<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType> AttributeViewMut<'a, B, T> {
-//     pub fn push_point(&mut self, point: T) {
-//         self.buffer.push_point(bytemuck::bytes_of(&point));
-//     }
-// }
-
 /// A view over a strongly typed point attribute that supports type conversion. This means that the
-/// `PointAttributeDataType` of the attribute must not match the type `T` that this view returns
+/// `PointAttributeDataType` of the attribute does not have to match the type `T` that this view returns.
+/// For an explanation on how attribute type conversion works in pasture, see the [`conversion`](crate::layout::conversion)
+/// module
 pub struct AttributeViewConverting<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType>
 where
     'a: 'b,
@@ -315,6 +425,7 @@ where
 
 impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeViewConverting<'a, 'b, B, T> {
     pub(crate) fn new(buffer: &'b B, attribute: &PointAttributeDefinition) -> Result<Self> {
+        assert_eq!(T::data_type(), attribute.datatype());
         let attribute_in_layout: &PointAttributeMember = buffer
             .point_layout()
             .get_attribute_by_name(attribute.name())
@@ -334,6 +445,7 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeViewConverting<'a
         })
     }
 
+    /// Get the attribute value at `index`
     pub fn at(&self, index: usize) -> T {
         let mut value = T::zeroed();
         // Is safe because we took 'attribute' from the point layout of the buffer
@@ -367,6 +479,8 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> IntoIterator
     }
 }
 
+/// An iterator that performs attribute value conversion on the fly. This allows iterating over an
+/// attribute that has internal datatype `U` as if it had datatype `T`
 pub struct AttributeViewConvertingIterator<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> {
     view: AttributeViewConverting<'a, 'b, B, T>,
     current_index: usize,

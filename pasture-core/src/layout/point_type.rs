@@ -9,7 +9,7 @@ pub trait PointType: Copy + Clone + bytemuck::NoUninit + bytemuck::AnyBitPattern
     ///
     /// *Note:* This
     /// returns the `PointLayout` by value, even though it is a 'One instance per type' kind of object. There
-    /// is an interesting discussion regarding this topic here: https://internals.rust-lang.org/t/per-type-static-variables-take-2/11551
+    /// is an interesting discussion regarding this topic [here](https://internals.rust-lang.org/t/per-type-static-variables-take-2/11551).
     /// The essence seems to be that per-type static variables are not supported because of potential issues
     /// with dll linking on Windows. So for now we stick to returning the `PointLayout` by value, instead of
     /// a potentially more efficient `&'static PointLayout`
