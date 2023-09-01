@@ -1056,7 +1056,9 @@ impl TryFrom<&las::Header> for LASMetadata {
         let classification_lookup_vlr = header
             .vlrs()
             .iter()
-            .find(|vlr| vlr.record_id == ClassificationLookup::RECORD_ID)
+            .find(|vlr| {
+                vlr.user_id == KNOWN_VLR_USER_ID && vlr.record_id == ClassificationLookup::RECORD_ID
+            })
             .map(|vlr| ClassificationLookup::try_from(vlr))
             .transpose()
             .context("Could not parse Classification Lookup VLR")?;
@@ -1064,7 +1066,9 @@ impl TryFrom<&las::Header> for LASMetadata {
         let text_area_description_vlr = header
             .vlrs()
             .iter()
-            .find(|vlr| vlr.record_id == TextAreaDescription::RECORD_ID)
+            .find(|vlr| {
+                vlr.user_id == KNOWN_VLR_USER_ID && vlr.record_id == TextAreaDescription::RECORD_ID
+            })
             .map(|vlr| TextAreaDescription::try_from(vlr))
             .transpose()
             .context("Could not parse Text Area Description VLR")?;
@@ -1072,7 +1076,9 @@ impl TryFrom<&las::Header> for LASMetadata {
         let extra_bytes_vlr = header
             .vlrs()
             .iter()
-            .find(|vlr| vlr.record_id == ExtraBytesVlr::RECORD_ID)
+            .find(|vlr| {
+                vlr.user_id == KNOWN_VLR_USER_ID && vlr.record_id == ExtraBytesVlr::RECORD_ID
+            })
             .map(|vlr| ExtraBytesVlr::try_from(vlr))
             .transpose()
             .context("Could not parse Extra Bytes VLR")?;

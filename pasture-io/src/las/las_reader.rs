@@ -10,7 +10,7 @@ use las_rs::Header;
 use crate::base::{PointReader, SeekToPoint};
 use pasture_core::{containers::OwningBuffer, layout::PointLayout, meta::Metadata};
 
-use super::{path_is_compressed_las_file, LASReaderBase, RawLASReader, RawLAZReader};
+use super::{path_is_compressed_las_file, LASMetadata, LASReaderBase, RawLASReader, RawLAZReader};
 
 pub enum LASReaderFlavor<'a, T: Read + Seek + Send + 'a> {
     LAS(RawLASReader<T>),
@@ -121,6 +121,14 @@ impl<'a, R: Read + Seek + Send> LASReader<'a, R> {
     /// Returns the LAS header for the associated `LASReader`
     pub fn header(&self) -> &Header {
         self.raw_reader.header()
+    }
+
+    /// Returns the LAS metadata for the associated `LASReader`
+    pub fn las_metadata(&self) -> &LASMetadata {
+        match &self.raw_reader {
+            LASReaderFlavor::LAS(reader) => reader.las_metadata(),
+            LASReaderFlavor::LAZ(reader) => reader.las_metadata(),
+        }
     }
 }
 

@@ -80,6 +80,20 @@ impl<T: Read + Seek> RawLASReader<T> {
 
         let mut builder = Builder::new(raw_header).context("Invalid LAS header")?;
         builder.vlrs = vlrs;
+
+        // Even after reading all VLRs, there might be leftover bytes before the start of the actual point
+        // data. These bytes have to be read and correctly stored in the LAS header, otherwise conversion
+        // of the Header to a raw::Header will be wrong, and the LASMetadata will be wrong as well
+        // Note: Took this code pretty much straight from the las::Reader, but as far as I can tell, the
+        // LAS 1.4 spec states that the `offset_to_point_data` field has to be updated by software that changes
+        // the number of VLRs...
+        let position_after_reading_vlrs = read.stream_position()?;
+        if position_after_reading_vlrs < offset_to_first_point_in_file {
+            read.by_ref()
+                .take(offset_to_first_point_in_file - position_after_reading_vlrs)
+                .read_to_end(&mut builder.vlr_padding)?;
+        }
+
         let header = builder.into_header().context("Invalid LAS header")?;
 
         let metadata: LASMetadata = header
@@ -105,7 +119,6 @@ impl<T: Read + Seek> RawLASReader<T> {
         })
     }
 
-    #[cfg(test)]
     pub fn las_metadata(&self) -> &LASMetadata {
         &self.metadata
     }
@@ -358,7 +371,6 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         })
     }
 
-    #[cfg(test)]
     pub fn las_metadata(&self) -> &LASMetadata {
         &self.metadata
     }
