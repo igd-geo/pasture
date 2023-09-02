@@ -18,3 +18,6 @@ pub mod layout;
 pub mod math;
 /// Data structures for handling point cloud metadata
 pub mod meta;
+
+#[cfg(test)]
+pub(crate) mod test_utils;

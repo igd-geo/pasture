@@ -197,6 +197,13 @@ impl<'a, 'b, B: InterleavedBufferMut<'a>, T: PointType> PointViewMut<'a, 'b, B, 
     {
         self.buffer.into()
     }
+
+    /// Sorts the point buffer using the given `comparator` function
+    pub fn sort_by<F: Fn(&T, &T) -> std::cmp::Ordering>(&mut self, comparator: F) {
+        let typed_points: &mut [T] =
+            bytemuck::cast_slice_mut(self.buffer.get_point_range_mut(0..self.buffer.len()));
+        typed_points.sort_by(comparator);
+    }
 }
 
 impl<'a, 'b, B: OwningBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
@@ -499,5 +506,37 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> Iterator
             self.current_index += 1;
             Some(ret)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{thread_rng, Rng};
+
+    use super::*;
+
+    use crate::{containers::VectorBuffer, test_utils::*};
+
+    #[test]
+    fn test_sort_buffer() {
+        let rng = thread_rng();
+        let mut test_points = rng
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(10)
+            .collect::<VectorBuffer>();
+
+        test_points
+            .view_mut::<CustomPointTypeSmall>()
+            .sort_by(|a, b| a.classification.cmp(&b.classification));
+
+        let points = test_points
+            .view::<CustomPointTypeSmall>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let are_sorted = points
+            .iter()
+            .zip(points.iter().skip(1))
+            .all(|(low, high)| low.classification <= high.classification);
+        assert!(are_sorted, "Points not sorted: {:#?}", test_points);
     }
 }
