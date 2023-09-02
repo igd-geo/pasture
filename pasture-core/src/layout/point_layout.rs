@@ -90,7 +90,7 @@ pub enum PointAttributeDataType {
 
 impl PointAttributeDataType {
     /// Size of the associated `PointAttributeDataType`
-    pub fn size(&self) -> u64 {
+    pub const fn size(&self) -> u64 {
         match self {
             PointAttributeDataType::U8 => 1,
             PointAttributeDataType::I8 => 1,
@@ -316,12 +316,14 @@ impl PointAttributeDefinition {
     /// let datatype = custom_attribute.datatype();
     /// # assert_eq!(datatype, PointAttributeDataType::F32);
     /// ```
-    pub fn datatype(&self) -> PointAttributeDataType {
+    #[inline]
+    pub const fn datatype(&self) -> PointAttributeDataType {
         self.datatype
     }
 
     /// Returns the size in bytes of this attribute
-    pub fn size(&self) -> u64 {
+    #[inline]
+    pub const fn size(&self) -> u64 {
         self.datatype.size()
     }
 
@@ -353,6 +355,7 @@ impl PointAttributeDefinition {
         PointAttributeMember {
             attribute_definition: self.clone(),
             offset,
+            size: self.size(),
         }
     }
 }
@@ -369,6 +372,7 @@ impl Display for PointAttributeDefinition {
 pub struct PointAttributeMember {
     attribute_definition: PointAttributeDefinition,
     offset: u64,
+    size: u64,
 }
 
 impl PointAttributeMember {
@@ -387,6 +391,7 @@ impl PointAttributeMember {
                 datatype,
             },
             offset,
+            size: datatype.size(),
         }
     }
 
@@ -398,7 +403,7 @@ impl PointAttributeMember {
     /// # assert_eq!(name, "Custom");
     /// ```
     pub fn name(&self) -> &str {
-        &self.attribute_definition.name()
+        self.attribute_definition.name()
     }
 
     /// Returns the datatype of the associated `PointAttributeMember`
@@ -408,7 +413,8 @@ impl PointAttributeMember {
     /// let datatype = custom_attribute.datatype();
     /// # assert_eq!(datatype, PointAttributeDataType::F32);
     /// ```
-    pub fn datatype(&self) -> PointAttributeDataType {
+    #[inline]
+    pub const fn datatype(&self) -> PointAttributeDataType {
         self.attribute_definition.datatype()
     }
 
@@ -419,7 +425,8 @@ impl PointAttributeMember {
     /// let offset = custom_attribute.offset();
     /// # assert_eq!(offset, 8);
     /// ```
-    pub fn offset(&self) -> u64 {
+    #[inline]
+    pub const fn offset(&self) -> u64 {
         self.offset
     }
 
@@ -429,31 +436,9 @@ impl PointAttributeMember {
     }
 
     /// Returns the size in bytes of the associated `PointAttributeMember`
-    pub fn size(&self) -> u64 {
-        match self.datatype() {
-            PointAttributeDataType::F32 => 4,
-            PointAttributeDataType::F64 => 8,
-            PointAttributeDataType::I8 => 1,
-            PointAttributeDataType::I16 => 2,
-            PointAttributeDataType::I32 => 4,
-            PointAttributeDataType::I64 => 8,
-            PointAttributeDataType::U8 => 1,
-            PointAttributeDataType::U16 => 2,
-            PointAttributeDataType::U32 => 4,
-            PointAttributeDataType::U64 => 8,
-            PointAttributeDataType::Vec3f32 => 3 * 4,
-            PointAttributeDataType::Vec3f64 => 3 * 8,
-            PointAttributeDataType::Vec3u16 => 3 * 2,
-            PointAttributeDataType::Vec3i32 => 3 * 4,
-            PointAttributeDataType::Vec3u8 => 3,
-            PointAttributeDataType::Vec4u8 => 4,
-            PointAttributeDataType::ByteArray(length) => length,
-            PointAttributeDataType::Custom {
-                size,
-                min_alignment: _,
-                name: _,
-            } => size,
-        }
+    #[inline]
+    pub const fn size(&self) -> u64 {
+        self.size
     }
 
     /// Returns the byte range within the `PointType` for this attribute
@@ -962,7 +947,8 @@ impl PointLayout {
     /// // has an 8-byte minimum alignment, so the whole PointLayout is aligned to an 8-byte boundary. This is reflected in its size:
     /// assert_eq!(32, layout.size_of_point_entry());
     /// ```
-    pub fn size_of_point_entry(&self) -> u64 {
+    #[inline]
+    pub const fn size_of_point_entry(&self) -> u64 {
         self.memory_layout.size() as u64
     }
 
