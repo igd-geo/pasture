@@ -1827,11 +1827,7 @@ mod tests {
 
     use super::*;
 
-    fn compare_attributes_typed<
-        'a,
-        T: PointType + std::fmt::Debug + PartialEq + Copy + Clone,
-        U: PrimitiveType + std::fmt::Debug + PartialEq,
-    >(
+    fn compare_attributes_typed<'a, U: PrimitiveType + std::fmt::Debug + PartialEq>(
         buffer: &'a impl BorrowedBuffer<'a>,
         attribute: &PointAttributeDefinition,
         expected_points: &'a impl BorrowedBuffer<'a>,
@@ -1848,56 +1844,56 @@ mod tests {
     }
 
     /// Compare the given point attribute using the static type corresponding to the attribute's `PointAttributeDataType`
-    fn compare_attributes<'a, T: PointType + std::fmt::Debug + PartialEq + Copy + Clone>(
+    fn compare_attributes<'a>(
         buffer: &'a impl BorrowedBuffer<'a>,
         attribute: &PointAttributeDefinition,
         expected_points: &'a impl BorrowedBuffer<'a>,
     ) {
         match attribute.datatype() {
             PointAttributeDataType::F32 => {
-                compare_attributes_typed::<T, f32>(buffer, attribute, expected_points)
+                compare_attributes_typed::<f32>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::F64 => {
-                compare_attributes_typed::<T, f64>(buffer, attribute, expected_points)
+                compare_attributes_typed::<f64>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::I16 => {
-                compare_attributes_typed::<T, i16>(buffer, attribute, expected_points)
+                compare_attributes_typed::<i16>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::I32 => {
-                compare_attributes_typed::<T, i32>(buffer, attribute, expected_points)
+                compare_attributes_typed::<i32>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::I64 => {
-                compare_attributes_typed::<T, i64>(buffer, attribute, expected_points)
+                compare_attributes_typed::<i64>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::I8 => {
-                compare_attributes_typed::<T, i8>(buffer, attribute, expected_points)
+                compare_attributes_typed::<i8>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::U16 => {
-                compare_attributes_typed::<T, u16>(buffer, attribute, expected_points)
+                compare_attributes_typed::<u16>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::U32 => {
-                compare_attributes_typed::<T, u32>(buffer, attribute, expected_points)
+                compare_attributes_typed::<u32>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::U64 => {
-                compare_attributes_typed::<T, u64>(buffer, attribute, expected_points)
+                compare_attributes_typed::<u64>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::U8 => {
-                compare_attributes_typed::<T, u8>(buffer, attribute, expected_points)
+                compare_attributes_typed::<u8>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::Vec3f32 => {
-                compare_attributes_typed::<T, Vector3<f32>>(buffer, attribute, expected_points)
+                compare_attributes_typed::<Vector3<f32>>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::Vec3f64 => {
-                compare_attributes_typed::<T, Vector3<f64>>(buffer, attribute, expected_points);
+                compare_attributes_typed::<Vector3<f64>>(buffer, attribute, expected_points);
             }
             PointAttributeDataType::Vec3i32 => {
-                compare_attributes_typed::<T, Vector3<i32>>(buffer, attribute, expected_points)
+                compare_attributes_typed::<Vector3<i32>>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::Vec3u16 => {
-                compare_attributes_typed::<T, Vector3<u16>>(buffer, attribute, expected_points)
+                compare_attributes_typed::<Vector3<u16>>(buffer, attribute, expected_points)
             }
             PointAttributeDataType::Vec3u8 => {
-                compare_attributes_typed::<T, Vector3<u8>>(buffer, attribute, expected_points)
+                compare_attributes_typed::<Vector3<u8>>(buffer, attribute, expected_points)
             }
             _ => unimplemented!(),
         }
@@ -1925,10 +1921,10 @@ mod tests {
             assert_eq!(T::layout(), *buffer.point_layout());
             assert_eq!(0, buffer.view::<T>().into_iter().count());
 
-            for idx in 0..COUNT {
-                buffer.view_mut().push_point(test_data[idx]);
+            for (idx, point) in test_data.iter().enumerate() {
+                buffer.view_mut().push_point(*point);
                 assert_eq!(idx + 1, buffer.len());
-                assert_eq!(test_data[idx], buffer.view().at(idx));
+                assert_eq!(*point, buffer.view().at(idx));
             }
 
             let mut collected_points = buffer.view().into_iter().collect::<Vec<_>>();
@@ -1938,7 +1934,7 @@ mod tests {
             assert_eq!(test_data, collected_points_by_ref);
 
             for attribute in buffer.point_layout().attributes() {
-                compare_attributes::<T>(
+                compare_attributes(
                     &buffer,
                     attribute.attribute_definition(),
                     &test_data_as_buffer,
@@ -1948,8 +1944,8 @@ mod tests {
             let slice = buffer.slice(1..2);
             assert_eq!(test_data[1], slice.view().at(0));
 
-            for idx in 0..COUNT {
-                *buffer.view_mut().at_mut(idx) = overwrite_data[idx];
+            for (idx, point) in overwrite_data.iter().enumerate() {
+                *buffer.view_mut().at_mut(idx) = *point;
             }
             collected_points = buffer.view().iter().copied().collect();
             assert_eq!(overwrite_data, collected_points);
@@ -1978,17 +1974,17 @@ mod tests {
             assert_eq!(T::layout(), *buffer.point_layout());
             assert_eq!(0, buffer.view::<T>().into_iter().count());
 
-            for idx in 0..COUNT {
-                buffer.view_mut().push_point(test_data[idx]);
+            for (idx, point) in test_data.iter().enumerate() {
+                buffer.view_mut().push_point(*point);
                 assert_eq!(idx + 1, buffer.len());
-                assert_eq!(test_data[idx], buffer.view().at(idx));
+                assert_eq!(*point, buffer.view().at(idx));
             }
 
             let mut collected_points = buffer.view().into_iter().collect::<Vec<_>>();
             assert_eq!(test_data, collected_points);
 
             for attribute in buffer.point_layout().attributes() {
-                compare_attributes::<T>(
+                compare_attributes(
                     &buffer,
                     attribute.attribute_definition(),
                     &test_data_as_buffer,
@@ -1998,8 +1994,8 @@ mod tests {
             let slice = buffer.slice(1..2);
             assert_eq!(test_data[1], slice.view().at(0));
 
-            for idx in 0..COUNT {
-                buffer.view_mut().set_at(idx, overwrite_data[idx]);
+            for (idx, point) in overwrite_data.iter().enumerate() {
+                buffer.view_mut().set_at(idx, *point);
             }
             collected_points = buffer.view().into_iter().collect();
             assert_eq!(overwrite_data, collected_points);
@@ -2035,10 +2031,10 @@ mod tests {
             assert_eq!(T::layout(), *buffer.point_layout());
             assert_eq!(0, buffer.view::<T>().into_iter().count());
 
-            for idx in 0..COUNT {
-                buffer.view_mut().push_point(test_data[idx]);
+            for (idx, point) in test_data.iter().enumerate() {
+                buffer.view_mut().push_point(*point);
                 assert_eq!(idx + 1, buffer.len());
-                assert_eq!(test_data[idx], buffer.view().at(idx));
+                assert_eq!(*point, buffer.view().at(idx));
             }
 
             let mut collected_points = buffer.view().into_iter().collect::<Vec<_>>();
@@ -2048,7 +2044,7 @@ mod tests {
             assert_eq!(test_data, collected_points_by_ref);
 
             for attribute in buffer.point_layout().attributes() {
-                compare_attributes::<T>(
+                compare_attributes(
                     &buffer,
                     attribute.attribute_definition(),
                     &test_data_as_buffer,
@@ -2058,8 +2054,8 @@ mod tests {
             let slice = buffer.slice(1..2);
             assert_eq!(test_data[1], slice.view().at(0));
 
-            for idx in 0..COUNT {
-                *buffer.view_mut().at_mut(idx) = overwrite_data[idx];
+            for (idx, point) in overwrite_data.iter().enumerate() {
+                *buffer.view_mut().at_mut(idx) = *point;
             }
             collected_points = buffer.view().iter().copied().collect();
             assert_eq!(overwrite_data, collected_points);

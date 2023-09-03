@@ -114,7 +114,7 @@ fn main() {
         buffer.view_mut().push_point(CustomPointType {
             position: Vector3::new(1.0, 2.0, 3.0),
             intensity: 42,
-            custom_attribute: 3.14,
+            custom_attribute: std::f32::consts::PI,
         });
     }
 }

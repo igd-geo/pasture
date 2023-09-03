@@ -23,10 +23,7 @@ pub trait UntypedPoint {
         value_byte_slice: &[u8],
     ) -> Result<()>;
     /// Gets the data from an attribute and converts it to an `PrimitiveType`.
-    fn get_attribute<'point, T: PrimitiveType>(
-        &'point self,
-        attribute: &PointAttributeDefinition,
-    ) -> Result<T>;
+    fn get_attribute<T: PrimitiveType>(&self, attribute: &PointAttributeDefinition) -> Result<T>;
     /// Sets the data from an attribute with an `PrimitiveType`.
     fn set_attribute<T: PrimitiveType>(
         &mut self,
@@ -101,10 +98,7 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
         Cursor::new(&mut self.buffer)
     }
 
-    fn get_attribute<'point, T: PrimitiveType>(
-        &'point self,
-        attribute: &PointAttributeDefinition,
-    ) -> Result<T> {
+    fn get_attribute<T: PrimitiveType>(&self, attribute: &PointAttributeDefinition) -> Result<T> {
         let mut target_attribute = MaybeUninit::<T>::uninit();
         let source_attribute_byte_slice = self.get_raw_attribute(attribute)?;
         // access via [u8] slice
@@ -179,10 +173,7 @@ impl<'point> UntypedPointSlice<'point> {
 }
 
 impl UntypedPoint for UntypedPointSlice<'_> {
-    fn get_attribute<'point, T: PrimitiveType>(
-        &'point self,
-        attribute: &PointAttributeDefinition,
-    ) -> Result<T> {
+    fn get_attribute<T: PrimitiveType>(&self, attribute: &PointAttributeDefinition) -> Result<T> {
         let mut target_attribute = MaybeUninit::<T>::uninit();
         let source_attribute_byte_slice = self.get_raw_attribute(attribute)?;
         // access via [u8] slice
@@ -248,7 +239,7 @@ impl UntypedPoint for UntypedPointSlice<'_> {
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
         let start = attribute.offset() as usize;
-        let end = start as usize + attribute.datatype().size() as usize;
+        let end = start + attribute.datatype().size() as usize;
         if self.slice.len() < end {
             bail!("Buffer size to small.");
         }
@@ -406,10 +397,10 @@ mod tests {
         point.set_attribute(&attributes::INTENSITY, &intensity_value)?;
         point.set_attribute(&attributes::POSITION_3D, &position)?;
         // Readback
-        let intencity_from_point = point.get_attribute::<u16>(&attributes::INTENSITY)?;
+        let intensity_from_point = point.get_attribute::<u16>(&attributes::INTENSITY)?;
         let position_from_point = point.get_attribute::<Vector3<f32>>(&attributes::POSITION_3D)?;
 
-        assert_eq!(intensity_value, intencity_from_point as u16);
+        assert_eq!(intensity_value, intensity_from_point);
         assert_eq!(position, position_from_point);
         Ok(())
     }

@@ -932,7 +932,7 @@ impl PointLayout {
     /// assert_eq!(attributes::POSITION_3D.at_offset_in_type(0), *attributes[0]);
     /// assert_eq!(attributes::INTENSITY.at_offset_in_type(24), *attributes[1]);
     /// ```
-    pub fn attributes<'a>(&'a self) -> impl Iterator<Item = &'a PointAttributeMember> + 'a {
+    pub fn attributes(&self) -> impl Iterator<Item = &PointAttributeMember> {
         self.attributes.iter()
     }
 

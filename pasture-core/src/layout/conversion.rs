@@ -70,7 +70,7 @@ impl RawPointConverter {
         let converters = from_layout
             .attributes()
             .filter(|&from_attribute| to_layout.has_attribute_with_name(from_attribute.name()))
-            .map(|from_attribute| {
+            .filter_map(|from_attribute| {
                 let to_attribute = to_layout
                     .get_attribute_by_name(from_attribute.name())
                     .unwrap();
@@ -88,8 +88,6 @@ impl RawPointConverter {
                     )
                 })
             })
-            .filter(|converter| converter.is_some())
-            .map(|converter| converter.unwrap())
             .collect::<Vec<_>>();
 
         Self {
@@ -98,6 +96,11 @@ impl RawPointConverter {
     }
 
     /// Converts the `source_point` into the `target_point`
+    ///
+    /// # Safety
+    ///
+    /// `source_point` must contain memory for an initialized `PointType` `T` that has the exact same
+    /// `PointLayout` as the one passed to [`Self::from_to`] as its first argument!
     pub unsafe fn convert(&self, source_point: &[u8], target_point: &mut [u8]) {
         for converter in self.attribute_converters.iter() {
             converter.convert(source_point, target_point);
