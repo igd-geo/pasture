@@ -18,10 +18,9 @@ fn is_repr_attribute(attribute: &Attribute) -> bool {
 
 fn arg_is_c(arg: &NestedMeta) -> bool {
     match arg {
-        NestedMeta::Meta(meta) => match meta {
-            syn::Meta::Path(path) => path.get_ident().map(|ident| ident == "C").unwrap_or(false),
-            _ => false,
-        },
+        NestedMeta::Meta(syn::Meta::Path(path)) => {
+            path.get_ident().map(|ident| ident == "C").unwrap_or(false)
+        }
         _ => false,
     }
 }

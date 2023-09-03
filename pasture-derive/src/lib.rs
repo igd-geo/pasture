@@ -185,7 +185,7 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
                         format!("Vector4<{}> is no valid Pasture primitive type. Vector4 is supported, but only for generic argument(s) u8", type_name),
                     ))
                 },
-                _ => Err(Error::new_spanned(ident, format!("Invalid type"))),
+                _ => Err(Error::new_spanned(ident, "Invalid type")),
             }
         }
         None => Err(Error::new_spanned(&type_path.path, "Invalid type")),
@@ -273,12 +273,10 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
                         "BUILTIN_POINT_ID" => Ok("PointID".into()),
                         "BUILTIN_NORMAL" => Ok("Normal".into()),
                         // TODO Other attributes
-                        _ => {
-                            return Err(Error::new_spanned(
-                                ident,
-                                format!("Unrecognized attribute name {}", ident_as_str),
-                            ))
-                        }
+                        _ => Err(Error::new_spanned(
+                            ident,
+                            format!("Unrecognized attribute name {}", ident_as_str),
+                        )),
                     }
                 }
                 syn::Meta::NameValue(name_value) => name_value
@@ -323,10 +321,7 @@ fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescr
                     primitive_type,
                 })
             }
-            ref bad => Err(Error::new_spanned(
-                bad,
-                format!("Invalid type in PointType struct"),
-            )),
+            ref bad => Err(Error::new_spanned(bad, "Invalid type in PointType struct")),
         })
         .collect::<Result<Vec<FieldLayoutDescription>>>()
 }
@@ -343,7 +338,7 @@ fn field_parameters(data: &Data, ident: &Ident) -> Result<Vec<FieldLayoutDescrip
         Data::Struct(struct_data) => get_field_layout_descriptions(&struct_data.fields),
         _ => Err(Error::new_spanned(
             ident,
-            format!("#[derive(PointType)] is only valid for structs"),
+            "#[derive(PointType)] is only valid for structs",
         )),
     }
 }
@@ -359,7 +354,7 @@ fn calculate_offsets_and_alignment(
         _ => {
             return Err(Error::new_spanned(
                 ident,
-                format!("#[derive(PointType)] is only valid for structs"),
+                "#[derive(PointType)] is only valid for structs",
             ))
         }
     };
