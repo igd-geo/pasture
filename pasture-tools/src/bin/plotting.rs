@@ -6,7 +6,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::convert::TryFrom;
 
 fn reversed_morton_index(point: &Point3<f64>, bounds: &AABB<f64>) -> FixedDepthMortonIndex3D64 {
-    let normalized_extent = (2.0_f64.powf(21 as f64)) / bounds.extent().x;
+    let normalized_extent = (2.0_f64.powf(21.0)) / bounds.extent().x;
     let normalized_point = (point - bounds.min()).component_mul(&Vector3::new(
         normalized_extent,
         normalized_extent,

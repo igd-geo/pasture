@@ -144,49 +144,49 @@ fn analyze_file<R: PointReader + SeekToPoint>(reader: &mut R) -> Result<()> {
         // );
     }
 
-    minmax_position.map(|v| {
-        println!("\tX:                      {}  {}", v.0.x, v.1.x);
-        println!("\tY:                      {}  {}", v.0.y, v.1.y);
-        println!("\tZ:                      {}  {}", v.0.z, v.1.z);
-    });
-    minmax_intensity.map(|v| {
-        println!("\tIntensity:              {}  {}", v.0, v.1);
-    });
-    minmax_return_number.map(|v| {
-        println!("\tReturn number:          {}  {}", v.0, v.1);
-    });
-    minmax_number_of_returns.map(|v| {
-        println!("\tNumber of returns:      {}  {}", v.0, v.1);
-    });
-    minmax_scan_direction_flag.map(|v| {
-        println!("\tScan direction flag:    {}  {}", v.0 as u8, v.1 as u8);
-    });
-    minmax_edge_of_flight_line.map(|v| {
-        println!("\tEdge of flight line:    {}  {}", v.0 as u8, v.1 as u8);
-    });
-    minmax_classification.map(|v| {
-        println!("\tClassification:         {}  {}", v.0, v.1);
-    });
-    minmax_scan_angle_rank.map(|v| {
-        println!("\tScan angle rank:        {}  {}", v.0, v.1);
-    });
-    minmax_user_data.map(|v| {
-        println!("\tUser data:              {}  {}", v.0, v.1);
-    });
-    minmax_point_source_id.map(|v| {
-        println!("\tPoint source ID:        {}  {}", v.0, v.1);
-    });
-    minmax_color_rgb.map(|v| {
-        println!("\tColor R:                {}  {}", v.0.x, v.1.x);
-        println!("\tColor G:                {}  {}", v.0.y, v.1.y);
-        println!("\tColor B:                {}  {}", v.0.z, v.1.z);
-    });
-    minmax_gps_time.map(|v| {
-        println!("\tGPS time:               {}  {}", v.0, v.1);
-    });
-    minmax_nir.map(|v| {
-        println!("\tNIR:                    {}  {}", v.0, v.1);
-    });
+    if let Some((min, max)) = minmax_position {
+        println!("\tX:                      {}  {}", min.x, max.x);
+        println!("\tY:                      {}  {}", min.y, max.y);
+        println!("\tZ:                      {}  {}", min.z, max.z);
+    }
+    if let Some((min, max)) = minmax_intensity {
+        println!("\tIntensity:              {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_return_number {
+        println!("\tReturn number:          {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_number_of_returns {
+        println!("\tNumber of returns:      {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_scan_direction_flag {
+        println!("\tScan direction flag:    {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_edge_of_flight_line {
+        println!("\tEdge of flight line:    {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_classification {
+        println!("\tClassification:         {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_scan_angle_rank {
+        println!("\tScan angle rank:        {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_user_data {
+        println!("\tUser data:              {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_point_source_id {
+        println!("\tPoint source ID:        {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_color_rgb {
+        println!("\tColor R:                {}  {}", min.x, max.x);
+        println!("\tColor G:                {}  {}", min.y, max.y);
+        println!("\tColor B:                {}  {}", min.z, max.z);
+    }
+    if let Some((min, max)) = minmax_gps_time {
+        println!("\tGPS time:               {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_nir {
+        println!("\tNIR:                    {}  {}", min, max);
+    }
 
     println!("Took {:.2}s", t_start.elapsed().as_secs_f64());
 
