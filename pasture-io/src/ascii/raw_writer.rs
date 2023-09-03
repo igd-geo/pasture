@@ -76,7 +76,7 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
                         PointDataType::CoordinateX => {
                             let pos =
                                 point.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D)?;
-                            self.writer.write(
+                            self.writer.write_all(
                                 trim_unnecessary_tailing_zeros(&format!(
                                     "{:.1$}",
                                     pos.x, self.precision
@@ -87,7 +87,7 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
                         PointDataType::CoordinateY => {
                             let pos =
                                 point.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D)?;
-                            self.writer.write(
+                            self.writer.write_all(
                                 trim_unnecessary_tailing_zeros(&format!(
                                     "{:.1$}",
                                     pos.y, self.precision
@@ -98,7 +98,7 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
                         PointDataType::CoordinateZ => {
                             let pos =
                                 point.get_attribute::<Vector3<f64>>(&attributes::POSITION_3D)?;
-                            self.writer.write(
+                            self.writer.write_all(
                                 trim_unnecessary_tailing_zeros(&format!(
                                     "{:.1$}",
                                     pos.z, self.precision
@@ -108,47 +108,50 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
                         }
                         PointDataType::Intensity => {
                             let intensity = point.get_attribute::<u64>(&attributes::INTENSITY)?;
-                            self.writer.write(intensity.to_string().as_bytes())?;
+                            self.writer.write_all(intensity.to_string().as_bytes())?;
                         }
                         PointDataType::ReturnNumber => {
                             let return_number =
                                 point.get_attribute::<u64>(&attributes::RETURN_NUMBER)?;
-                            self.writer.write(return_number.to_string().as_bytes())?;
+                            self.writer
+                                .write_all(return_number.to_string().as_bytes())?;
                         }
                         PointDataType::NumberOfReturns => {
                             let number_of_returns =
                                 point.get_attribute::<u64>(&attributes::NUMBER_OF_RETURNS)?;
                             self.writer
-                                .write(number_of_returns.to_string().as_bytes())?;
+                                .write_all(number_of_returns.to_string().as_bytes())?;
                         }
                         PointDataType::Classification => {
                             let classification =
                                 point.get_attribute::<u64>(&attributes::RETURN_NUMBER)?;
-                            self.writer.write(classification.to_string().as_bytes())?;
+                            self.writer
+                                .write_all(classification.to_string().as_bytes())?;
                         }
                         PointDataType::UserData => {
                             let classification =
                                 point.get_attribute::<u64>(&attributes::RETURN_NUMBER)?;
-                            self.writer.write(classification.to_string().as_bytes())?;
+                            self.writer
+                                .write_all(classification.to_string().as_bytes())?;
                         }
                         PointDataType::ColorR => {
                             let color =
                                 point.get_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)?;
-                            self.writer.write(color[0].to_string().as_bytes())?;
+                            self.writer.write_all(color[0].to_string().as_bytes())?;
                         }
                         PointDataType::ColorG => {
                             let color =
                                 point.get_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)?;
-                            self.writer.write(color[1].to_string().as_bytes())?;
+                            self.writer.write_all(color[1].to_string().as_bytes())?;
                         }
                         PointDataType::ColorB => {
                             let color =
                                 point.get_attribute::<Vector3<u16>>(&attributes::COLOR_RGB)?;
-                            self.writer.write(color[2].to_string().as_bytes())?;
+                            self.writer.write_all(color[2].to_string().as_bytes())?;
                         }
                         PointDataType::GpsTime => {
                             let gps_time = point.get_attribute::<f64>(&attributes::GPS_TIME)?;
-                            self.writer.write(
+                            self.writer.write_all(
                                 trim_unnecessary_tailing_zeros(&format!(
                                     "{:.1$}",
                                     gps_time, self.precision
@@ -159,37 +162,39 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
                         PointDataType::PointSourceID => {
                             let point_source_id =
                                 point.get_attribute::<u64>(&attributes::POINT_SOURCE_ID)?;
-                            self.writer.write(point_source_id.to_string().as_bytes())?;
+                            self.writer
+                                .write_all(point_source_id.to_string().as_bytes())?;
                         }
                         PointDataType::EdgeOfFlightLine => {
                             let edge_of_flight_line =
                                 point.get_attribute::<u8>(&attributes::EDGE_OF_FLIGHT_LINE)?;
-                            self.writer.write(
+                            self.writer.write_all(
                                 (if edge_of_flight_line > 0 { "1" } else { "0" }).as_bytes(),
                             )?;
                         }
                         PointDataType::ScanDirectionFlag => {
                             let scan_direction_flag =
                                 point.get_attribute::<u8>(&attributes::SCAN_DIRECTION_FLAG)?;
-                            self.writer.write(
+                            self.writer.write_all(
                                 (if scan_direction_flag > 0 { "1" } else { "0" }).as_bytes(),
                             )?;
                         }
                         PointDataType::ScanAngleRank => {
                             let scan_angle_rank =
                                 point.get_attribute::<i64>(&attributes::SCAN_ANGLE_RANK)?;
-                            self.writer.write(scan_angle_rank.to_string().as_bytes())?;
+                            self.writer
+                                .write_all(scan_angle_rank.to_string().as_bytes())?;
                         }
-                        PointDataType::NIR => {
+                        PointDataType::Nir => {
                             let nir = point.get_attribute::<u64>(&attributes::NIR)?;
-                            self.writer.write(nir.to_string().as_bytes())?;
+                            self.writer.write_all(nir.to_string().as_bytes())?;
                         }
                     }
                     if index != self.parse_layout.len() - 1 {
-                        self.writer.write(self.delimiter.as_bytes())?;
+                        self.writer.write_all(self.delimiter.as_bytes())?;
                     }
                 }
-                self.writer.write(b"\n")?;
+                self.writer.write_all(b"\n")?;
             }
         }
         Ok(())
@@ -250,7 +255,7 @@ mod tests {
             std::fs::remove_file(out_path).expect("Could not remove test file");
         }
         let mut writer =
-            RawAsciiWriter::from_write(BufWriter::new(File::create(&out_path)?), "ixyz")?;
+            RawAsciiWriter::from_write(BufWriter::new(File::create(out_path)?), "ixyz")?;
         writer.write(&buffer)?;
         Ok(())
     }
@@ -263,7 +268,7 @@ mod tests {
         let test_data = test_data_buffer()?;
         {
             let mut writer = RawAsciiWriter::from_write(
-                BufWriter::new(File::create(&out_path)?),
+                BufWriter::new(File::create(out_path)?),
                 "xyzirncuRGBtpedaI",
             )?;
             writer.write(&test_data)?;
@@ -312,7 +317,7 @@ mod tests {
             std::fs::remove_file(out_path).expect("Could not remove test file");
         }
         let mut writer =
-            RawAsciiWriter::from_write(BufWriter::new(File::create(&out_path).unwrap()), "e")
+            RawAsciiWriter::from_write(BufWriter::new(File::create(out_path).unwrap()), "e")
                 .unwrap();
         writer.write(&buffer).unwrap();
     }

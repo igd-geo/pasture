@@ -59,18 +59,14 @@ impl Metadata for PntsMetadata {
 
     fn get_named_field(&self, field_name: &str) -> Option<Box<dyn std::any::Any>> {
         match field_name {
-            "RTC_CENTER" => self
-                .rtc_center
-                .map(|v| -> Box<dyn Any> { Box::new(v.clone()) }),
+            "RTC_CENTER" => self.rtc_center.map(|v| -> Box<dyn Any> { Box::new(v) }),
             "QUANTIZED_VOLUME_OFFSET" => self
                 .quantized_volume_offset
-                .map(|v| -> Box<dyn Any> { Box::new(v.clone()) }),
+                .map(|v| -> Box<dyn Any> { Box::new(v) }),
             "QUANTIZED_VOLUME_SCALE" => self
                 .quantized_volume_scale
-                .map(|v| -> Box<dyn Any> { Box::new(v.clone()) }),
-            "CONSTANT_RGBA" => self
-                .constant_rgba
-                .map(|v| -> Box<dyn Any> { Box::new(v.clone()) }),
+                .map(|v| -> Box<dyn Any> { Box::new(v) }),
+            "CONSTANT_RGBA" => self.constant_rgba.map(|v| -> Box<dyn Any> { Box::new(v) }),
             "BATCH_LENGTH" => Some(Box::new(self.batch_length)),
             _ => None,
         }
@@ -83,22 +79,22 @@ impl Metadata for PntsMetadata {
 
 impl Display for PntsMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PntsMetadata {{\n")?;
-        write!(f, "\t\"points_length\": {}\n", self.points_length)?;
+        writeln!(f, "PntsMetadata {{")?;
+        writeln!(f, "\t\"points_length\": {}", self.points_length)?;
         if let Some(rtc_center) = &self.rtc_center {
-            write!(f, "\t\"rtc_center\": {}\n", rtc_center)?;
+            writeln!(f, "\t\"rtc_center\": {}", rtc_center)?;
         }
         if let Some(v) = &self.quantized_volume_offset {
-            write!(f, "\t\"quantized_volume_offset\": {}\n", v)?;
+            writeln!(f, "\t\"quantized_volume_offset\": {}", v)?;
         }
         if let Some(v) = &self.quantized_volume_scale {
-            write!(f, "\t\"quantized_volume_scale\": {}\n", v)?;
+            writeln!(f, "\t\"quantized_volume_scale\": {}", v)?;
         }
         if let Some(v) = &self.constant_rgba {
-            write!(f, "\t\"constant_rgba\": {}\n", v)?;
+            writeln!(f, "\t\"constant_rgba\": {}", v)?;
         }
         if let Some(v) = &self.batch_length {
-            write!(f, "\t\"batch_length\": {}\n", v)?;
+            writeln!(f, "\t\"batch_length\": {}", v)?;
         }
         Ok(())
     }

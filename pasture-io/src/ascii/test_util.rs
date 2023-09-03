@@ -39,7 +39,7 @@ pub(crate) fn test_data_buffer() -> Result<HashMapBuffer> {
     );
     pusher.push_attribute_range(
         &attributes::NUMBER_OF_RETURNS,
-        &test_data_number_of_returns().as_slice(),
+        test_data_number_of_returns().as_slice(),
     );
     pusher.push_attribute_range(
         &attributes::SCAN_DIRECTION_FLAG,

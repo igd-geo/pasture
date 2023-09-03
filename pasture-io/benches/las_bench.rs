@@ -18,9 +18,9 @@ use pasture_io::{
 use rand::{distributions::Uniform, thread_rng, Rng};
 use scopeguard::defer;
 
-const LAS_PATH: &'static str = "las_bench_file.las";
-const LAZ_PATH: &'static str = "laz_bench_file.laz";
-const WRITE_DUMMY_FILE: &'static str = "write_dummy.las";
+const LAS_PATH: &str = "las_bench_file.las";
+const LAZ_PATH: &str = "laz_bench_file.laz";
+const WRITE_DUMMY_FILE: &str = "write_dummy.las";
 
 #[derive(PointType, Copy, Clone, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]

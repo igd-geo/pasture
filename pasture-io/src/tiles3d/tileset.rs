@@ -171,18 +171,12 @@ pub struct Tileset {
 }
 
 /// Builder for `Tileset` structures
+#[derive(Default)]
 pub struct TilesetBuilder {
     tileset: Tileset,
 }
 
 impl TilesetBuilder {
-    /// Creates a new `TilesetBuilder` with default values for the `Tileset` to be created
-    pub fn new() -> Self {
-        Self {
-            tileset: Default::default(),
-        }
-    }
-
     /// Sets the geometric error of the `Tileset` to the given value
     /// # Panics
     /// If the `geometric_error` is less than 0
@@ -241,9 +235,9 @@ impl TilesetBuilder {
     }
 }
 
-impl Into<Tileset> for TilesetBuilder {
-    fn into(self) -> Tileset {
-        self.tileset
+impl From<TilesetBuilder> for Tileset {
+    fn from(val: TilesetBuilder) -> Self {
+        val.tileset
     }
 }
 
@@ -298,10 +292,12 @@ mod tests {
 
     /// Get example tileset which corresponds to the tileset.json file in resources/test
     fn get_example_tileset() -> RootTileset {
-        let mut tileset: RootTileset = Default::default();
-        tileset.asset = TilesetAssetInfo {
-            version: "1.0".into(),
-            tileset_version: Some("e575c6f1-a45b-420a-b172-6449fa6e0a59".into()),
+        let mut tileset = RootTileset {
+            asset: TilesetAssetInfo {
+                version: "1.0".into(),
+                tileset_version: Some("e575c6f1-a45b-420a-b172-6449fa6e0a59".into()),
+            },
+            ..Default::default()
         };
         tileset.properties = Some(HashMap::new());
         tileset.properties.as_mut().unwrap().insert(
@@ -313,7 +309,7 @@ mod tests {
         );
         tileset.geometric_error = 494.509;
 
-        let inner_tileset: Tileset = TilesetBuilder::new()
+        let inner_tileset: Tileset = TilesetBuilder::default()
             .bounding_volume(BoundingVolume::Region(BoundingRegion::new(
                 -0.000568296657741,
                 0.8987233516605286,
@@ -349,7 +345,7 @@ mod tests {
     fn test_deser_tileset() {
         let tileset_json_path = get_test_tileset_path();
         let tileset: RootTileset = serde_json::from_reader(
-            File::open(&tileset_json_path).expect("Could not open test tileset.json"),
+            File::open(tileset_json_path).expect("Could not open test tileset.json"),
         )
         .expect("Error while deserializing tileset JSON");
 

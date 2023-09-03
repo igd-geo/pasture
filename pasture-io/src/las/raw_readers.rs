@@ -14,11 +14,7 @@ use crate::base::{PointReader, SeekToPoint};
 
 /// Is the given VLR the LASzip VLR? Function taken from the `las` crate because it is not exported there
 fn is_laszip_vlr(vlr: &Vlr) -> bool {
-    if &vlr.user_id == laz::LazVlr::USER_ID && vlr.record_id == laz::LazVlr::RECORD_ID {
-        true
-    } else {
-        false
-    }
+    vlr.user_id == laz::LazVlr::USER_ID && vlr.record_id == laz::LazVlr::RECORD_ID
 }
 
 /// Parse a single chunk of points by reading the point data from the reader, running the given parser
@@ -71,10 +67,7 @@ impl<T: Read + Seek> RawLASReader<T> {
         // Manually read the VLRs
         read.seek(SeekFrom::Start(raw_header.header_size as u64))?;
         let vlrs = (0..raw_header.number_of_variable_length_records as usize)
-            .map(|_| {
-                las_rs::raw::Vlr::read_from(&mut read, false)
-                    .map(|raw_vlr| las_rs::Vlr::new(raw_vlr))
-            })
+            .map(|_| las_rs::raw::Vlr::read_from(&mut read, false).map(las_rs::Vlr::new))
             .collect::<Result<Vec<_>, _>>()
             .context("Failed to read VLRs")?;
 
@@ -102,14 +95,14 @@ impl<T: Read + Seek> RawLASReader<T> {
             .context("Failed to parse LAS header")?;
         let point_layout = point_layout_from_las_metadata(&metadata, false)?;
 
-        read.seek(SeekFrom::Start(offset_to_first_point_in_file as u64))?;
+        read.seek(SeekFrom::Start(offset_to_first_point_in_file))?;
 
         let default_parser =
             PointParser::build(&metadata, &point_layout).context("Failed to build point parser")?;
 
         Ok(Self {
             reader: read,
-            metadata: metadata,
+            metadata,
             layout: point_layout,
             current_point_index: 0,
             offset_to_first_point_in_file,
@@ -146,7 +139,7 @@ impl<T: Read + Seek> RawLASReader<T> {
         // then push the untyped data into 'buffer'
         let chunk_size = 50_000;
         let point_size = self.layout.size_of_point_entry() as usize;
-        let chunk_bytes = point_size as usize * chunk_size;
+        let chunk_bytes = point_size * chunk_size;
         let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
         let mut output_points_chunk: Vec<u8> = vec![0; chunk_bytes];
 
@@ -204,7 +197,7 @@ impl<T: Read + Seek> RawLASReader<T> {
 
         // Parser construction can be costly, so we cache parsers for known point layouts to amortize cost
         // over multiple `read_into_custom_layout` calls
-        let mut parser = match self.custom_parsers.get_mut(point_buffer.point_layout()) {
+        let parser = match self.custom_parsers.get_mut(point_buffer.point_layout()) {
             Some(parser) => parser,
             None => {
                 let new_parser = PointParser::build(&self.metadata, point_buffer.point_layout())
@@ -227,7 +220,7 @@ impl<T: Read + Seek> RawLASReader<T> {
                 points_in_chunk,
                 &mut points_chunk[..],
                 point_buffer.point_layout(),
-                &mut parser,
+                parser,
             );
 
             // Safe because `parse_chunk` is guaranteed to output data in the matching `PointLayout` for
@@ -344,13 +337,13 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             .context("Could not parse LAS header")?;
         let point_layout = point_layout_from_las_metadata(&metadata, false)?;
 
-        read.seek(SeekFrom::Start(offset_to_first_point_in_file as u64))?;
+        read.seek(SeekFrom::Start(offset_to_first_point_in_file))?;
 
-        let laszip_vlr = match header.vlrs().iter().find(|vlr| is_laszip_vlr(*vlr)) {
+        let laszip_vlr = match header.vlrs().iter().find(|vlr| is_laszip_vlr(vlr)) {
             None => Err(anyhow!(
                 "RawLAZReader::new: LAZ variable length record not found in file!"
             )),
-            Some(ref vlr) => {
+            Some(vlr) => {
                 let laz_record =
                     laz::las::laszip::LazVlr::from_buffer(&vlr.data).map_err(map_laz_err)?;
                 Ok(laz_record)
@@ -363,7 +356,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
 
         Ok(Self {
             reader,
-            metadata: metadata,
+            metadata,
             layout: point_layout,
             current_point_index: 0,
             size_of_point_in_file,
@@ -426,7 +419,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             input_points_chunk,
             num_points_in_chunk,
             output_points_chunk,
-            &target_layout,
+            target_layout,
             &mut custom_parser,
         );
 
@@ -450,7 +443,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         // then push the untyped data into 'buffer'
         let chunk_size = 50_000;
         let point_size = self.layout.size_of_point_entry() as usize;
-        let chunk_bytes = point_size as usize * chunk_size;
+        let chunk_bytes = point_size * chunk_size;
         let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
 
         let decompression_chunk_size = self.size_of_point_in_file as usize * chunk_size;

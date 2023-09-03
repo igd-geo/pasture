@@ -137,7 +137,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
             raw_vlr.write_to(&mut write)?;
         }
 
-        let point_start_index = write.seek(SeekFrom::Current(0))?;
+        let point_start_index = write.stream_position()?;
         assert_eq!(point_start_index, raw_header.offset_to_point_data as u64);
 
         Ok(Self {
@@ -165,7 +165,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
     fn write_header(&mut self) -> Result<()> {
         finalize_las_header(&mut self.current_header);
 
-        let current_position = self.writer.seek(SeekFrom::Current(0))?;
+        let current_position = self.writer.stream_position()?;
         self.writer.seek(SeekFrom::Start(0))?;
         self.current_header.write_to(&mut self.writer)?;
         self.writer.seek(SeekFrom::Start(current_position))?;
@@ -239,9 +239,9 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
 
                 let bit_attributes = if source_format.is_extended {
                     let return_number = point_read.read_u8()?;
-                    points_by_return
-                        .get_mut(&return_number)
-                        .map(|count| *count += 1);
+                    if let Some(count) = points_by_return.get_mut(&return_number) {
+                        *count += 1;
+                    }
                     let number_of_returns = point_read.read_u8()?;
                     let classification_flags = point_read.read_u8()?;
                     let scanner_channel = point_read.read_u8()?;
@@ -257,9 +257,9 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
                     })
                 } else {
                     let return_number = point_read.read_u8()?;
-                    points_by_return
-                        .get_mut(&return_number)
-                        .map(|count| *count += 1);
+                    if let Some(count) = points_by_return.get_mut(&return_number) {
+                        *count += 1;
+                    }
                     let number_of_returns = point_read.read_u8()?;
                     let scan_direction_flag = point_read.read_u8()?;
                     let edge_of_flight_line = point_read.read_u8()?;
@@ -598,7 +598,7 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawLASWriter<T> {
             return Ok(());
         }
 
-        let current_index = self.writer.seek(SeekFrom::Current(0))?;
+        let current_index = self.writer.stream_position()?;
         self.write_header()?;
         self.write_evlrs()?;
         self.writer.seek(SeekFrom::Start(current_index))?;
@@ -680,7 +680,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                 .and_then(|raw_vlr| raw_vlr.write_to(&mut write))?;
         }
         if !header.vlr_padding().is_empty() {
-            write.write_all(&header.vlr_padding())?;
+            write.write_all(header.vlr_padding())?;
         }
 
         let laz_writer = LasZipCompressor::new(write, raw_laz_vlr).map_err(map_laz_err)?;
@@ -766,9 +766,9 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
 
                 let bit_attributes = if source_format.is_extended {
                     let return_number = point_read.read_u8()?;
-                    points_by_return
-                        .get_mut(&return_number)
-                        .map(|count| *count += 1);
+                    if let Some(count) = points_by_return.get_mut(&return_number) {
+                        *count += 1;
+                    }
                     let number_of_returns = point_read.read_u8()?;
                     let classification_flags = point_read.read_u8()?;
                     let scanner_channel = point_read.read_u8()?;
@@ -784,9 +784,9 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
                     })
                 } else {
                     let return_number = point_read.read_u8()?;
-                    points_by_return
-                        .get_mut(&return_number)
-                        .map(|count| *count += 1);
+                    if let Some(count) = points_by_return.get_mut(&return_number) {
+                        *count += 1;
+                    }
                     let number_of_returns = point_read.read_u8()?;
                     let scan_direction_flag = point_read.read_u8()?;
                     let edge_of_flight_line = point_read.read_u8()?;
@@ -1127,7 +1127,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
 
         let mut raw_writer = self.writer.get_mut();
 
-        let current_position = raw_writer.seek(SeekFrom::Current(0))?;
+        let current_position = raw_writer.stream_position()?;
         raw_writer.seek(SeekFrom::Start(0))?;
         self.current_header.write_to(&mut raw_writer)?;
         raw_writer.seek(SeekFrom::Start(current_position))?;

@@ -1,3 +1,4 @@
+#![allow(clippy::upper_case_acronyms)]
 use std::{fs::File, io::BufWriter, io::Seek, io::Write, path::Path};
 
 use anyhow::{Context, Result};
@@ -376,7 +377,7 @@ mod tests {
     }
 
     fn prepare_point_buffer<T: PointType + Clone + Copy>(test_points: &[T]) -> VectorBuffer {
-        test_points.into_iter().copied().collect()
+        test_points.iter().copied().collect()
     }
 
     #[test]
@@ -1195,7 +1196,7 @@ mod tests {
         // Assert that some bytes have been written. We could assert the exact number, but that might depend on implementation details
         // like padding that we don't really care about
         let vec = cursor.into_inner();
-        assert!(vec.len() > 0);
+        assert!(!vec.is_empty());
 
         Ok(())
     }
@@ -1224,7 +1225,7 @@ mod tests {
         // Assert that some bytes have been written. We could assert the exact number, but that might depend on implementation details
         // like padding that we don't really care about
         let vec = cursor.into_inner();
-        assert!(vec.len() > 0);
+        assert!(!vec.is_empty());
 
         Ok(())
     }

@@ -53,7 +53,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let header: PntsHeader = bincode::deserialize_from(&mut read)
             .context("Could not deserialize PNTS header from reader")?;
         header.verify_magic()?;
-        let position_after_header = read.seek(SeekFrom::Current(0))? as usize;
+        let position_after_header = read.stream_position()? as usize;
         assert_eq!(position_after_header, PntsHeader::BYTE_LENGTH);
 
         // The 3D Tiles spec is ambiguous when it comes to the exact values in the header. It says that 'featureTableJSONByteLength'
@@ -79,9 +79,9 @@ impl<R: BufRead + Seek> PntsReader<R> {
 
         // TODO Log all parameters that could not be parsed. This requires logging support for pasture
 
-        let feature_table_binary_offset = read.seek(SeekFrom::Current(0))?;
+        let feature_table_binary_offset = read.stream_position()?;
         // Convert offsets in binary body to offsets within whole file
-        for (_, offset) in &mut attribute_offsets {
+        for offset in attribute_offsets.values_mut() {
             *offset += feature_table_binary_offset;
         }
 
@@ -194,7 +194,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let rtc_center = header
             .get("RTC_CENTER")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec3f64(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec3f64(array),
                 _ => Err(anyhow!("RTC_CENTER value was no array entry")),
             })
             .transpose()?;
@@ -202,7 +202,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let quantized_volume_offset = header
             .get("QUANTIZED_VOLUME_OFFSET")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec3f32(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec3f32(array),
                 _ => Err(anyhow!("QUANTIZED_VOLUME_OFFSET value was no array entry")),
             })
             .transpose()?;
@@ -210,7 +210,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let quantized_volume_scale = header
             .get("QUANTIZED_VOLUME_SCALE")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec3f32(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec3f32(array),
                 _ => Err(anyhow!("QUANTIZED_VOLUME_SCALE value was no array entry")),
             })
             .transpose()?;
@@ -218,7 +218,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let constant_rgba = header
             .get("CONSTANT_RGBA")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec4u8(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec4u8(array),
                 _ => Err(anyhow!("CONSTANT_RGBA value was no array entry")),
             })
             .transpose()?;
@@ -346,7 +346,7 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
                         self.reader.read_exact(buf.as_mut_slice())?;
                         unsafe {
                             point_buffer.set_attribute(
-                                &target_attribute_def,
+                                target_attribute_def,
                                 point_index,
                                 buf.as_slice(),
                             );

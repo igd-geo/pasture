@@ -26,14 +26,14 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     pub fn from_read(read: T, format: &str, delimiter: &str) -> Result<Self> {
         let parse_layout = PointDataType::get_parse_layout(format)?;
         let layout = Self::get_point_layout_from_parse_layout(&parse_layout);
-        let metadata = AsciiMetadata::new();
+        let metadata = AsciiMetadata;
 
         Ok(Self {
             reader: read,
-            metadata: metadata,
+            metadata,
             delimiter: delimiter.to_string(),
             point_layout: layout,
-            parse_layout: parse_layout,
+            parse_layout,
         })
     }
 
@@ -58,7 +58,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                 PointDataType::EdgeOfFlightLine => attributes::EDGE_OF_FLIGHT_LINE,
                 PointDataType::ScanDirectionFlag => attributes::SCAN_DIRECTION_FLAG,
                 PointDataType::ScanAngleRank => attributes::SCAN_ANGLE_RANK,
-                PointDataType::NIR => attributes::NIR,
+                PointDataType::Nir => attributes::NIR,
                 PointDataType::Skip => panic!("Skip should be filtered"),
             })
             .collect::<HashSet<_>>();
@@ -173,7 +173,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
                         Self::parse_to_point_i8(point, &attributes::SCAN_ANGLE_RANK, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'a'))?;
                     }
-                    PointDataType::NIR => {
+                    PointDataType::Nir => {
                         Self::parse_to_point_u16(point, &attributes::NIR, 0, value_str)
                             .with_context(|| generate_parse_error(data_type, 'I'))?;
                     }
@@ -196,13 +196,10 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     ) -> Result<()> {
         let data = Self::parse_string::<i8>(value_str)?;
         let attribute_offset = point.get_layout().offset_of(attribute);
-        match attribute_offset {
-            Some(attribute_offset) => {
-                let mut cursor = point.get_cursor();
-                cursor.set_position(attribute_offset + offset);
-                cursor.write_i8(data)?;
-            }
-            None => (),
+        if let Some(attribute_offset) = attribute_offset {
+            let mut cursor = point.get_cursor();
+            cursor.set_position(attribute_offset + offset);
+            cursor.write_i8(data)?;
         }
         Ok(())
     }
@@ -218,13 +215,10 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
             bail!("ParseError expected bool found '{}'.", data);
         }
         let attribute_offset = point.get_layout().offset_of(attribute);
-        match attribute_offset {
-            Some(attribute_offset) => {
-                let mut cursor = point.get_cursor();
-                cursor.set_position(attribute_offset + offset);
-                cursor.write_u8(data)?;
-            }
-            None => (),
+        if let Some(attribute_offset) = attribute_offset {
+            let mut cursor = point.get_cursor();
+            cursor.set_position(attribute_offset + offset);
+            cursor.write_u8(data)?;
         }
         Ok(())
     }
@@ -237,13 +231,10 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     ) -> Result<()> {
         let data = Self::parse_string::<u8>(value_str)?;
         let attribute_offset = point.get_layout().offset_of(attribute);
-        match attribute_offset {
-            Some(attribute_offset) => {
-                let mut cursor = point.get_cursor();
-                cursor.set_position(attribute_offset + offset);
-                cursor.write_u8(data)?;
-            }
-            None => (),
+        if let Some(attribute_offset) = attribute_offset {
+            let mut cursor = point.get_cursor();
+            cursor.set_position(attribute_offset + offset);
+            cursor.write_u8(data)?;
         }
         Ok(())
     }
@@ -256,13 +247,10 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     ) -> Result<()> {
         let data = Self::parse_string::<u16>(value_str)?;
         let attribute_offset = point.get_layout().offset_of(attribute);
-        match attribute_offset {
-            Some(attribute_offset) => {
-                let mut cursor = point.get_cursor();
-                cursor.set_position(attribute_offset + offset);
-                cursor.write_u16::<LittleEndian>(data)?;
-            }
-            None => (),
+        if let Some(attribute_offset) = attribute_offset {
+            let mut cursor = point.get_cursor();
+            cursor.set_position(attribute_offset + offset);
+            cursor.write_u16::<LittleEndian>(data)?;
         }
         Ok(())
     }
@@ -275,13 +263,10 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
     ) -> Result<()> {
         let data = Self::parse_string::<f64>(value_str)?;
         let attribute_offset = point.get_layout().offset_of(attribute);
-        match attribute_offset {
-            Some(attribute_offset) => {
-                let mut cursor = point.get_cursor();
-                cursor.set_position(attribute_offset + offset);
-                cursor.write_f64::<LittleEndian>(data)?;
-            }
-            None => (),
+        if let Some(attribute_offset) = attribute_offset {
+            let mut cursor = point.get_cursor();
+            cursor.set_position(attribute_offset + offset);
+            cursor.write_f64::<LittleEndian>(data)?;
         }
         Ok(())
     }
@@ -300,8 +285,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
 fn generate_parse_error(datatype: &PointDataType, character: char) -> String {
     format!(
         "ParseError at parsing {} for format literal '{}'.",
-        datatype.to_string(),
-        character
+        datatype, character
     )
 }
 

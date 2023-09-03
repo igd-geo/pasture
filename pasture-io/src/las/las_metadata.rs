@@ -25,17 +25,17 @@ use super::{las_string_to_rust_string, write_rust_string_into_las_ascii_array};
 /// Contains constants for possible named fields in a `LASMetadata` structure
 pub mod named_fields {
     /// File source ID as per the LAS 1.4 specification
-    pub const FILE_SOURCE_I_D: &'static str = "LASFIELD_FileSourceID";
+    pub const FILE_SOURCE_I_D: &str = "LASFIELD_FileSourceID";
     /// LAS file version
-    pub const VERSION: &'static str = "LASFIELD_Version";
+    pub const VERSION: &str = "LASFIELD_Version";
     /// System identifier as per the LAS 1.4 specification
-    pub const SYSTEM_IDENTIFIER: &'static str = "LASFIELD_SystemIdentifier";
+    pub const SYSTEM_IDENTIFIER: &str = "LASFIELD_SystemIdentifier";
     /// Information about the generating software
-    pub const GENERATING_SOFTWARE: &'static str = "LASFIELD_GeneratingSoftware";
+    pub const GENERATING_SOFTWARE: &str = "LASFIELD_GeneratingSoftware";
     /// Day of year on which the file was created as per the LAS 1.4 specification
-    pub const FILE_CREATION_DAY_OF_YEAR: &'static str = "LASFIELD_FileCreationDayOfYear";
+    pub const FILE_CREATION_DAY_OF_YEAR: &str = "LASFIELD_FileCreationDayOfYear";
     /// Year in which the file was created
-    pub const FILE_CREATION_YEAR: &'static str = "LASFIELD_FileCreationYear";
+    pub const FILE_CREATION_YEAR: &str = "LASFIELD_FileCreationYear";
 
     //TODO More fields
 }
@@ -232,26 +232,17 @@ impl ExtraBytesDataType {
     }
     /// Does this data type represent an unsigned integer?
     pub fn is_unsigned(&self) -> bool {
-        match self {
-            Self::U8 | Self::U16 | Self::U32 | Self::U64 => true,
-            _ => false,
-        }
+        matches!(self, Self::U8 | Self::U16 | Self::U32 | Self::U64)
     }
 
     /// Does this data type represent a signed integer?
     pub fn is_signed(&self) -> bool {
-        match self {
-            Self::I8 | Self::I16 | Self::I32 | Self::I64 => true,
-            _ => false,
-        }
+        matches!(self, Self::I8 | Self::I16 | Self::I32 | Self::I64)
     }
 
     /// Does this data type represent a floating point value?
     pub fn is_floating_point(&self) -> bool {
-        match self {
-            Self::F32 | Self::F64 => true,
-            _ => false,
-        }
+        matches!(self, Self::F32 | Self::F64)
     }
 }
 
@@ -275,9 +266,9 @@ impl From<u8> for ExtraBytesDataType {
     }
 }
 
-impl Into<u8> for ExtraBytesDataType {
-    fn into(self) -> u8 {
-        match self {
+impl From<ExtraBytesDataType> for u8 {
+    fn from(val: ExtraBytesDataType) -> Self {
+        match val {
             ExtraBytesDataType::Undocumented => 0,
             ExtraBytesDataType::U8 => 1,
             ExtraBytesDataType::I8 => 2,
@@ -330,6 +321,7 @@ impl Display for ExtraBytesDataType {
 }
 
 bitfield! {
+    #[derive(Default, Copy, Clone)]
     pub struct ExtraBytesOptions(u8);
     impl Debug;
     pub no_data_is_relevant, set_no_data_is_relevant: 0;
@@ -337,18 +329,6 @@ bitfield! {
     pub max_is_relevant, set_max_is_relevant: 2;
     pub use_scale, set_use_scale: 3;
     pub use_offset, set_use_offset: 4;
-}
-
-impl Copy for ExtraBytesOptions {}
-impl Clone for ExtraBytesOptions {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-impl Default for ExtraBytesOptions {
-    fn default() -> Self {
-        Self(Default::default())
-    }
 }
 
 /// Raw binary representation of an entry in a 'Extra bytes' VLR
@@ -541,51 +521,45 @@ impl Display for ExtraBytesEntry {
         let offset_str = self.offset().map(|offset| format!("Offset: {offset}"));
         let min_str = if !self.options.min_is_relevant() {
             None
+        } else if self.data_type.is_floating_point() {
+            Some(format!("Min: {}", self.min_as_float().unwrap()))
+        } else if self.data_type.is_signed() {
+            Some(format!("Min: {}", self.min_as_signed().unwrap()))
+        } else if self.data_type.is_unsigned() {
+            Some(format!("Min: {}", self.min_as_unsigned().unwrap()))
         } else {
-            if self.data_type.is_floating_point() {
-                Some(format!("Min: {}", self.min_as_float().unwrap()))
-            } else if self.data_type.is_signed() {
-                Some(format!("Min: {}", self.min_as_signed().unwrap()))
-            } else if self.data_type.is_unsigned() {
-                Some(format!("Min: {}", self.min_as_unsigned().unwrap()))
-            } else {
-                Some(format!("Min (raw bytes): {:#?}", self.min_value))
-            }
+            Some(format!("Min (raw bytes): {:#?}", self.min_value))
         };
         let max_str = if !self.options.max_is_relevant() {
             None
+        } else if self.data_type.is_floating_point() {
+            Some(format!("Max: {}", self.max_as_float().unwrap()))
+        } else if self.data_type.is_signed() {
+            Some(format!("Max: {}", self.max_as_signed().unwrap()))
+        } else if self.data_type.is_unsigned() {
+            Some(format!("Max: {}", self.max_as_unsigned().unwrap()))
         } else {
-            if self.data_type.is_floating_point() {
-                Some(format!("Max: {}", self.max_as_float().unwrap()))
-            } else if self.data_type.is_signed() {
-                Some(format!("Max: {}", self.max_as_signed().unwrap()))
-            } else if self.data_type.is_unsigned() {
-                Some(format!("Max: {}", self.max_as_unsigned().unwrap()))
-            } else {
-                Some(format!("Max (raw bytes): {:#?}", self.max_value))
-            }
+            Some(format!("Max (raw bytes): {:#?}", self.max_value))
         };
         let no_value_str = if !self.options.no_data_is_relevant() {
             None
+        } else if self.data_type.is_floating_point() {
+            Some(format!(
+                "No-data value: {}",
+                self.no_data_value_as_float().unwrap()
+            ))
+        } else if self.data_type.is_signed() {
+            Some(format!(
+                "No-data value: {}",
+                self.no_data_value_as_signed().unwrap()
+            ))
+        } else if self.data_type.is_unsigned() {
+            Some(format!(
+                "No-data value: {}",
+                self.no_data_value_as_unsigned().unwrap()
+            ))
         } else {
-            if self.data_type.is_floating_point() {
-                Some(format!(
-                    "No-data value: {}",
-                    self.no_data_value_as_float().unwrap()
-                ))
-            } else if self.data_type.is_signed() {
-                Some(format!(
-                    "No-data value: {}",
-                    self.no_data_value_as_signed().unwrap()
-                ))
-            } else if self.data_type.is_unsigned() {
-                Some(format!(
-                    "No-data value: {}",
-                    self.no_data_value_as_unsigned().unwrap()
-                ))
-            } else {
-                Some(format!("No-data value (raw bytes): {:#?}", self.min_value))
-            }
+            Some(format!("No-data value (raw bytes): {:#?}", self.min_value))
         };
         let helper_array = [scale_str, offset_str, min_str, max_str, no_value_str];
         let combined_strings = helper_array
@@ -617,18 +591,20 @@ impl TryFrom<&RawExtraBytesEntry> for ExtraBytesEntry {
     }
 }
 
-impl Into<RawExtraBytesEntry> for &ExtraBytesEntry {
-    fn into(self) -> RawExtraBytesEntry {
-        let mut ret: RawExtraBytesEntry = Default::default();
-        ret.data_type = self.data_type.into();
-        ret.options = self.options.0;
-        write_rust_string_into_las_ascii_array(&self.name, &mut ret.name);
-        ret.no_data = self.no_data_value;
-        ret.min = self.min_value;
-        ret.max = self.max_value;
-        ret.scale = self.scale;
-        ret.offset = self.offset;
-        write_rust_string_into_las_ascii_array(&self.description, &mut ret.description);
+impl From<&ExtraBytesEntry> for RawExtraBytesEntry {
+    fn from(val: &ExtraBytesEntry) -> Self {
+        let mut ret = RawExtraBytesEntry {
+            data_type: val.data_type.into(),
+            options: val.options.0,
+            no_data: val.no_data_value,
+            min: val.min_value,
+            max: val.max_value,
+            scale: val.scale,
+            offset: val.offset,
+            ..Default::default()
+        };
+        write_rust_string_into_las_ascii_array(&val.name, &mut ret.name);
+        write_rust_string_into_las_ascii_array(&val.description, &mut ret.description);
         ret
     }
 }
@@ -737,7 +713,7 @@ impl TryFrom<&'_ Vlr> for ExtraBytesVlr {
 
         let raw_entries: &[RawExtraBytesEntry] = bytemuck::cast_slice(&value.data);
         let entries = raw_entries
-            .into_iter()
+            .iter()
             .map(|raw_entry| raw_entry.try_into())
             .collect::<Result<_, _>>()?;
 
@@ -791,12 +767,10 @@ fn display_generic_vlr(vlr: &Vlr, f: &mut std::fmt::Formatter<'_>) -> std::fmt::
 
     if let Ok(vlr_as_str) = String::from_utf8(vlr.data.clone()) {
         writeln!(f, "\t\tData:      {vlr_as_str}")
+    } else if vlr.data.len() > 32 {
+        writeln!(f, "\t\tData:      {:?}...", &vlr.data[0..32])
     } else {
-        if vlr.data.len() > 32 {
-            writeln!(f, "\t\tData:      {:?}...", &vlr.data[0..32])
-        } else {
-            writeln!(f, "\t\tData:      {:?}", vlr.data)
-        }
+        writeln!(f, "\t\tData:      {:?}", vlr.data)
     }
 }
 
@@ -806,7 +780,7 @@ pub struct LASMetadata {
     bounds: AABB<f64>,
     point_count: usize,
     point_format: Format,
-    classification_lookup_vlr: Option<ClassificationLookup>,
+    classification_lookup_vlr: Option<Box<ClassificationLookup>>, //Boxed because it is large
     text_area_description_vlr: Option<TextAreaDescription>,
     extra_bytes_vlr: Option<ExtraBytesVlr>,
     raw_las_header: Option<Header>,
@@ -854,7 +828,7 @@ impl LASMetadata {
 
     /// Returns the Classification Lookup VLR, if it exists
     pub fn classification_lookup_vlr(&self) -> Option<&ClassificationLookup> {
-        self.classification_lookup_vlr.as_ref()
+        self.classification_lookup_vlr.as_deref()
     }
 
     /// Returns the Text Area Description VLR, if it exists
@@ -1059,7 +1033,7 @@ impl TryFrom<&las::Header> for LASMetadata {
             .find(|vlr| {
                 vlr.user_id == KNOWN_VLR_USER_ID && vlr.record_id == ClassificationLookup::RECORD_ID
             })
-            .map(|vlr| ClassificationLookup::try_from(vlr))
+            .map(ClassificationLookup::try_from)
             .transpose()
             .context("Could not parse Classification Lookup VLR")?;
 
@@ -1069,7 +1043,7 @@ impl TryFrom<&las::Header> for LASMetadata {
             .find(|vlr| {
                 vlr.user_id == KNOWN_VLR_USER_ID && vlr.record_id == TextAreaDescription::RECORD_ID
             })
-            .map(|vlr| TextAreaDescription::try_from(vlr))
+            .map(TextAreaDescription::try_from)
             .transpose()
             .context("Could not parse Text Area Description VLR")?;
 
@@ -1079,7 +1053,7 @@ impl TryFrom<&las::Header> for LASMetadata {
             .find(|vlr| {
                 vlr.user_id == KNOWN_VLR_USER_ID && vlr.record_id == ExtraBytesVlr::RECORD_ID
             })
-            .map(|vlr| ExtraBytesVlr::try_from(vlr))
+            .map(ExtraBytesVlr::try_from)
             .transpose()
             .context("Could not parse Extra Bytes VLR")?;
 
@@ -1088,7 +1062,7 @@ impl TryFrom<&las::Header> for LASMetadata {
             point_count: header.number_of_points() as usize,
             point_format: *header.point_format(),
             raw_las_header: Some(header.clone()),
-            classification_lookup_vlr,
+            classification_lookup_vlr: classification_lookup_vlr.map(Box::new),
             extra_bytes_vlr,
             text_area_description_vlr,
         })

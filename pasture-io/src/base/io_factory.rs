@@ -1,3 +1,5 @@
+#![allow(clippy::large_enum_variant)]
+
 use std::{
     fs::File,
     io::{BufReader, BufWriter},
@@ -18,7 +20,7 @@ use super::{PointReader, PointWriter, SeekToPoint};
 
 #[derive(Debug)]
 enum SupportedFileExtensions {
-    LAS,
+    Las,
     Tiles3D,
 }
 
@@ -37,7 +39,7 @@ fn get_extension_lookup(path: &Path) -> Result<SupportedFileExtensions> {
         )
     })?;
     match extension_str.to_lowercase().as_str() {
-        "las" | "laz" => Ok(SupportedFileExtensions::LAS),
+        "las" | "laz" => Ok(SupportedFileExtensions::Las),
         "pnts" => Ok(SupportedFileExtensions::Tiles3D),
         other => Err(anyhow!("Unsupported file extension {other}")),
     }
@@ -52,7 +54,7 @@ impl GenericPointReader {
     pub fn open_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let extension = get_extension_lookup(path.as_ref())?;
         match extension {
-            SupportedFileExtensions::LAS => {
+            SupportedFileExtensions::Las => {
                 let reader = LASReader::from_path(path)?;
                 Ok(Self::LAS(reader))
             }
@@ -121,7 +123,7 @@ impl GenericPointWriter {
     pub fn open_file<P: AsRef<Path>>(path: P, point_layout: &PointLayout) -> Result<Self> {
         let extension = get_extension_lookup(path.as_ref())?;
         match extension {
-            SupportedFileExtensions::LAS => {
+            SupportedFileExtensions::Las => {
                 let writer = LASWriter::from_path_and_point_layout(path, point_layout)?;
                 Ok(Self::LAS(writer))
             }

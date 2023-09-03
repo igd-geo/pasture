@@ -31,8 +31,8 @@ fn gen_points() -> HashMapBuffer {
     let mut buffer = HashMapBuffer::with_capacity(points_per_axis, Point::layout());
 
     let z_at = |x: f32, y: f32| -> f32 {
-        let z1 = (x as f32 / points_per_axis as f32 * 8.0).sin();
-        let z2 = (y as f32 / points_per_axis as f32 * 12.0).sin();
+        let z1 = (x / points_per_axis as f32 * 8.0).sin();
+        let z2 = (y / points_per_axis as f32 * 12.0).sin();
         z1 * z2 * height
     };
 
@@ -71,7 +71,7 @@ fn create_tileset_for_points() -> RootTileset {
 
     // We have a single tileset in this example, which has the given bounds, references the .pnts file
     // and has some extra parameters that are required for the visualization in e.g. Cesium
-    let tileset: Tileset = TilesetBuilder::new()
+    let tileset: Tileset = TilesetBuilder::default()
         .bounding_volume(BoundingVolume::Box(bounds.into()))
         .content("points.pnts".into(), None)
         .geometric_error(16.0)

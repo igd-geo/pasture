@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     convert::TryInto,
-    io::{Cursor, Seek, SeekFrom, Write},
+    io::{Cursor, Seek, Write},
 };
 
 use anyhow::{Context, Result};
@@ -320,11 +320,12 @@ impl<W: Write + Seek> PntsWriter<W> {
         }
 
         // Write padding bytes to ensure we are at an 8-byte boundary!
-        let current_write_position = self.writer.seek(SeekFrom::Current(0))?;
+        let current_write_position = self.writer.stream_position()?;
         let next_8_byte_boundary = current_write_position.align_to(8);
         let num_padding_bytes = next_8_byte_boundary - current_write_position;
         if num_padding_bytes > 0 {
-            self.writer.write(&vec![0; num_padding_bytes as usize])?;
+            self.writer
+                .write_all(&vec![0; num_padding_bytes as usize])?;
         }
 
         Ok(())
@@ -361,12 +362,12 @@ impl<W: Write + Seek> PointWriter for PntsWriter<W> {
                     let dst_attribute_def = dst_attribute.attribute_definition();
                     let mut converted_buf = vec![0; dst_attribute_size];
                     for point_index in 0..points.len() {
-                        points.get_attribute(&attribute_def, point_index, buf.as_mut_slice());
+                        points.get_attribute(attribute_def, point_index, buf.as_mut_slice());
                         if let Some(conversion_fn) = maybe_converter {
                             unsafe {
                                 conversion_fn(buf.as_slice(), converted_buf.as_mut_slice());
                                 self.cached_points.set_attribute(
-                                    &dst_attribute_def,
+                                    dst_attribute_def,
                                     base_point_index + point_index,
                                     converted_buf.as_slice(),
                                 );
@@ -374,7 +375,7 @@ impl<W: Write + Seek> PointWriter for PntsWriter<W> {
                         } else {
                             unsafe {
                                 self.cached_points.set_attribute(
-                                    &dst_attribute_def,
+                                    dst_attribute_def,
                                     base_point_index + point_index,
                                     buf.as_slice(),
                                 )
@@ -492,8 +493,8 @@ mod tests {
             assert_eq!(read_points.point_layout(), test_point_buffer.point_layout());
             assert_eq!(read_points.len(), test_point_buffer.len());
 
-            for point_idx in 0..test_point_buffer.len() {
-                let expected_point = test_data[point_idx];
+            for (point_idx, point) in test_data.iter().enumerate().take(test_point_buffer.len()) {
+                let expected_point = *point;
                 let actual_point = read_points.view::<PntsDefaultPoint>().at(point_idx);
                 assert_eq!(expected_point, actual_point);
             }

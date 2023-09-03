@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use std::{collections::HashMap, ops::Range};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -213,14 +214,14 @@ impl AttributeParseFn {
 
         // Convert and write the value in its output format to the output data
         let destination_slice = &mut destination_point[destination_bytes];
-        type_converter(&buffer[..], destination_slice);
+        type_converter(buffer, destination_slice);
     }
 
     #[inline(always)]
     unsafe fn scaled(
         source_point: &[u8],
         destination_point: &mut [u8],
-        apply_offset_and_scale_fn: fn(&[u8], &mut [u8], offset_bytes: &[u8], scale_bytes: &[u8]),
+        apply_offset_and_scale_fn: ApplyOffsetAndScaleFn,
         source_bytes: Range<usize>,
         destination_bytes: Range<usize>,
         offset_values_bytes: &[u8],
@@ -241,7 +242,7 @@ impl AttributeParseFn {
     unsafe fn type_converted_and_scaled(
         source_point: &[u8],
         destination_point: &mut [u8],
-        apply_offset_and_scale_fn: fn(&[u8], &mut [u8], offset_bytes: &[u8], scale_bytes: &[u8]),
+        apply_offset_and_scale_fn: ApplyOffsetAndScaleFn,
         source_bytes: Range<usize>,
         destination_bytes: Range<usize>,
         scaling_buffer: &mut [u8],
@@ -1170,7 +1171,7 @@ mod tests {
         };
         builder.point_format = point_format;
         let header = builder.into_header()?;
-        Ok(header.try_into()?)
+        header.try_into()
     }
 
     fn get_test_point_las_format5() -> (RawLASPointFormat5, LasPointFormat5) {
