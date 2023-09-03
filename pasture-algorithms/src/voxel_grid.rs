@@ -26,13 +26,13 @@ fn find_leaf(
     let mut index_x = 0;
     let mut index_y = 0;
     let mut index_z = 0;
-    while markers_x.len() > 0 && markers_x[index_x] < p.x {
+    while !markers_x.is_empty() && markers_x[index_x] < p.x {
         index_x += 1;
     }
-    while markers_y.len() > 0 && markers_y[index_y] < p.y {
+    while !markers_y.is_empty() && markers_y[index_y] < p.y {
         index_y += 1;
     }
-    while markers_z.len() > 0 && markers_z[index_z] < p.z {
+    while !markers_z.is_empty() && markers_z[index_z] < p.z {
         index_z += 1;
     }
     // clamp values to the better fitting marker: [i] or [i-1]
@@ -201,7 +201,7 @@ fn centroid_max_pool<'a, T: BorrowedBuffer<'a>>(
                 value = buffer.view_attribute::<f32>(attribute_definition).at(*p) as f64;
             }
             PointAttributeDataType::F64 => {
-                value = buffer.view_attribute::<f64>(attribute_definition).at(*p) as f64;
+                value = buffer.view_attribute::<f64>(attribute_definition).at(*p);
             }
             _ => unimplemented!(),
         }
@@ -323,8 +323,7 @@ fn centroid_most_common<'a, T: BorrowedBuffer<'a>>(
             curr_key = key;
         }
     }
-    let most_common = curr_key.parse::<isize>().unwrap();
-    most_common
+    curr_key.parse::<isize>().unwrap()
 }
 
 /// returns the average value in the voxel for attribute_definition
@@ -424,7 +423,7 @@ fn centroid_average_num<'a, PB: BorrowedBuffer<'a>>(
                 sum += buffer.view_attribute::<f32>(attribute_definition).at(*p) as f64
             }
             PointAttributeDataType::F64 => {
-                sum += buffer.view_attribute::<f64>(attribute_definition).at(*p) as f64
+                sum += buffer.view_attribute::<f64>(attribute_definition).at(*p)
             }
             PointAttributeDataType::Vec3u8 => panic!("For vector types use centroid_average_vec."),
             PointAttributeDataType::Vec3u16 => panic!("For vector types use centroid_average_vec."),
@@ -434,8 +433,7 @@ fn centroid_average_num<'a, PB: BorrowedBuffer<'a>>(
             _ => unimplemented!(),
         }
     }
-    let average = sum / v.points.len() as f64;
-    average
+    sum / v.points.len() as f64
 }
 
 /// sets all attributes of the point-buffer for the centroid
@@ -459,7 +457,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
     }
 
     for a in target_layout.attributes() {
-        if &a.name() == &attributes::POSITION_3D.name()
+        if a.name() == attributes::POSITION_3D.name()
             && a.datatype() == attributes::POSITION_3D.datatype()
         {
             let position = centroid_average_vec(v, buffer, &attributes::POSITION_3D, a.datatype());
@@ -467,7 +465,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::POSITION_3D, pos_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::INTENSITY.name()
+        } else if a.name() == attributes::INTENSITY.name()
             && a.datatype() == attributes::INTENSITY.datatype()
         {
             let average =
@@ -476,7 +474,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::INTENSITY, avg_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::RETURN_NUMBER.name()
+        } else if a.name() == attributes::RETURN_NUMBER.name()
             && a.datatype() == attributes::RETURN_NUMBER.datatype()
         {
             let most_common =
@@ -486,7 +484,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::RETURN_NUMBER, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::NUMBER_OF_RETURNS.name()
+        } else if a.name() == attributes::NUMBER_OF_RETURNS.name()
             && a.datatype() == attributes::NUMBER_OF_RETURNS.datatype()
         {
             let most_common =
@@ -496,7 +494,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::NUMBER_OF_RETURNS, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::CLASSIFICATION_FLAGS.name()
+        } else if a.name() == attributes::CLASSIFICATION_FLAGS.name()
             && a.datatype() == attributes::CLASSIFICATION_FLAGS.datatype()
         {
             let max =
@@ -506,7 +504,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::CLASSIFICATION_FLAGS, m_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::SCANNER_CHANNEL.name()
+        } else if a.name() == attributes::SCANNER_CHANNEL.name()
             && a.datatype() == attributes::SCANNER_CHANNEL.datatype()
         {
             let most_common =
@@ -516,7 +514,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::SCANNER_CHANNEL, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::SCAN_DIRECTION_FLAG.name()
+        } else if a.name() == attributes::SCAN_DIRECTION_FLAG.name()
             && a.datatype() == attributes::SCAN_DIRECTION_FLAG.datatype()
         {
             let most_common = centroid_most_common::<PB>(
@@ -529,7 +527,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::SCAN_DIRECTION_FLAG, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::EDGE_OF_FLIGHT_LINE.name()
+        } else if a.name() == attributes::EDGE_OF_FLIGHT_LINE.name()
             && a.datatype() == attributes::EDGE_OF_FLIGHT_LINE.datatype()
         {
             let most_common = centroid_most_common::<PB>(
@@ -542,7 +540,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::EDGE_OF_FLIGHT_LINE, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::CLASSIFICATION.name()
+        } else if a.name() == attributes::CLASSIFICATION.name()
             && a.datatype() == attributes::CLASSIFICATION.datatype()
         {
             let most_common =
@@ -552,7 +550,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::CLASSIFICATION, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::SCAN_ANGLE_RANK.name()
+        } else if a.name() == attributes::SCAN_ANGLE_RANK.name()
             && a.datatype() == attributes::SCAN_ANGLE_RANK.datatype()
         {
             let most_common =
@@ -562,7 +560,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::SCAN_ANGLE_RANK, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::SCAN_ANGLE.name()
+        } else if a.name() == attributes::SCAN_ANGLE.name()
             && a.datatype() == attributes::SCAN_ANGLE.datatype()
         {
             let most_common =
@@ -571,7 +569,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::SCAN_ANGLE, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::USER_DATA.name()
+        } else if a.name() == attributes::USER_DATA.name()
             && a.datatype() == attributes::USER_DATA.datatype()
         {
             let most_common =
@@ -580,7 +578,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::USER_DATA, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::POINT_SOURCE_ID.name()
+        } else if a.name() == attributes::POINT_SOURCE_ID.name()
             && a.datatype() == attributes::POINT_SOURCE_ID.datatype()
         {
             let most_common =
@@ -590,7 +588,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::POINT_SOURCE_ID, mc_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::COLOR_RGB.name()
+        } else if a.name() == attributes::COLOR_RGB.name()
             && a.datatype() == attributes::COLOR_RGB.datatype()
         {
             let color = centroid_average_vec(v, buffer, &attributes::COLOR_RGB, a.datatype());
@@ -599,17 +597,15 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::COLOR_RGB, col_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::GPS_TIME.name()
+        } else if a.name() == attributes::GPS_TIME.name()
             && a.datatype() == attributes::GPS_TIME.datatype()
         {
-            let max =
-                centroid_max_pool::<PB>(v, buffer, &attributes::GPS_TIME, a.datatype()) as f64;
+            let max = centroid_max_pool::<PB>(v, buffer, &attributes::GPS_TIME, a.datatype());
             let m_slice = bytemuck::bytes_of(&max);
             centroid
                 .set_raw_attribute(&attributes::GPS_TIME, m_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::NIR.name() && a.datatype() == attributes::NIR.datatype()
-        {
+        } else if a.name() == attributes::NIR.name() && a.datatype() == attributes::NIR.datatype() {
             let average =
                 centroid_average_num::<PB>(v, buffer, &attributes::NIR, a.datatype()) as u16;
             let avg_slice = bytemuck::bytes_of(&average);
@@ -660,7 +656,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             let params_f32 = Vector3::new(params.x as f32, params.y as f32, params.z as f32);
             let par_slice = unsafe { view_raw_bytes(&params_f32) };
             &centroid.set_raw_attribute(&attributes::WAVEFORM_PARAMETERS, par_slice); */
-        } else if &a.name() == &attributes::POINT_ID.name()
+        } else if a.name() == attributes::POINT_ID.name()
             && a.datatype() == attributes::POINT_ID.datatype()
         {
             let max =
@@ -669,7 +665,7 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
             centroid
                 .set_raw_attribute(&attributes::POINT_ID, m_slice)
                 .unwrap();
-        } else if &a.name() == &attributes::NORMAL.name()
+        } else if a.name() == attributes::NORMAL.name()
             && a.datatype() == attributes::NORMAL.datatype()
         {
             let normal = centroid_average_vec(v, buffer, &attributes::NORMAL, a.datatype());
@@ -682,15 +678,6 @@ fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
         // we have a non-standard attribute -> use max-pooling for numbers and average for vec
         // currently, only f64 and Vec3f64 is supported
         else {
-            if a.datatype() == PointAttributeDataType::Vec3u8
-                || a.datatype() == PointAttributeDataType::Vec3u16
-                || a.datatype() == PointAttributeDataType::Vec3f32
-                || a.datatype() == PointAttributeDataType::Vec3f64
-            {
-                //TODO: get average_vec
-            } else {
-                // TODO: get max_value
-            }
             panic!(
                 "attribute is non-standard which is not supported currently: {:?}",
                 a

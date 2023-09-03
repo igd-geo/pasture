@@ -3,7 +3,6 @@ use pasture_algorithms::normal_estimation::compute_normals;
 use pasture_core::containers::VectorBuffer;
 use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;
-use typenum;
 
 #[repr(C, packed)]
 #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]

@@ -40,7 +40,7 @@ fn get_dummy_points_custom_format_small_interleaved(num_points: usize) -> Vector
             .view_mut()
             .push_point(random_custom_point_small(&mut rng));
     }
-    return buffer;
+    buffer
 }
 
 fn get_dummy_points_custom_format_small_columnar(num_points: usize) -> HashMapBuffer {
@@ -51,7 +51,7 @@ fn get_dummy_points_custom_format_small_columnar(num_points: usize) -> HashMapBu
             .view_mut()
             .push_point(random_custom_point_small(&mut rng));
     }
-    return buffer;
+    buffer
 }
 
 fn bench(c: &mut Criterion) {
@@ -84,24 +84,24 @@ fn bench(c: &mut Criterion) {
         }
         let mut testname1 = String::from("convexhull_as_points_performance_interleaved_buffer_");
         testname1.push_str(testname);
-        c.bench_function(&*testname1, |b| {
+        c.bench_function(&testname1, |b| {
             b.iter(|| convexhull::convex_hull_as_points(&dummy_points_small_interleaved))
         });
         let mut testname2 =
             String::from("convexhull_as_triangle_mesh_performance_interleaved_buffer_");
         testname2.push_str(testname);
-        c.bench_function(&*testname2, |b| {
+        c.bench_function(&testname2, |b| {
             b.iter(|| convexhull::convex_hull_as_triangle_mesh(&dummy_points_small_interleaved))
         });
         let mut testname3 = String::from("convexhull_as_points_performance_perattribute_buffer_");
         testname3.push_str(testname);
-        c.bench_function(&*testname3, |b| {
+        c.bench_function(&testname3, |b| {
             b.iter(|| convexhull::convex_hull_as_points(&dummy_points_small_perattribute))
         });
         let mut testname4 =
             String::from("convexhull_as_triangle_mesh_performance_perattribute_buffer_");
         testname4.push_str(testname);
-        c.bench_function(&*testname4, |b| {
+        c.bench_function(&testname4, |b| {
             b.iter(|| convexhull::convex_hull_as_triangle_mesh(&dummy_points_small_perattribute))
         });
     }

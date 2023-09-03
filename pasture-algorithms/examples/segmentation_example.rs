@@ -18,10 +18,9 @@ pub struct SimplePoint {
     pub intensity: u16,
 }
 
-fn main() -> () {
+fn main() {
     //generate random points for the pointcloud
     let mut buffer = (0..20000)
-        .into_iter()
         .map(|p| {
             let mut rng = rand::thread_rng();
             //generate plane points (along x- and y-axis)

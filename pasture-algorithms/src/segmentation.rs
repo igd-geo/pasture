@@ -31,7 +31,7 @@ pub struct Plane {
 fn distance_point_plane(point: &Vector3<f64>, plane: &Plane) -> f64 {
     let d = (plane.a * point.x + plane.b * point.y + plane.c * point.z + plane.d).abs();
     let e = (plane.a * plane.a + plane.b * plane.b + plane.c * plane.c).sqrt();
-    return d / e;
+    d / e
 }
 
 /// calculates the distance between a point and a line
@@ -244,7 +244,6 @@ pub fn ransac_plane_serial<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
         panic!("buffer needs to include at least 3 points to generate a plane.");
     }
     (0..num_of_iterations)
-        .into_iter()
         .map(|_x| 
             // generate one model for the current iteration
             generate_plane_model(buffer, distance_threshold))
@@ -361,7 +360,7 @@ pub fn ransac_line_serial<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
 
     // iterate num_of_iterations in parallel
     (0..num_of_iterations)
-        .into_iter()
+        
         .map(|_x| 
             // generate one model for the current iteration
             generate_line_model(buffer, distance_threshold))
@@ -389,7 +388,7 @@ mod tests {
     fn setup_point_cloud() -> HashMapBuffer {
         // generate random points for the pointcloud
         (2..2002)
-            .into_iter()
+            
             .map(|p| {
                 // let mut rng = rand::thread_rng();
                 // generate plane points (along x- and y-axis)
@@ -416,7 +415,7 @@ mod tests {
         let (_plane, indices) = ransac_plane_par(&buffer, 0.1, 300);
         assert!(indices.len() == 1600);
         for i in 0..2000 {
-            if !(i % 5 == 3) {
+            if i % 5 != 3 {
                 assert!(indices.contains(&i));
             }
         }
@@ -428,7 +427,7 @@ mod tests {
         let (_plane, indices) = ransac_plane_serial(&buffer, 0.1, 300);
         assert!(indices.len() == 1600);
         for i in 0..2000 {
-            if !(i % 5 == 3) {
+            if i % 5 != 3 {
                 assert!(indices.contains(&i));
             }
         }

@@ -63,10 +63,9 @@ fn generate_vec3u16(rng: &mut ThreadRng) -> Vector3<u16> {
     Vector3::new(rng.gen_range(11..120), rng.gen_range(11..120), 42)
 }
 
-fn main() -> () {
+fn main() {
     //generate random points for the pointcloud
     let buffer = (0..100000)
-        .into_iter()
         .map(|p| {
             let mut rng = rand::thread_rng();
             //generate plane points (along x- and y-axis)

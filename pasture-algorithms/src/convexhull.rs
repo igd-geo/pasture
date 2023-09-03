@@ -51,7 +51,7 @@ pub fn convex_hull_as_triangle_mesh<'a, T: BorrowedBuffer<'a>>(
     for tri in triangles {
         triangle_indices.push(Vector3::new(tri.a, tri.b, tri.c));
     }
-    return Ok(triangle_indices);
+    Ok(triangle_indices)
 }
 
 /// Convex Hull generation as points
@@ -78,7 +78,7 @@ pub fn convex_hull_as_points<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<us
         }
     }
     let point_indices: Vec<usize> = points.into_iter().collect();
-    return point_indices;
+    point_indices
 }
 
 fn create_convex_hull<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<Triangle> {
@@ -108,7 +108,7 @@ fn create_convex_hull<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<Triangle>
             pointid += 1;
         }
     };
-    return triangles;
+    triangles
 }
 
 /// Performs a single iteration of the cunvex hull algorithm.
@@ -185,12 +185,12 @@ fn iteration<'a, T: BorrowedBuffer<'a>>(
                 add_edge_to_outer_or_inner_edges(tri.c, tri.a, &mut outer_edges, &mut inner_edges);
                 return false;
             } else if dot == 0.0 {
-                planar_triangles.push(tri.clone());
+                planar_triangles.push(*tri);
             }
-            return true;
+            true
         });
 
-        if outer_edges.len() > 0 || inner_edges.len() > 0 {
+        if !outer_edges.is_empty() || !inner_edges.is_empty() {
             for edge in outer_edges.iter() {
                 let edge_a: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(edge.a);
                 let edge_b: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(edge.b);
@@ -319,18 +319,20 @@ fn iteration<'a, T: BorrowedBuffer<'a>>(
                 let mut vertices_on_two_edges = HashMap::new();
                 for facing_edge in edges_facing_point.iter() {
                     let res_a = vertices_on_one_edge_start
-                        .insert(facing_edge.a, (facing_edge.b, facing_edge.clone()));
-                    if res_a.is_some() && res_a.unwrap().0 != facing_edge.b {
-                        vertices_on_one_edge_start.remove(&facing_edge.a);
-                        vertices_on_two_edges
-                            .insert(facing_edge.a, (res_a.unwrap().1, facing_edge.clone()));
+                        .insert(facing_edge.a, (facing_edge.b, *facing_edge));
+                    if let Some(res_a) = res_a {
+                        if res_a.0 != facing_edge.b {
+                            vertices_on_one_edge_start.remove(&facing_edge.a);
+                            vertices_on_two_edges.insert(facing_edge.a, (res_a.1, *facing_edge));
+                        }
                     }
                     let res_b = vertices_on_one_edge_end
-                        .insert(facing_edge.b, (facing_edge.a, facing_edge.clone()));
-                    if res_b.is_some() && res_b.unwrap().0 != facing_edge.a {
-                        vertices_on_one_edge_end.remove(&facing_edge.b);
-                        vertices_on_two_edges
-                            .insert(facing_edge.b, (res_b.unwrap().1, facing_edge.clone()));
+                        .insert(facing_edge.b, (facing_edge.a, *facing_edge));
+                    if let Some(res_b) = res_b {
+                        if res_b.0 != facing_edge.a {
+                            vertices_on_one_edge_end.remove(&facing_edge.b);
+                            vertices_on_two_edges.insert(facing_edge.b, (res_b.1, *facing_edge));
+                        }
                     }
                 }
                 let mut triangles_to_remove = Vec::new();
@@ -402,7 +404,7 @@ fn dist_point_to_edge(
     let pa = edge_a - point;
     let edge_ab: Vector3<f64> = edge_b - edge_a;
     let edge_ab_normal = triangle_normal.cross(&edge_ab);
-    return edge_ab_normal.dot(&pa);
+    edge_ab_normal.dot(&pa)
 }
 
 /// Calculates the distance of a point to a line segment.
@@ -426,7 +428,7 @@ fn dist_point_to_line_segment(
         return bp.magnitude();
     }
 
-    return ab.cross(&ap).magnitude() / ab.magnitude();
+    ab.cross(&ap).magnitude() / ab.magnitude()
 }
 
 /// Adds the given edge to the set of outer edges. If the given edge is already contained in the set of outer edges it is removed and added to the set of inner edges.
@@ -454,7 +456,7 @@ fn add_edge_to_outer_or_inner_edges(
 fn calc_normal(a: Vector3<f64>, b: Vector3<f64>, c: Vector3<f64>) -> Vector3<f64> {
     let ab: Vector3<f64> = b - a;
     let ac: Vector3<f64> = c - a;
-    return ab.cross(&ac);
+    ab.cross(&ac)
 }
 
 #[cfg(test)]
@@ -480,14 +482,11 @@ mod tests {
     }
 
     // Internal Tests
-    fn test_normals_for_triangles(
-        triangles: &Vec<convexhull::Triangle>,
-        normals: &Vec<Vector3<f64>>,
-    ) {
+    fn test_normals_for_triangles(triangles: &[convexhull::Triangle], normals: &Vec<Vector3<f64>>) {
         for n in normals {
             let mut found = false;
             for t in triangles.iter() {
-                if f64::abs(t.normal.normalize().dot(&n) - 1.0) < 0.0001 {
+                if f64::abs(t.normal.normalize().dot(n) - 1.0) < 0.0001 {
                     found = true;
                     break;
                 }
@@ -498,7 +497,7 @@ mod tests {
 
     fn test_all_points_inside_hull<'a, T: BorrowedBuffer<'a>>(
         buffer: &'a T,
-        triangles: &Vec<convexhull::Triangle>,
+        triangles: &[convexhull::Triangle],
     ) {
         let position_attribute = buffer
             .point_layout()
