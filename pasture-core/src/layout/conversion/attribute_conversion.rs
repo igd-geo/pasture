@@ -179,8 +179,8 @@ macro_rules! insert_vec3_converter_using_as {
     };
 }
 
-/// Returns a generic converter that can convert between primitive types. Going from smaller to larger types is realized
-/// through `.into()` calls, while going from larger to smaller types is done through coercions (using `as`) where possible
+/// Returns a generic converter that can convert between primitive types. These functions implement primitive type conversions
+/// as if using the `as` operator, using the [`num_traits::AsPrimitive`] trait
 pub fn get_generic_converter(
     from_type: PointAttributeDataType,
     to_type: PointAttributeDataType,

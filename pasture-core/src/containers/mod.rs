@@ -107,3 +107,6 @@ pub use self::buffer_views::*;
 
 mod untyped_point;
 pub use self::untyped_point::*;
+
+mod slice;
+pub use self::slice::*;
