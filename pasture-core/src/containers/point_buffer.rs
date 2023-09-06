@@ -1029,7 +1029,7 @@ where
                     point_index,
                     attribute.attribute_definition(),
                 )];
-                let dst_point_slice = &mut data[(point_index * size_of_point)..];
+                let dst_point_slice = &mut data[((point_index - range.start) * size_of_point)..];
                 let dst_slice = &mut dst_point_slice[attribute.byte_range_within_point()];
                 dst_slice.copy_from_slice(src_slice);
             }
@@ -2009,6 +2009,41 @@ mod tests {
     fn test_buffers_set_point_range() {
         test_buffer_set_point_range_generic::<VectorBuffer>();
         test_buffer_set_point_range_generic::<HashMapBuffer>();
+    }
+
+    fn test_buffer_get_point_range_generic<
+        B: for<'a> BorrowedMutBuffer<'a>
+            + FromIterator<CustomPointTypeBig>
+            + for<'a> SliceBufferMut<'a>,
+    >() {
+        const COUNT: usize = 16;
+        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+        let raw_test_data: &[u8] = bytemuck::cast_slice(test_data.as_slice());
+        let size_of_single_point = std::mem::size_of::<CustomPointTypeBig>();
+
+        let buffer = test_data.iter().copied().collect::<B>();
+
+        let mut actual_point_data = vec![0; raw_test_data.len()];
+        buffer.get_point_range(0..COUNT, &mut actual_point_data);
+
+        assert_eq!(raw_test_data, actual_point_data);
+
+        // Check that subset ranges work correctly as well
+        let subset_slice = &mut actual_point_data[..(6 * size_of_single_point)];
+        buffer.get_point_range(2..8, subset_slice);
+        assert_eq!(
+            &raw_test_data[(2 * size_of_single_point)..(8 * size_of_single_point)],
+            subset_slice
+        );
+    }
+
+    #[test]
+    fn test_buffer_get_point_range() {
+        test_buffer_get_point_range_generic::<VectorBuffer>();
+        test_buffer_get_point_range_generic::<HashMapBuffer>();
     }
 
     fn test_buffer_set_attribute_range_generic<

@@ -33,6 +33,7 @@ impl<T: Write + Seek + Send + 'static> LASWriter<T> {
         point_layout: &PointLayout,
         is_compressed: bool,
     ) -> Result<Self> {
+        // TODO Support writing extra bytes, for now they will be ignored
         let point_format = las_point_format_from_point_layout(point_layout);
         let mut header_builder = Builder::from((1, 4));
         header_builder.point_format = point_format;

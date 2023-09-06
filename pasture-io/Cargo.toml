@@ -33,6 +33,7 @@ array-init = "2.1"
 bitfield = "0.14"
 num-traits = "0.2.16"
 memmap2 = "0.7.1"
+lazy_static = "1.4.0"
 
 # Used by the examples
 crevice = { version = "0.7.1", optional = true }

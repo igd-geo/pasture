@@ -1,15 +1,17 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashSet};
 
 use anyhow::{anyhow, Result};
 use las::point::Format;
+use lazy_static::lazy_static;
 use pasture_core::{
     layout::attributes,
     layout::{
         attributes::{
-            CLASSIFICATION, COLOR_RGB, GPS_TIME, INTENSITY, NIR, POINT_SOURCE_ID, POSITION_3D,
-            RETURN_POINT_WAVEFORM_LOCATION, SCAN_ANGLE, SCAN_ANGLE_RANK, USER_DATA,
-            WAVEFORM_DATA_OFFSET, WAVEFORM_PACKET_SIZE, WAVEFORM_PARAMETERS,
-            WAVE_PACKET_DESCRIPTOR_INDEX,
+            CLASSIFICATION, CLASSIFICATION_FLAGS, COLOR_RGB, EDGE_OF_FLIGHT_LINE, GPS_TIME,
+            INTENSITY, NIR, NUMBER_OF_RETURNS, POINT_SOURCE_ID, POSITION_3D, RETURN_NUMBER,
+            RETURN_POINT_WAVEFORM_LOCATION, SCANNER_CHANNEL, SCAN_ANGLE, SCAN_ANGLE_RANK,
+            SCAN_DIRECTION_FLAG, USER_DATA, WAVEFORM_DATA_OFFSET, WAVEFORM_PACKET_SIZE,
+            WAVEFORM_PARAMETERS, WAVE_PACKET_DESCRIPTOR_INDEX,
         },
         FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
     },
@@ -194,6 +196,9 @@ pub fn point_layout_from_las_metadata(
 pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format {
     let has_gps_time = point_layout.has_attribute_with_name(attributes::GPS_TIME.name());
     let has_colors = point_layout.has_attribute_with_name(attributes::COLOR_RGB.name());
+    // It is ok if the layout has only a subset of the required waveform attributes. The contract of this function
+    // is 'the BEST MATCHING LAS point format', so as soon as we have at least one attribute that requires a larger
+    // point format number, we return that format
     let has_any_waveform_attribute = point_layout
         .has_attribute_with_name(attributes::WAVE_PACKET_DESCRIPTOR_INDEX.name())
         || point_layout.has_attribute_with_name(attributes::WAVEFORM_DATA_OFFSET.name())
@@ -201,6 +206,11 @@ pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format 
         || point_layout.has_attribute_with_name(attributes::RETURN_POINT_WAVEFORM_LOCATION.name())
         || point_layout.has_attribute_with_name(attributes::WAVEFORM_PARAMETERS.name());
     let has_nir = point_layout.has_attribute_with_name(attributes::NIR.name());
+    let has_scan_angle = point_layout.has_attribute_with_name(attributes::SCAN_ANGLE.name());
+    let has_scanner_channel =
+        point_layout.has_attribute_with_name(attributes::SCANNER_CHANNEL.name());
+    let has_classification_flags =
+        point_layout.has_attribute_with_name(attributes::CLASSIFICATION_FLAGS.name());
 
     let mut format = Format::new(0).unwrap();
     format.has_color = has_colors;
@@ -208,11 +218,49 @@ pub fn las_point_format_from_point_layout(point_layout: &PointLayout) -> Format 
     format.has_nir = has_nir;
     format.has_waveform = has_any_waveform_attribute;
 
-    if has_nir || has_any_waveform_attribute {
+    if has_nir | has_scan_angle | has_scanner_channel | has_classification_flags {
         format.is_extended = true;
     }
 
     format
+}
+
+/// Returns `true` if the given `attribute` is a known LAS point attribute. This function only checks the name of
+/// the known attributes and ignores the datatype, so a `POSITION_3D` attribute with datatype `Vec3f32` is still
+/// considered to be a known LAS attribute (as pasture is able to perform type conversion).
+///
+/// Known LAS attributes are all attributes mentioned in the LAS point record formats 0 to 10 as per the LAS 1.4
+/// specification.
+pub fn is_known_las_attribute(attribute: &PointAttributeDefinition) -> bool {
+    lazy_static! {
+        static ref KNOWN_LAS_ATTRIBUTE_NAMES: HashSet<&'static str> = {
+            let mut names = HashSet::new();
+            names.insert(POSITION_3D.name());
+            names.insert(INTENSITY.name());
+            names.insert(RETURN_NUMBER.name());
+            names.insert(NUMBER_OF_RETURNS.name());
+            names.insert(CLASSIFICATION_FLAGS.name());
+            names.insert(SCANNER_CHANNEL.name());
+            names.insert(SCAN_DIRECTION_FLAG.name());
+            names.insert(EDGE_OF_FLIGHT_LINE.name());
+            names.insert(CLASSIFICATION.name());
+            names.insert(USER_DATA.name());
+            names.insert(SCAN_ANGLE.name());
+            names.insert(SCAN_ANGLE_RANK.name());
+            names.insert(POINT_SOURCE_ID.name());
+            names.insert(GPS_TIME.name());
+            names.insert(COLOR_RGB.name());
+            names.insert(NIR.name());
+            names.insert(WAVEFORM_DATA_OFFSET.name());
+            names.insert(WAVEFORM_PACKET_SIZE.name());
+            names.insert(WAVEFORM_PARAMETERS.name());
+            names.insert(WAVE_PACKET_DESCRIPTOR_INDEX.name());
+            names.insert(RETURN_POINT_WAVEFORM_LOCATION.name());
+            names
+        };
+    }
+
+    KNOWN_LAS_ATTRIBUTE_NAMES.contains(attribute.name())
 }
 
 #[cfg(test)]
@@ -228,5 +276,97 @@ mod tests {
             assert_eq!(layout.size_of_point_entry(), *expected_size);
         }
         Ok(())
+    }
+
+    #[test]
+    fn test_las_format_from_point_layout() {
+        let format0_layout = PointLayout::from_attributes(&[POSITION_3D]);
+        assert_eq!(
+            Format::new(0).unwrap(),
+            las_point_format_from_point_layout(&format0_layout)
+        );
+
+        let format1_layout = PointLayout::from_attributes(&[POSITION_3D, GPS_TIME]);
+        assert_eq!(
+            Format::new(1).unwrap(),
+            las_point_format_from_point_layout(&format1_layout)
+        );
+
+        let format2_layout = PointLayout::from_attributes(&[POSITION_3D, COLOR_RGB]);
+        assert_eq!(
+            Format::new(2).unwrap(),
+            las_point_format_from_point_layout(&format2_layout)
+        );
+
+        let format3_layout = PointLayout::from_attributes(&[POSITION_3D, GPS_TIME, COLOR_RGB]);
+        assert_eq!(
+            Format::new(3).unwrap(),
+            las_point_format_from_point_layout(&format3_layout)
+        );
+
+        let format4_layout = PointLayout::from_attributes(&[
+            POSITION_3D,
+            GPS_TIME,
+            WAVEFORM_DATA_OFFSET,
+            WAVEFORM_PACKET_SIZE,
+            WAVEFORM_PARAMETERS,
+            WAVE_PACKET_DESCRIPTOR_INDEX,
+            RETURN_POINT_WAVEFORM_LOCATION,
+        ]);
+        assert_eq!(
+            Format::new(4).unwrap(),
+            las_point_format_from_point_layout(&format4_layout)
+        );
+
+        let format5_layout =
+            PointLayout::from_attributes(&[POSITION_3D, GPS_TIME, COLOR_RGB, WAVEFORM_DATA_OFFSET]);
+        assert_eq!(
+            Format::new(5).unwrap(),
+            las_point_format_from_point_layout(&format5_layout)
+        );
+
+        let format6_layout = PointLayout::from_attributes(&[POSITION_3D, GPS_TIME, SCAN_ANGLE]);
+        assert_eq!(
+            Format::new(6).unwrap(),
+            las_point_format_from_point_layout(&format6_layout)
+        );
+
+        let format7_layout =
+            PointLayout::from_attributes(&[POSITION_3D, GPS_TIME, SCAN_ANGLE, COLOR_RGB]);
+        assert_eq!(
+            Format::new(7).unwrap(),
+            las_point_format_from_point_layout(&format7_layout)
+        );
+
+        let format8_layout =
+            PointLayout::from_attributes(&[POSITION_3D, GPS_TIME, SCAN_ANGLE, COLOR_RGB, NIR]);
+        assert_eq!(
+            Format::new(8).unwrap(),
+            las_point_format_from_point_layout(&format8_layout)
+        );
+
+        let format9_layout = PointLayout::from_attributes(&[
+            POSITION_3D,
+            GPS_TIME,
+            SCAN_ANGLE,
+            WAVEFORM_DATA_OFFSET,
+        ]);
+        assert_eq!(
+            Format::new(9).unwrap(),
+            las_point_format_from_point_layout(&format9_layout)
+        );
+
+        let format10_layout = PointLayout::from_attributes(&[
+            POSITION_3D,
+            GPS_TIME,
+            SCAN_ANGLE,
+            COLOR_RGB,
+            NIR,
+            WAVEFORM_DATA_OFFSET,
+        ]);
+        assert_eq!(
+            Format::new(10).unwrap(),
+            las_point_format_from_point_layout(&format10_layout)
+        );
     }
 }

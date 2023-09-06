@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use std::{cell::RefCell, marker::PhantomData};
 
 use crate::layout::{
-    conversion::{get_converter_for_attributes, AttributeConversionFn},
+    conversion::{convert_unit, get_converter_for_attributes, AttributeConversionFn},
     PointAttributeDefinition, PointAttributeMember, PointType, PrimitiveType,
 };
 
@@ -31,6 +31,7 @@ use super::{
 /// Since the `PointView` borrows the buffer internally, and the buffer itself has a borrow lifetime,
 /// `PointView` stores two lifetimes so that it can borrow its buffer for a potentially shorter lifetime
 /// `'b` than the lifetime `'a` of the buffer itself.
+#[derive(Debug, Copy, Clone)]
 pub struct PointView<'a, 'b, B: BorrowedBuffer<'a>, T: PointType>
 where
     'a: 'b,
@@ -44,7 +45,13 @@ where
     'a: 'b,
 {
     pub(crate) fn new(buffer: &'b B) -> Self {
-        assert_eq!(T::layout(), *buffer.point_layout());
+        assert_eq!(
+            T::layout(),
+            *buffer.point_layout(),
+            "Layout mismatch\nBuffer layout:\n{}\nRequested layout:\n{}",
+            buffer.point_layout(),
+            T::layout()
+        );
         Self {
             buffer,
             _phantom: Default::default(),
@@ -108,9 +115,31 @@ where
     }
 }
 
+impl<
+        'a,
+        'b,
+        'c,
+        'd,
+        B1: BorrowedBuffer<'a> + 'a,
+        B2: BorrowedBuffer<'c> + 'c,
+        T: PointType + PartialEq,
+    > PartialEq<PointView<'c, 'd, B2, T>> for PointView<'a, 'b, B1, T>
+{
+    fn eq(&self, other: &PointView<'c, 'd, B2, T>) -> bool {
+        if self.buffer.len() != other.buffer.len() {
+            false
+        } else {
+            (0..self.buffer.len()).all(|idx| self.at(idx) == other.at(idx))
+        }
+    }
+}
+
+impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PointType + Eq> Eq for PointView<'a, 'b, B, T> {}
+
 /// Like [`PointView`], but provides mutable access to the strongly typed point data. For buffers with unknown
 /// memory layout, this means that you have to use [`PointViewMut::set_at`], but if the underlying buffer
 /// implements [`InterleavedBufferMut`], you can also get a mutable borrow the a strongly typed point!
+#[derive(Debug)]
 pub struct PointViewMut<'a, 'b, B: BorrowedMutBuffer<'a>, T: PointType>
 where
     'a: 'b,
@@ -121,7 +150,13 @@ where
 
 impl<'a, 'b, B: BorrowedMutBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
     pub(crate) fn new(buffer: &'b mut B) -> Self {
-        assert_eq!(T::layout(), *buffer.point_layout());
+        assert_eq!(
+            T::layout(),
+            *buffer.point_layout(),
+            "Layout mismatch\nBuffer layout:\n{}\nRequested layout:\n{}",
+            buffer.point_layout(),
+            T::layout()
+        );
         Self {
             buffer,
             _phantom: Default::default(),
@@ -217,12 +252,34 @@ impl<'a, 'b, B: OwningBuffer<'a>, T: PointType> PointViewMut<'a, 'b, B, T> {
     }
 }
 
+impl<
+        'a,
+        'b,
+        'c,
+        'd,
+        B1: BorrowedMutBuffer<'a> + 'a,
+        B2: BorrowedMutBuffer<'c> + 'c,
+        T: PointType + PartialEq,
+    > PartialEq<PointViewMut<'c, 'd, B2, T>> for PointViewMut<'a, 'b, B1, T>
+{
+    fn eq(&self, other: &PointViewMut<'c, 'd, B2, T>) -> bool {
+        if self.buffer.len() != other.buffer.len() {
+            false
+        } else {
+            (0..self.buffer.len()).all(|idx| self.at(idx) == other.at(idx))
+        }
+    }
+}
+
+impl<'a, 'b, B: BorrowedMutBuffer<'a> + 'a, T: PointType + Eq> Eq for PointViewMut<'a, 'b, B, T> {}
+
 /// A strongly typed view over attribute data of a point buffer. This allows accessing the data for a specific
 /// attribute of a `PointType` using the strong type `T` instead of as raw memory (i.e. `&[u8]`). This type makes
 /// no assumptions about the memory layout of the underlying buffer, so it only provides access to the attribute
 /// data by value. Just as with the [`PointView`] type, you cannot create instances of `AttributeView` directly.
 /// Instead, use the [`BorrowedBuffer::view_attribute`] function and its variations, which perform the necessary
 /// type checking.
+#[derive(Debug, Copy, Clone)]
 pub struct AttributeView<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType>
 where
     'a: 'b,
@@ -303,7 +360,27 @@ impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PrimitiveType> IntoIterator
     }
 }
 
+impl<
+        'a,
+        'b,
+        'c,
+        'd,
+        B1: BorrowedBuffer<'a> + 'a,
+        B2: BorrowedBuffer<'c> + 'c,
+        T: PrimitiveType + PartialEq,
+    > PartialEq<AttributeView<'c, 'd, B2, T>> for AttributeView<'a, 'b, B1, T>
+{
+    fn eq(&self, other: &AttributeView<'c, 'd, B2, T>) -> bool {
+        self.buffer.len() == other.buffer.len()
+            && self.attribute.attribute_definition() == other.attribute.attribute_definition()
+            && (0..self.buffer.len()).all(|idx| self.at(idx) == other.at(idx))
+    }
+}
+
+impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PrimitiveType + Eq> Eq for AttributeView<'a, 'b, B, T> {}
+
 /// Like [`AttributeView`], but provides mutable access to the attribute data
+#[derive(Debug)]
 pub struct AttributeViewMut<'a, 'b, B: BorrowedMutBuffer<'a>, T: PrimitiveType>
 where
     'a: 'b,
@@ -415,10 +492,33 @@ impl<'a, 'b, B: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>, T: PrimitiveType>
     }
 }
 
+impl<
+        'a,
+        'b,
+        'c,
+        'd,
+        B1: BorrowedMutBuffer<'a> + 'a,
+        B2: BorrowedMutBuffer<'c> + 'c,
+        T: PrimitiveType + PartialEq,
+    > PartialEq<AttributeViewMut<'c, 'd, B2, T>> for AttributeViewMut<'a, 'b, B1, T>
+{
+    fn eq(&self, other: &AttributeViewMut<'c, 'd, B2, T>) -> bool {
+        self.buffer.len() == other.buffer.len()
+            && self.attribute.attribute_definition() == other.attribute.attribute_definition()
+            && (0..self.buffer.len()).all(|idx| self.at(idx) == other.at(idx))
+    }
+}
+
+impl<'a, 'b, B: BorrowedMutBuffer<'a> + 'a, T: PrimitiveType + Eq> Eq
+    for AttributeViewMut<'a, 'b, B, T>
+{
+}
+
 /// A view over a strongly typed point attribute that supports type conversion. This means that the
 /// `PointAttributeDataType` of the attribute does not have to match the type `T` that this view returns.
 /// For an explanation on how attribute type conversion works in pasture, see the [`conversion`](crate::layout::conversion)
 /// module
+#[derive(Debug)]
 pub struct AttributeViewConverting<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType>
 where
     'a: 'b,
@@ -437,12 +537,16 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeViewConverting<'a
             .point_layout()
             .get_attribute_by_name(attribute.name())
             .expect("Attribute not found in PointLayout of buffer");
-        let converter_fn = get_converter_for_attributes(
-            attribute_in_layout.attribute_definition(),
-            &attribute.with_custom_datatype(T::data_type()),
-        )
-        .ok_or(anyhow!("Conversion between attribute types is impossible"))?;
-        let converter_buffer = vec![0; T::data_type().size() as usize];
+        let converter_fn = if attribute_in_layout.datatype() == T::data_type() {
+            convert_unit
+        } else {
+            get_converter_for_attributes(
+                attribute_in_layout.attribute_definition(),
+                &attribute.with_custom_datatype(T::data_type()),
+            )
+            .ok_or(anyhow!("Conversion between attribute types is impossible"))?
+        };
+        let converter_buffer = vec![0; attribute_in_layout.size() as usize];
         Ok(Self {
             attribute: attribute_in_layout.clone(),
             buffer,
@@ -486,6 +590,28 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> IntoIterator
     }
 }
 
+impl<
+        'a,
+        'b,
+        'c,
+        'd,
+        B1: BorrowedBuffer<'a> + 'a,
+        B2: BorrowedBuffer<'c> + 'c,
+        T: PrimitiveType + PartialEq,
+    > PartialEq<AttributeViewConverting<'c, 'd, B2, T>> for AttributeViewConverting<'a, 'b, B1, T>
+{
+    fn eq(&self, other: &AttributeViewConverting<'c, 'd, B2, T>) -> bool {
+        self.buffer.len() == other.buffer.len()
+            && self.attribute.attribute_definition() == other.attribute.attribute_definition()
+            && (0..self.buffer.len()).all(|idx| self.at(idx) == other.at(idx))
+    }
+}
+
+impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PrimitiveType + Eq> Eq
+    for AttributeViewConverting<'a, 'b, B, T>
+{
+}
+
 /// An iterator that performs attribute value conversion on the fly. This allows iterating over an
 /// attribute that has internal datatype `U` as if it had datatype `T`
 pub struct AttributeViewConvertingIterator<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> {
@@ -511,11 +637,16 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> Iterator
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::Vector3;
     use rand::{thread_rng, Rng};
 
     use super::*;
 
-    use crate::{containers::VectorBuffer, test_utils::*};
+    use crate::{
+        containers::{HashMapBuffer, VectorBuffer},
+        layout::{attributes::POSITION_3D, PointAttributeDataType},
+        test_utils::*,
+    };
 
     #[test]
     fn test_sort_buffer() {
@@ -538,5 +669,91 @@ mod tests {
             .zip(points.iter().skip(1))
             .all(|(low, high)| low.classification <= high.classification);
         assert!(are_sorted, "Points not sorted: {:#?}", test_points);
+    }
+
+    #[test]
+    fn test_point_views_eq() {
+        let rng = thread_rng();
+        let test_points = rng
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(10)
+            .collect::<Vec<_>>();
+
+        let mut buffer1 = test_points.iter().copied().collect::<VectorBuffer>();
+        let mut buffer2 = test_points.iter().copied().collect::<HashMapBuffer>();
+
+        assert_eq!(
+            buffer1.view::<CustomPointTypeSmall>(),
+            buffer2.view::<CustomPointTypeSmall>()
+        );
+        assert_eq!(
+            buffer1.view_mut::<CustomPointTypeSmall>(),
+            buffer2.view_mut::<CustomPointTypeSmall>()
+        );
+
+        buffer2 = thread_rng()
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(10)
+            .collect();
+        assert_ne!(
+            buffer1.view::<CustomPointTypeSmall>(),
+            buffer2.view::<CustomPointTypeSmall>()
+        );
+        assert_ne!(
+            buffer1.view_mut::<CustomPointTypeSmall>(),
+            buffer2.view_mut::<CustomPointTypeSmall>()
+        );
+    }
+
+    #[test]
+    fn test_attribute_views_eq() {
+        let rng = thread_rng();
+        let test_points = rng
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(10)
+            .collect::<Vec<_>>();
+
+        let mut buffer1 = test_points.iter().copied().collect::<VectorBuffer>();
+        let mut buffer2 = test_points.iter().copied().collect::<HashMapBuffer>();
+
+        assert_eq!(
+            buffer1.view_attribute::<Vector3<f64>>(&POSITION_3D),
+            buffer2.view_attribute::<Vector3<f64>>(&POSITION_3D),
+        );
+        assert_eq!(
+            buffer1.view_attribute_mut::<Vector3<f64>>(&POSITION_3D),
+            buffer2.view_attribute_mut::<Vector3<f64>>(&POSITION_3D),
+        );
+        let f32_position = POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32);
+        assert_eq!(
+            buffer1
+                .view_attribute_with_conversion::<Vector3<f32>>(&f32_position)
+                .expect("Invalid attribute conversion"),
+            buffer2
+                .view_attribute_with_conversion::<Vector3<f32>>(&f32_position)
+                .expect("Invalid attribute conversion"),
+        );
+
+        buffer2 = thread_rng()
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(10)
+            .collect();
+
+        assert_ne!(
+            buffer1.view_attribute::<Vector3<f64>>(&POSITION_3D),
+            buffer2.view_attribute::<Vector3<f64>>(&POSITION_3D),
+        );
+        assert_ne!(
+            buffer1.view_attribute_mut::<Vector3<f64>>(&POSITION_3D),
+            buffer2.view_attribute_mut::<Vector3<f64>>(&POSITION_3D),
+        );
+        assert_ne!(
+            buffer1
+                .view_attribute_with_conversion::<Vector3<f32>>(&f32_position)
+                .expect("Invalid attribute conversion"),
+            buffer2
+                .view_attribute_with_conversion::<Vector3<f32>>(&f32_position)
+                .expect("Invalid attribute conversion"),
+        );
     }
 }

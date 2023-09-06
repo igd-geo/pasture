@@ -271,6 +271,13 @@ pub fn get_generic_converter(
 }
 
 /// Unit conversion function (when from and to represent the same datatype)
+///
+/// # Safety
+///
+/// Even though this function only performs a `memcpy`, it is only valid to call it if both
+/// `from` and `to` point to the same `PrimitiveType` (so `from` represents a `&T` and `to`
+/// a `&mut T`)
+///
 /// ```unsafe
 /// # use nalgebra::Vector3;
 /// # use pasture_core::layout::*;
@@ -287,7 +294,7 @@ pub fn get_generic_converter(
 /// assert_eq!(2.0, dest.y);
 /// assert_eq!(3.0, dest.z);
 /// ```
-unsafe fn _convert_unit(from: &[u8], to: &mut [u8]) {
+pub unsafe fn convert_unit(from: &[u8], to: &mut [u8]) {
     to.copy_from_slice(from)
 }
 

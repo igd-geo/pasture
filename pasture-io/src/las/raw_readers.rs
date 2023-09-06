@@ -138,18 +138,22 @@ impl<T: Read + Seek> RawLASReader<T> {
         // Read into chunks of a fixed size. Within each chunk, read all data into an untyped buffer
         // then push the untyped data into 'buffer'
         let chunk_size = 50_000;
-        let point_size = self.layout.size_of_point_entry() as usize;
-        let chunk_bytes = point_size * chunk_size;
+        let output_point_size = self.layout.size_of_point_entry() as usize;
+        let output_chunk_bytes: usize = output_point_size * chunk_size;
         let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut output_points_chunk: Vec<u8> = vec![0; chunk_bytes];
+        let mut output_points_chunk: Vec<u8> = vec![0; output_chunk_bytes];
 
         for chunk_index in 0..num_chunks {
             let points_in_chunk =
                 std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
+            let bytes_in_input_chunk = points_in_chunk * self.size_of_point_in_file as usize;
+            let bytes_in_output_chunk = points_in_chunk * output_point_size;
+
+            let chunk_bytes_begin = chunk_index * chunk_size * self.size_of_point_in_file as usize;
+            let chunk_bytes_end = chunk_bytes_begin + bytes_in_input_chunk;
 
             parse_chunk(
-                &input_buffer,
+                &input_buffer[chunk_bytes_begin..chunk_bytes_end],
                 points_in_chunk,
                 &mut output_points_chunk[..],
                 &self.layout,
@@ -159,7 +163,7 @@ impl<T: Read + Seek> RawLASReader<T> {
             // Safe because we know that `point_buffer` has the default point layout for the current LAS point
             // record format, and `parse_chunk` is guaranteed to output data in the matching binary format
             unsafe {
-                point_buffer.push_points(&output_points_chunk[0..bytes_in_chunk]);
+                point_buffer.push_points(&output_points_chunk[0..bytes_in_output_chunk]);
             }
         }
 

@@ -13,7 +13,7 @@ readme = "README.md"
 
 [dependencies]
 pasture-derive = {version = "=0.2.0", path = "../pasture-derive" }
-nalgebra = {version = "0.31", features = ["serde-serialize", "convert-bytemuck"] }
+nalgebra = {version = "0.32", features = ["serde-serialize", "convert-bytemuck"] }
 anyhow = "1.0.34"
 float-ord = "0.2.0"
 static_assertions = "1.1.0"
