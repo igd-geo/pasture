@@ -324,14 +324,9 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         // TODO Read EVLRs
 
         let header = header_builder.into_header()?;
-        if header.point_format().has_waveform {
+        if header.point_format().is_extended && header.point_format().has_waveform {
             return Err(anyhow!(
-                "Compressed LAZ files with wave packet data are currently not supported!"
-            ));
-        }
-        if header.point_format().is_extended {
-            return Err(anyhow!(
-                "Compressed LAZ files with extended formats (6-10) are currently not supported!"
+                "Compressed LAZ files with extended formats 9 and 10 are currently not supported!"
             ));
         }
 

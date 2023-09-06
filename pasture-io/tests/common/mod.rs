@@ -12,6 +12,13 @@ use pasture_io::las::{
 use rand::{prelude::Distribution, Rng};
 use static_assertions::const_assert_eq;
 
+const RETURN_NUMBER_REGULAR_BITMASK: u8 = 0b111;
+const RETURN_NUMBER_EXTENDED_BITMASK: u8 = 0b1111;
+const NUMBER_OF_RETURNS_REGULAR_BITMASK: u8 = 0b111;
+const NUMBER_OF_RETURNS_EXTENDED_BITMASK: u8 = 0b1111;
+const CLASSIFICATION_FLAGS_BITMASK: u8 = 0b1111;
+const SCANNER_CHANNEL_BITMASK: u8 = 0b11;
+
 #[derive(Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C)]
 pub struct BasicFlags(u8);
@@ -106,7 +113,7 @@ impl Distribution<LasPointFormat0> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_REGULAR_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -116,7 +123,7 @@ impl Distribution<LasPointFormat0> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_REGULAR_BITMASK,
             scan_angle_rank: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
@@ -130,7 +137,7 @@ impl Distribution<LasPointFormat1> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_REGULAR_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -140,7 +147,7 @@ impl Distribution<LasPointFormat1> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_REGULAR_BITMASK,
             scan_angle_rank: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
@@ -155,7 +162,7 @@ impl Distribution<LasPointFormat2> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_REGULAR_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -165,7 +172,7 @@ impl Distribution<LasPointFormat2> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_REGULAR_BITMASK,
             scan_angle_rank: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
@@ -180,7 +187,7 @@ impl Distribution<LasPointFormat3> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_REGULAR_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -190,7 +197,7 @@ impl Distribution<LasPointFormat3> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_REGULAR_BITMASK,
             scan_angle_rank: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
@@ -206,7 +213,7 @@ impl Distribution<LasPointFormat4> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_REGULAR_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -216,11 +223,11 @@ impl Distribution<LasPointFormat4> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_REGULAR_BITMASK,
             scan_angle_rank: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
-            byte_offset_to_waveform_data: rng.gen(),
+            byte_offset_to_waveform_data: rng.gen::<u32>() as u64,
             gps_time: rng.gen(),
             return_point_waveform_location: rng.gen(),
             wave_packet_descriptor_index: rng.gen(),
@@ -236,7 +243,7 @@ impl Distribution<LasPointFormat5> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_REGULAR_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -246,11 +253,11 @@ impl Distribution<LasPointFormat5> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_REGULAR_BITMASK,
             scan_angle_rank: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
-            byte_offset_to_waveform_data: rng.gen(),
+            byte_offset_to_waveform_data: rng.gen::<u32>() as u64,
             gps_time: rng.gen(),
             return_point_waveform_location: rng.gen(),
             wave_packet_descriptor_index: rng.gen(),
@@ -267,7 +274,7 @@ impl Distribution<LasPointFormat6> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_EXTENDED_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -277,13 +284,13 @@ impl Distribution<LasPointFormat6> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_EXTENDED_BITMASK,
             scan_angle: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
             gps_time: rng.gen(),
-            classification_flags: rng.gen::<u8>() & 0b1111,
-            scanner_channel: rng.gen::<u8>() & 0b1111,
+            classification_flags: rng.gen::<u8>() & CLASSIFICATION_FLAGS_BITMASK,
+            scanner_channel: rng.gen::<u8>() & SCANNER_CHANNEL_BITMASK,
         }
     }
 }
@@ -294,7 +301,7 @@ impl Distribution<LasPointFormat7> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_EXTENDED_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -304,13 +311,13 @@ impl Distribution<LasPointFormat7> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_EXTENDED_BITMASK,
             scan_angle: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
             gps_time: rng.gen(),
-            classification_flags: rng.gen::<u8>() & 0b1111,
-            scanner_channel: rng.gen::<u8>() & 0b1111,
+            classification_flags: rng.gen::<u8>() & CLASSIFICATION_FLAGS_BITMASK,
+            scanner_channel: rng.gen::<u8>() & SCANNER_CHANNEL_BITMASK,
             color_rgb: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
         }
     }
@@ -322,7 +329,7 @@ impl Distribution<LasPointFormat8> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_EXTENDED_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -332,13 +339,13 @@ impl Distribution<LasPointFormat8> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_EXTENDED_BITMASK,
             scan_angle: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
             gps_time: rng.gen(),
-            classification_flags: rng.gen::<u8>() & 0b1111,
-            scanner_channel: rng.gen::<u8>() & 0b1111,
+            classification_flags: rng.gen::<u8>() & CLASSIFICATION_FLAGS_BITMASK,
+            scanner_channel: rng.gen::<u8>() & SCANNER_CHANNEL_BITMASK,
             color_rgb: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
             nir: rng.gen(),
         }
@@ -351,7 +358,7 @@ impl Distribution<LasPointFormat9> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_EXTENDED_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -361,17 +368,17 @@ impl Distribution<LasPointFormat9> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_EXTENDED_BITMASK,
             scan_angle: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
             gps_time: rng.gen(),
-            classification_flags: rng.gen::<u8>() & 0b1111,
-            scanner_channel: rng.gen::<u8>() & 0b1111,
-            byte_offset_to_waveform_data: rng.gen(),
+            classification_flags: rng.gen::<u8>() & CLASSIFICATION_FLAGS_BITMASK,
+            scanner_channel: rng.gen::<u8>() & SCANNER_CHANNEL_BITMASK,
+            byte_offset_to_waveform_data: 0,
             return_point_waveform_location: rng.gen(),
-            wave_packet_descriptor_index: rng.gen(),
-            waveform_packet_size: rng.gen(),
+            wave_packet_descriptor_index: 0,
+            waveform_packet_size: 0,
             waveform_parameters: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
         }
     }
@@ -383,7 +390,7 @@ impl Distribution<LasPointFormat10> for TestLASPointDistribution {
             classification: rng.gen(),
             edge_of_flight_line: rng.gen::<u8>() & 1,
             intensity: rng.gen(),
-            number_of_returns: rng.gen_range(0..5),
+            number_of_returns: rng.gen::<u8>() & NUMBER_OF_RETURNS_EXTENDED_BITMASK,
             point_source_id: rng.gen(),
             position: Vector3::new(
                 // Generate positions in a range that LAS can represent with default scale of 0.001
@@ -393,14 +400,14 @@ impl Distribution<LasPointFormat10> for TestLASPointDistribution {
                 rng.gen_range(-1000..1000) as f64,
                 rng.gen_range(-1000..1000) as f64,
             ),
-            return_number: rng.gen_range(0..5),
+            return_number: rng.gen::<u8>() & RETURN_NUMBER_EXTENDED_BITMASK,
             scan_angle: rng.gen(),
             scan_direction_flag: rng.gen::<u8>() & 1,
             user_data: rng.gen(),
             gps_time: rng.gen(),
-            classification_flags: rng.gen::<u8>() & 0b1111,
-            scanner_channel: rng.gen::<u8>() & 0b1111,
-            byte_offset_to_waveform_data: rng.gen(),
+            classification_flags: rng.gen::<u8>() & CLASSIFICATION_FLAGS_BITMASK,
+            scanner_channel: rng.gen::<u8>() & SCANNER_CHANNEL_BITMASK,
+            byte_offset_to_waveform_data: rng.gen::<u32>() as u64,
             return_point_waveform_location: rng.gen(),
             wave_packet_descriptor_index: rng.gen(),
             waveform_packet_size: rng.gen(),

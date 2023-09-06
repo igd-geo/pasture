@@ -17,8 +17,8 @@ readme = "README.md"
 pasture-core = {version = "=0.3.0", path = "../pasture-core" }
 pasture-derive = {version = "=0.2.0", path = "../pasture-derive"}
 anyhow = "1.0.34"
-las = { version = "=0.7.3", features = ["laz"] }
-laz = "0.6.0"
+las = { version = "0.8", features = ["laz"] }
+laz = "0.8"
 static_assertions = "1.1.0"
 scopeguard = "1.1.0"
 byteorder = "1.4.2"

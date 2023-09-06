@@ -61,12 +61,6 @@ instant = { version = "0.1", features = [ "wasm-bindgen" ], optional = true }
 gpu = ["winit", "wgpu", "async-executor", "pollster", "env_logger", "crevice", "mint", "bytemuck", "instant"]
 
 [[bin]]
-name = "reorder_laz_chunks"
-
-[[bin]]
-name = "plotting"
-
-[[bin]]
 name = "info"
 
 [[bin]]

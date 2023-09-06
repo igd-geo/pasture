@@ -242,53 +242,90 @@ where
 }
 
 #[test]
-fn test_write_large_file() -> Result<()> {
+fn test_write_large_file_format0() -> Result<()> {
     const COUNT: usize = 333333;
-    write_large_file::<LasPointFormat0>(COUNT, false)
-        .context("Writing large LAS file with format 0 failed")?;
-    write_large_file::<LasPointFormat0>(COUNT, true)
-        .context("Writing large LAZ file with format 0 failed")?;
-    write_large_file::<LasPointFormat1>(COUNT, false)
-        .context("Writing large LAS file with format 1 failed")?;
-    write_large_file::<LasPointFormat1>(COUNT, true)
-        .context("Writing large LAZ file with format 1 failed")?;
-    write_large_file::<LasPointFormat2>(COUNT, false)
-        .context("Writing large LAS file with format 2 failed")?;
-    write_large_file::<LasPointFormat2>(COUNT, true)
-        .context("Writing large LAZ file with format 2 failed")?;
-    write_large_file::<LasPointFormat3>(COUNT, false)
-        .context("Writing large LAS file with format 3 failed")?;
-    write_large_file::<LasPointFormat3>(COUNT, true)
-        .context("Writing large LAZ file with format 3 failed")?;
-    write_large_file::<LasPointFormat4>(COUNT, false)
-        .context("Writing large LAS file with format 4 failed")?;
-    write_large_file::<LasPointFormat4>(COUNT, true)
-        .context("Writing large LAZ file with format 4 failed")?;
-    write_large_file::<LasPointFormat5>(COUNT, false)
-        .context("Writing large LAS file with format 5 failed")?;
-    write_large_file::<LasPointFormat5>(COUNT, true)
-        .context("Writing large LAZ file with format 5 failed")?;
-    write_large_file::<LasPointFormat6>(COUNT, false)
-        .context("Writing large LAS file with format 6 failed")?;
-    write_large_file::<LasPointFormat6>(COUNT, true)
-        .context("Writing large LAZ file with format 6 failed")?;
-    write_large_file::<LasPointFormat7>(COUNT, false)
-        .context("Writing large LAS file with format 7 failed")?;
-    write_large_file::<LasPointFormat7>(COUNT, true)
-        .context("Writing large LAZ file with format 7 failed")?;
-    write_large_file::<LasPointFormat8>(COUNT, false)
-        .context("Writing large LAS file with format 8 failed")?;
-    write_large_file::<LasPointFormat8>(COUNT, true)
-        .context("Writing large LAZ file with format 8 failed")?;
-    write_large_file::<LasPointFormat9>(COUNT, false)
-        .context("Writing large LAS file with format 9 failed")?;
-    write_large_file::<LasPointFormat9>(COUNT, true)
-        .context("Writing large LAZ file with format 9 failed")?;
-    write_large_file::<LasPointFormat10>(COUNT, false)
-        .context("Writing large LAS file with format 10 failed")?;
-    write_large_file::<LasPointFormat10>(COUNT, true)
-        .context("Writing large LAZ file with format 10 failed")?;
+    write_large_file::<LasPointFormat0>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat0>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
 
+#[test]
+fn test_write_large_file_format1() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat1>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat1>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format2() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat2>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat2>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format3() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat3>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat3>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format4() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat4>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat4>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format5() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat5>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat5>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format6() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat6>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat6>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format7() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat7>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat7>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format8() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat8>(COUNT, false).context("Writing large LAS file failed")?;
+    write_large_file::<LasPointFormat8>(COUNT, true).context("Writing large LAZ file failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format9() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat9>(COUNT, false).context("Writing large LAS file failed")?;
+    // LAZ with point format 9 currently unsupported due to problems with waveform data
+    Ok(())
+}
+
+#[test]
+fn test_write_large_file_format10() -> Result<()> {
+    const COUNT: usize = 333333;
+    write_large_file::<LasPointFormat10>(COUNT, false).context("Writing large LAS file failed")?;
+    // LAZ with point format 10 currently unsupported due to problems with waveform data
     Ok(())
 }
 
