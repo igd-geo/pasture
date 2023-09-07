@@ -603,6 +603,7 @@ mod tests {
     use std::{fs::File, io::BufReader};
 
     use las_rs::point::Format;
+    use pasture_core::containers::BorrowedBuffer;
     use pasture_core::layout::attributes;
     use pasture_core::layout::PointAttributeDataType;
     use pasture_core::nalgebra::Vector3;
@@ -1045,18 +1046,15 @@ mod tests {
     test_read_with_format!(laz_format_1, 1, RawLAZReader, get_test_laz_path);
     test_read_with_format!(laz_format_2, 2, RawLAZReader, get_test_laz_path);
     test_read_with_format!(laz_format_3, 3, RawLAZReader, get_test_laz_path);
-    // Formats 4,5,9,10 have wave packet data, which is currently unsupported by laz-rs
-    // Format 6,7,8 seem to be unsupported by LASzip and give weird results with laz-rs (e.g. seek does not work correctly)
-    // test_read_with_format!(laz_format_4, 4, RawLAZReader);
-    // test_read_with_format!(laz_format_5, 5, RawLAZReader);
+    test_read_with_format!(laz_format_4, 4, RawLAZReader, get_test_laz_path);
+    test_read_with_format!(laz_format_5, 5, RawLAZReader, get_test_laz_path);
+
+    // There is currently a bug in `laz-rs` when seeking into files with point record format 6 or higher, so they are
+    // still unsupported in pasture. See this issue here: https://github.com/laz-rs/laz-rs/issues/46
+
     // test_read_with_format!(laz_format_6, 6, RawLAZReader, get_test_laz_path);
     // test_read_with_format!(laz_format_7, 7, RawLAZReader, get_test_laz_path);
     // test_read_with_format!(laz_format_8, 8, RawLAZReader, get_test_laz_path);
-    // test_read_with_format!(laz_format_9, 9, RawLAZReader);
-    // test_read_with_format!(laz_format_10, 10, RawLAZReader);
 
-    //######### TODO ###########
-    // We have tests now for various formats and various conversions. We should extend them for a wider range, maybe even
-    // fuzz-test (though this is more effort to setup...)
-    // Also include comparisons for the additional attributes in the '_read_into_different_attribute_...' tests
+    // Formats 9 and 10 seem to parse waveform data differently when using laz-rs, so they are unsupported for now
 }
