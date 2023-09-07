@@ -15,6 +15,7 @@ fn main() -> Result<()> {
     // Reading a point cloud file is as simple as calling `read_all`
     let points = read_all::<VectorBuffer, _>(args[1].as_str()).context("Failed to read points")?;
 
+    // If the file has positions, print out the first 10
     if points.point_layout().has_attribute(&POSITION_3D) {
         for position in points
             .view_attribute::<Vector3<f64>>(&POSITION_3D)

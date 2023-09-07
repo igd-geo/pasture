@@ -28,6 +28,9 @@ fn to_untyped_transform_fn<T: PrimitiveType, F: Fn(T) -> T + 'static>(
     Box::new(untyped_transform_fn)
 }
 
+/// Mapping between a source `PointAttributeMember` and a target `PointAttributeMember`. This type stores
+/// all the necessary data to convert a single source attribute value into the target attribute. It supports
+/// type conversion and transformations
 pub struct AttributeMapping<'a> {
     target_attribute: &'a PointAttributeMember,
     source_attribute: &'a PointAttributeMember,
@@ -44,7 +47,47 @@ impl<'a> AttributeMapping<'a> {
     }
 }
 
-/// A converter that can convert a point buffer from one `PointLayout` into another
+/// A converter that can convert a point buffer from one `PointLayout` into another. This works by defining *mappings*
+/// between attributes from the source buffer and attributes in the target buffer. All mappings together define the
+/// way the source `PointLayout` transforms into the target `PointLayout`. Here is an example:
+///
+/// Source layout: `[POSITION_3D(Vector3<i32>), CLASSIFICATION(u8), COLOR_RGB(Vector3<u16>)]`<br>
+/// Target layout: `[COLOR_RGB(Vector3<u8>), POSITION_3D(Vector3<f64>)]`
+///
+/// Mappings: <br>
+/// `POSITION_3D(Vector3<i32>)` to `POSITION_3D(Vector3<f64>)` <br>
+/// `COLOR_RGB(Vector3<u16>)`   to `COLOR_RGB(Vector3<u8>)`
+///
+/// This means that every position from the source buffer is converted into a position in the target buffer, with
+/// a type conversion from `Vector3<i32>` to `Vector3<f64>`, and every color from the source buffer is converted
+/// into a color in the target buffer, also with a type conversion from `Vector3<u16>` to `Vector3<u8>`. Type conversions
+/// follow the rules of the attribute converters as explained in [`get_converter_for_attributes`](`crate::layout::conversion::get_converter_for_attributes`).
+///
+/// ## Default mappings
+///
+/// By default, if [`BufferLayoutConverter::for_layouts`] is called, all attributes in the source layout are mapped to
+/// attributes in the target layout that have the same name. All other attributes are ignored. If the attributes have
+/// different datatypes, a default type converter is used. If there are attributes in the target layout that do not have
+/// a matching attribute in the source layout, this will raise an error, unless [`BufferLayoutConverter::for_layouts_with_default]`
+/// is called, in which case the target attribute(s) will be filled with default values.
+///
+/// ## Custom mappings
+///
+/// It is also possible to define custom mappings, which allow more flexibility than the default mappings. In particular:
+/// - Multiple mappings may refer the same source attribute (but there can only be at most one mapping per target attribute)
+/// - Custom mappings support attribute transformations using an arbitrary transformation function `T -> T`
+///
+/// Overriding existing mappings can be done by calling [`set_custom_mapping`] and [`set_custom_mapping_with_transformation`].
+/// Here are some examples for what can be done with custom mappings:
+/// - Extract bitfield attributes into multiple distinct attributes by creating multiple mappings from the bitfield attribute
+///   to the target attributes with different transformation functions that extract the relevant bits
+/// - Offsetting and scaling values during transformation (such as going from local coordinates to world-space coordinates in
+///   an LAS file)
+///
+/// ## On performance
+///
+/// Buffer layout conversion works with buffers with arbitrary memory layouts, but since the mappings are defined per attribute,
+/// the best possible performance can be achieved if both the source and target buffer are in columnar memory layout.
 pub struct BufferLayoutConverter<'a> {
     from_layout: &'a PointLayout,
     to_layout: &'a PointLayout,
@@ -61,7 +104,7 @@ impl<'a> BufferLayoutConverter<'a> {
     /// attributes in `from_layout` and fill their values with default values, use [`Self::for_layouts_with_default`] instead!
     pub fn for_layouts(from_layout: &'a PointLayout, to_layout: &'a PointLayout) -> Self {
         let default_mappings = to_layout.attributes().map(|to_attribute| {
-            let from_attribute = from_layout.get_attribute(to_attribute.attribute_definition()).expect("Attribute not found in `from_layout`! When calling `BufferLayoutConverter::for_layouts`, the source PointLayout must contain all attributes from the target PointLayout. If you want to use default values for attributes that are not present in the source layout, use `BufferLayoutConverter::for_layouts_with_default` instead!");
+            let from_attribute = from_layout.get_attribute_by_name(to_attribute.attribute_definition().name()).expect("Attribute not found in `from_layout`! When calling `BufferLayoutConverter::for_layouts`, the source PointLayout must contain all attributes from the target PointLayout. If you want to use default values for attributes that are not present in the source layout, use `BufferLayoutConverter::for_layouts_with_default` instead!");
             Self::make_default_mapping(from_attribute, to_attribute)
         }).collect();
         Self {

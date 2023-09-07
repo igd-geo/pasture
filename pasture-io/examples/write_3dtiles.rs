@@ -40,10 +40,10 @@ fn gen_points() -> HashMapBuffer {
         for x in 0..points_per_axis {
             let z = z_at(x as f32, y as f32);
 
-            let w = z_at((x - 1) as f32, y as f32);
-            let e = z_at((x + 1) as f32, y as f32);
-            let n = z_at(x as f32, (y - 1) as f32);
-            let s = z_at(x as f32, (y + 1) as f32);
+            let w = z_at((x as f32) - 1.0, y as f32);
+            let e = z_at((x as f32) + 1.0, y as f32);
+            let n = z_at(x as f32, (y as f32) - 1.0);
+            let s = z_at(x as f32, (y as f32) + 1.0);
 
             let dnx = e - w;
             let dny = s - n;

@@ -2,7 +2,7 @@
 
 A Rust library for working with point cloud data. It features:
 -  Fine-grained support for arbitrary point attributes, similar to [PDAL](https://pdal.io/), but with added type safety
--  A very flexible memory model, natively supporting both Array-of-Structs (AoS) and Struct-of-Arrays (SoA) memory layouts
+-  A very flexible memory model, natively supporting both Array-of-Structs (AoS) and Struct-of-Arrays (SoA) memory layouts (which `pasture` calls 'interleaved' and 'columnar')
 -  Support for reading and writing various point cloud formats with the `pasture-io` crate (such as `LAS`, `LAZ`, `3D Tiles`, as well as ASCII files)
 -  A growing set of algorithms with the `pasture-algorithms` crate
 
