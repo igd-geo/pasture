@@ -1,4 +1,4 @@
-use std::{alloc::Layout, borrow::Cow, fmt::Display, ops::Range};
+use std::{alloc::Layout, borrow::Cow, fmt::Display, iter::FromIterator, ops::Range};
 
 use itertools::Itertools;
 use nalgebra::{Vector3, Vector4};
@@ -684,11 +684,7 @@ impl PointLayout {
     /// # assert_eq!(attributes::POSITION_3D.size(), layout.at(1).offset());
     /// ```
     pub fn from_attributes(attributes: &[PointAttributeDefinition]) -> Self {
-        let mut layout = Self::default();
-        for attribute in attributes {
-            layout.add_attribute(attribute.clone(), FieldAlignment::Default);
-        }
-        layout
+        attributes.iter().cloned().collect()
     }
 
     /// Creates a new PointLayout from the given sequence of attributes. The attributes will be aligned to a 1 byte boundary
@@ -1041,6 +1037,16 @@ impl Default for PointLayout {
             attributes: vec![],
             memory_layout: Layout::from_size_align(0, 1).unwrap(),
         }
+    }
+}
+
+impl FromIterator<PointAttributeDefinition> for PointLayout {
+    fn from_iter<T: IntoIterator<Item = PointAttributeDefinition>>(iter: T) -> Self {
+        let mut layout = Self::default();
+        for attribute in iter.into_iter() {
+            layout.add_attribute(attribute.clone(), FieldAlignment::Default);
+        }
+        layout
     }
 }
 
