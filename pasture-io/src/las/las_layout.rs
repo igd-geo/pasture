@@ -33,15 +33,14 @@ pub fn offset_to_extra_bytes(format: Format) -> Option<usize> {
     }
 }
 
-/// LAS flags for the basic (0-5) point record types. For internal use only!
-pub(crate) const ATTRIBUTE_BASIC_FLAGS: PointAttributeDefinition =
+/// LAS flags for the basic (0-5) point record types
+pub const ATTRIBUTE_BASIC_FLAGS: PointAttributeDefinition =
     PointAttributeDefinition::custom(Cow::Borrowed("LAS_BASIC_FLAGS"), PointAttributeDataType::U8);
-/// LAS flags for extended formats. For internal use only!
-pub(crate) const ATTRIBUTE_EXTENDED_FLAGS: PointAttributeDefinition =
-    PointAttributeDefinition::custom(
-        Cow::Borrowed("LAS_EXTENDED_FLAGS"),
-        PointAttributeDataType::U16,
-    );
+/// LAS flags for extended formats
+pub const ATTRIBUTE_EXTENDED_FLAGS: PointAttributeDefinition = PointAttributeDefinition::custom(
+    Cow::Borrowed("LAS_EXTENDED_FLAGS"),
+    PointAttributeDataType::U16,
+);
 
 /// Returns the default `PointLayout` for the given LAS point format. If `exact_binary_representation` is true, the
 /// layout mirrors the binary layout of the point records in the LAS format, as defined by the [LAS specification](http://www.asprs.org/wp-content/uploads/2019/03/LAS_1_4_r14.pdf).

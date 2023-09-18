@@ -323,6 +323,14 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         }
         // TODO Read EVLRs
 
+        // Put padding bytes into header (e.g. from leftover VLRs that have been deleted but not removed from the file)
+        let position_after_reading_vlrs = read.stream_position()?;
+        if position_after_reading_vlrs < offset_to_first_point_in_file {
+            read.by_ref()
+                .take(offset_to_first_point_in_file - position_after_reading_vlrs)
+                .read_to_end(&mut header_builder.vlr_padding)?;
+        }
+
         let header = header_builder.into_header()?;
         if header.point_format().is_extended && header.point_format().has_waveform {
             return Err(anyhow!(
