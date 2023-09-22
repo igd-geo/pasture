@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
-use pasture_core::layout::PointLayout;
+use pasture_core::{containers::BorrowedMutBuffer, layout::PointLayout};
 
 // use crate::las::{LASReader, LASWriter};
 
@@ -55,7 +55,7 @@ impl GenericPointReader {
         let extension = get_extension_lookup(path.as_ref())?;
         match extension {
             SupportedFileExtensions::Las => {
-                let reader = LASReader::from_path(path)?;
+                let reader = LASReader::from_path(path, false)?;
                 Ok(Self::LAS(reader))
             }
             SupportedFileExtensions::Tiles3D => {
@@ -76,7 +76,7 @@ impl GenericPointReader {
 }
 
 impl PointReader for GenericPointReader {
-    fn read_into<'a, 'b, B: pasture_core::containers::OwningBuffer<'a>>(
+    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
         point_buffer: &'b mut B,
         count: usize,

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use pasture_core::containers::BorrowedMutBuffer;
 use pasture_core::layout::PointLayout;
 use pasture_core::meta::Metadata;
 use std::fs::File;
@@ -123,7 +124,7 @@ impl<R: BufRead + Read> AsciiReader<R> {
 }
 
 impl<R: BufRead + Read> PointReader for AsciiReader<R> {
-    fn read_into<'a, 'b, B: pasture_core::containers::OwningBuffer<'a>>(
+    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
         point_buffer: &'b mut B,
         count: usize,

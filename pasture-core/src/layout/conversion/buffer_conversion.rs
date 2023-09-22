@@ -28,6 +28,11 @@ fn to_untyped_transform_fn<T: PrimitiveType, F: Fn(T) -> T + 'static>(
     Box::new(untyped_transform_fn)
 }
 
+pub struct Transformation {
+    func: AttributeTransformFn,
+    apply_to_source_attribute: bool,
+}
+
 /// Mapping between a source `PointAttributeMember` and a target `PointAttributeMember`. This type stores
 /// all the necessary data to convert a single source attribute value into the target attribute. It supports
 /// type conversion and transformations
@@ -35,7 +40,7 @@ pub struct AttributeMapping<'a> {
     target_attribute: &'a PointAttributeMember,
     source_attribute: &'a PointAttributeMember,
     converter: Option<AttributeConversionFn>,
-    transformation: Option<AttributeTransformFn>,
+    transformation: Option<Transformation>,
 }
 
 impl<'a> AttributeMapping<'a> {
@@ -124,7 +129,7 @@ impl<'a> BufferLayoutConverter<'a> {
             .attributes()
             .filter_map(|to_attribute| {
                 from_layout
-                    .get_attribute(to_attribute.attribute_definition())
+                    .get_attribute_by_name(to_attribute.attribute_definition().name())
                     .map(|from_attribute| Self::make_default_mapping(from_attribute, to_attribute))
             })
             .collect();
@@ -175,7 +180,9 @@ impl<'a> BufferLayoutConverter<'a> {
         }
     }
 
-    /// Like [`Self::set_custom_mapping`], but transforms the target attribute value using the `transform_fn`
+    /// Like [`Self::set_custom_mapping`], but transforms the attribute value using the `transform_fn`. If
+    /// `apply_to_source_attribute` is `true`, the transformation will be applied to the source attribute value
+    /// prior to any potential conversion, otherwise it is applied after conversion
     ///
     /// # Panics
     ///
@@ -187,6 +194,7 @@ impl<'a> BufferLayoutConverter<'a> {
         from_attribute: &PointAttributeDefinition,
         to_attribute: &PointAttributeDefinition,
         transform_fn: F,
+        apply_to_source_attribute: bool,
     ) where
         F: 'static,
     {
@@ -198,7 +206,11 @@ impl<'a> BufferLayoutConverter<'a> {
             .to_layout
             .get_attribute(to_attribute)
             .expect("to_attribute not found in target PointLayout");
-        assert_eq!(T::data_type(), to_attribute_member.datatype());
+        if apply_to_source_attribute {
+            assert_eq!(T::data_type(), from_attribute_member.datatype());
+        } else {
+            assert_eq!(T::data_type(), to_attribute_member.datatype());
+        }
 
         if let Some(previous_mapping) = self
             .mappings
@@ -209,12 +221,14 @@ impl<'a> BufferLayoutConverter<'a> {
                 from_attribute_member,
                 to_attribute_member,
                 transform_fn,
+                apply_to_source_attribute,
             );
         } else {
             self.mappings.push(Self::make_transformed_mapping(
                 from_attribute_member,
                 to_attribute_member,
                 transform_fn,
+                apply_to_source_attribute,
             ));
         }
     }
@@ -269,11 +283,6 @@ impl<'a> BufferLayoutConverter<'a> {
             .map(|mapping| mapping.required_buffer_size())
             .max();
         if let Some(max_attribute_size) = max_attribute_size {
-            // TODO Implement four cases:
-            // 1) Source and target are both columnar -> can get attribute ranges for source and target, easy
-            // 2) Source is columnar, target not -> can at least get attribute ranges for source
-            // 3) Target is columnar, source not -> can at least get attribute ranges for target
-            // 4) Neither is columnar -> Use the base-case implementation already present here!
             match (source_buffer.as_columnar(), target_buffer.as_columnar_mut()) {
                 (Some(source_buffer), Some(target_buffer)) => {
                     self.convert_columnar_to_columnar(source_buffer, target_buffer);
@@ -348,9 +357,13 @@ impl<'a> BufferLayoutConverter<'a> {
         from_attribute: &'a PointAttributeMember,
         to_attribute: &'a PointAttributeMember,
         transform_fn: impl Fn(T) -> T + 'static,
+        apply_to_source_attribute: bool,
     ) -> AttributeMapping<'a> {
         let mut mapping = Self::make_default_mapping(from_attribute, to_attribute);
-        mapping.transformation = Some(to_untyped_transform_fn(transform_fn));
+        mapping.transformation = Some(Transformation {
+            func: to_untyped_transform_fn(transform_fn),
+            apply_to_source_attribute,
+        });
         mapping
     }
 
@@ -372,6 +385,7 @@ impl<'a> BufferLayoutConverter<'a> {
                 );
                 let source_attribute_size = mapping.source_attribute.size() as usize;
                 let target_attribute_size = mapping.target_attribute.size() as usize;
+                let mut source_tmp_buffer: Vec<u8> = vec![0; source_attribute_size];
                 for (source_chunk, target_chunk) in source_attribute_data
                     .chunks_exact(source_attribute_size)
                     .zip(target_attribute_data.chunks_exact_mut(target_attribute_size))
@@ -379,9 +393,19 @@ impl<'a> BufferLayoutConverter<'a> {
                     // Safe because we guarantee that the slice sizes match and their data comes from the
                     // correct attribute
                     unsafe {
-                        converter(source_chunk, target_chunk);
-                        if let Some(transformation) = mapping.transformation.as_deref() {
-                            transformation(target_chunk);
+                        if let Some(transformation) = mapping.transformation.as_ref() {
+                            // If we transform the source attribute, we can't do so in-place (source data is immutable)
+                            // so we have to copy into a temporary buffer
+                            if transformation.apply_to_source_attribute {
+                                source_tmp_buffer.copy_from_slice(source_chunk);
+                                (transformation.func)(&mut source_tmp_buffer[..]);
+                                converter(&source_tmp_buffer[..], target_chunk);
+                            } else {
+                                converter(source_chunk, target_chunk);
+                                (transformation.func)(target_chunk);
+                            }
+                        } else {
+                            converter(source_chunk, target_chunk);
                         }
                     }
                 }
@@ -395,7 +419,9 @@ impl<'a> BufferLayoutConverter<'a> {
                         source_attribute_data,
                     );
                 }
-                if let Some(transformation) = mapping.transformation.as_deref() {
+                if let Some(transformation) = mapping.transformation.as_ref() {
+                    // Here it is irrelevant whether the transformation should be applied to the source or target attribute,
+                    // as both have the same datatype!
                     let target_attribute_range = target_buffer.get_attribute_range_mut(
                         mapping.target_attribute.attribute_definition(),
                         0..num_points,
@@ -404,7 +430,7 @@ impl<'a> BufferLayoutConverter<'a> {
                     for target_chunk in
                         target_attribute_range.chunks_exact_mut(target_attribute_size)
                     {
-                        transformation(target_chunk);
+                        (transformation.func)(target_chunk);
                     }
                 }
             }
@@ -432,6 +458,7 @@ impl<'a> BufferLayoutConverter<'a> {
             if let Some(converter) = mapping.converter {
                 let target_attribute_size = mapping.target_attribute.size() as usize;
                 let target_attribute_chunk = &mut convert_buffer[..target_attribute_size];
+                let mut source_tmp_buffer: Vec<u8> = vec![0; source_attribute_size];
                 for (index, source_chunk) in source_attribute_data
                     .chunks_exact(source_attribute_size)
                     .enumerate()
@@ -439,9 +466,17 @@ impl<'a> BufferLayoutConverter<'a> {
                     // Safe because we guarantee that the slice sizes match and their data comes from the
                     // correct attribute
                     unsafe {
-                        converter(source_chunk, target_attribute_chunk);
-                        if let Some(transformation) = mapping.transformation.as_deref() {
-                            transformation(target_attribute_chunk);
+                        if let Some(transformation) = mapping.transformation.as_ref() {
+                            if transformation.apply_to_source_attribute {
+                                source_tmp_buffer.copy_from_slice(source_chunk);
+                                (transformation.func)(&mut source_tmp_buffer[..]);
+                                converter(&source_tmp_buffer[..], target_attribute_chunk);
+                            } else {
+                                converter(source_chunk, target_attribute_chunk);
+                                (transformation.func)(target_attribute_chunk);
+                            }
+                        } else {
+                            converter(source_chunk, target_attribute_chunk);
                         }
                         target_buffer.set_attribute(
                             mapping.target_attribute.attribute_definition(),
@@ -456,10 +491,10 @@ impl<'a> BufferLayoutConverter<'a> {
                     .enumerate()
                 {
                     let attribute_data =
-                        if let Some(transformation) = mapping.transformation.as_deref() {
+                        if let Some(transformation) = mapping.transformation.as_ref() {
                             let transform_slice = &mut transform_buffer[..target_attribute_size];
                             transform_slice.copy_from_slice(attribute_data);
-                            transformation(transform_slice);
+                            (transformation.func)(transform_slice);
                             transform_slice
                         } else {
                             attribute_data
@@ -510,18 +545,29 @@ impl<'a> BufferLayoutConverter<'a> {
                 }
 
                 if let Some(converter) = mapping.converter {
-                    // Safety: converter came from the source and target PointLayouts
-                    // buffer sizes are correct because they come from the PointAttributeMembers
-                    // set_attribute is correct for the same reasons
-                    unsafe {
-                        converter(buf, target_attribute_chunk);
-                    }
-                    if let Some(transformation) = mapping.transformation.as_deref() {
-                        transformation(target_attribute_chunk);
+                    if let Some(transformation) = mapping.transformation.as_ref() {
+                        if transformation.apply_to_source_attribute {
+                            (transformation.func)(buf);
+                            unsafe {
+                                converter(buf, target_attribute_chunk);
+                            }
+                        } else {
+                            unsafe {
+                                converter(buf, target_attribute_chunk);
+                            }
+                            (transformation.func)(target_attribute_chunk);
+                        }
+                    } else {
+                        // Safety: converter came from the source and target PointLayouts
+                        // buffer sizes are correct because they come from the PointAttributeMembers
+                        // set_attribute is correct for the same reasons
+                        unsafe {
+                            converter(buf, target_attribute_chunk);
+                        }
                     }
                 } else {
-                    if let Some(transformation) = mapping.transformation.as_deref() {
-                        transformation(buf);
+                    if let Some(transformation) = mapping.transformation.as_ref() {
+                        (transformation.func)(buf);
                     }
                     target_attribute_chunk.copy_from_slice(buf);
                 }
@@ -558,14 +604,25 @@ impl<'a> BufferLayoutConverter<'a> {
                 if let Some(converter) = mapping.converter {
                     let target_buf =
                         &mut converter_buffer[..mapping.target_attribute.size() as usize];
-                    // Safety: converter came from the source and target PointLayouts
-                    // buffer sizes are correct because they come from the PointAttributeMembers
-                    // set_attribute is correct for the same reasons
-                    unsafe {
-                        converter(buf, target_buf);
-                        if let Some(transformation) = mapping.transformation.as_deref() {
-                            transformation(target_buf);
+                    if let Some(transformation) = mapping.transformation.as_ref() {
+                        if transformation.apply_to_source_attribute {
+                            (transformation.func)(buf);
+                            unsafe {
+                                converter(buf, target_buf);
+                            }
+                        } else {
+                            unsafe {
+                                converter(buf, target_buf);
+                            }
+                            (transformation.func)(target_buf);
                         }
+                    } else {
+                        unsafe {
+                            converter(buf, target_buf);
+                        }
+                    }
+
+                    unsafe {
                         target_buffer.set_attribute(
                             mapping.target_attribute.attribute_definition(),
                             point_index,
@@ -573,8 +630,8 @@ impl<'a> BufferLayoutConverter<'a> {
                         );
                     }
                 } else {
-                    if let Some(transformation) = mapping.transformation.as_deref() {
-                        transformation(buf);
+                    if let Some(transformation) = mapping.transformation.as_ref() {
+                        (transformation.func)(buf);
                     }
                     // Safety: buf has the correct size because otherwise we would have a converter
                     unsafe {
@@ -689,7 +746,7 @@ mod tests {
         assert_eq!(expected_classifications, actual_return_numbers);
     }
 
-    fn buffer_converter_transformed_attribute_generic<
+    fn buffer_converter_transformed_target_attribute_generic<
         TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
         TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
     >() {
@@ -712,6 +769,49 @@ mod tests {
             &POSITION_3D,
             &POSITION_3D,
             transform_positions_fn,
+            false,
+        );
+
+        let converted_points = converter.convert::<TTo, _>(&source_points);
+        assert_eq!(custom_layout, *converted_points.point_layout());
+
+        let expected_positions = source_points
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
+            .into_iter()
+            .map(transform_positions_fn)
+            .collect_vec();
+        let actual_positions = converted_points
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
+            .into_iter()
+            .collect_vec();
+
+        assert_eq!(expected_positions, actual_positions);
+    }
+
+    fn buffer_converter_transformed_source_attribute_generic<
+        TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
+        TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
+    >() {
+        let rng = thread_rng();
+        let source_points = rng
+            .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
+            .take(16)
+            .collect::<TFrom>();
+
+        let custom_layout = PointLayout::from_attributes(&[POSITION_3D]);
+
+        let mut converter = BufferLayoutConverter::for_layouts_with_default(
+            source_points.point_layout(),
+            &custom_layout,
+        );
+        const OFFSET: f64 = 42.0;
+        let transform_positions_fn =
+            |source_position: Vector3<f64>| -> Vector3<f64> { source_position.add_scalar(OFFSET) };
+        converter.set_custom_mapping_with_transformation(
+            &POSITION_3D,
+            &POSITION_3D,
+            transform_positions_fn,
+            true,
         );
 
         let converted_points = converter.convert::<TTo, _>(&source_points);
@@ -775,10 +875,15 @@ mod tests {
 
     #[test]
     fn test_buffer_converter_transformed_attribute() {
-        buffer_converter_transformed_attribute_generic::<VectorBuffer, VectorBuffer>();
-        buffer_converter_transformed_attribute_generic::<VectorBuffer, HashMapBuffer>();
-        buffer_converter_transformed_attribute_generic::<HashMapBuffer, VectorBuffer>();
-        buffer_converter_transformed_attribute_generic::<HashMapBuffer, HashMapBuffer>();
+        buffer_converter_transformed_source_attribute_generic::<VectorBuffer, VectorBuffer>();
+        buffer_converter_transformed_source_attribute_generic::<VectorBuffer, HashMapBuffer>();
+        buffer_converter_transformed_source_attribute_generic::<HashMapBuffer, VectorBuffer>();
+        buffer_converter_transformed_source_attribute_generic::<HashMapBuffer, HashMapBuffer>();
+
+        buffer_converter_transformed_target_attribute_generic::<VectorBuffer, VectorBuffer>();
+        buffer_converter_transformed_target_attribute_generic::<VectorBuffer, HashMapBuffer>();
+        buffer_converter_transformed_target_attribute_generic::<HashMapBuffer, VectorBuffer>();
+        buffer_converter_transformed_target_attribute_generic::<HashMapBuffer, HashMapBuffer>();
     }
 
     #[test]

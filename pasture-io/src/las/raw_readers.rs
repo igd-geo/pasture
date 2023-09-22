@@ -1,43 +1,169 @@
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use las_rs::Header;
 use las_rs::{raw, Builder, Vlr};
 use laz::LasZipDecompressor;
-use pasture_core::containers::OwningBuffer;
+use pasture_core::containers::{BorrowedMutBuffer, OwningBuffer, VectorBuffer};
+use pasture_core::layout::attributes::{
+    CLASSIFICATION_FLAGS, EDGE_OF_FLIGHT_LINE, NUMBER_OF_RETURNS, POSITION_3D, RETURN_NUMBER,
+    SCANNER_CHANNEL, SCAN_DIRECTION_FLAG,
+};
+use pasture_core::layout::conversion::BufferLayoutConverter;
+use pasture_core::layout::PointAttributeDataType;
+use pasture_core::nalgebra::Vector3;
 use pasture_core::{layout::PointLayout, meta::Metadata};
 
-use super::{map_laz_err, point_layout_from_las_metadata, LASMetadata, PointParser};
+use super::{
+    map_laz_err, point_layout_from_las_metadata, LASMetadata, ATTRIBUTE_LOCAL_LAS_POSITION,
+};
 use crate::base::{PointReader, SeekToPoint};
+use crate::las::{ATTRIBUTE_BASIC_FLAGS, ATTRIBUTE_EXTENDED_FLAGS};
 
 /// Is the given VLR the LASzip VLR? Function taken from the `las` crate because it is not exported there
 fn is_laszip_vlr(vlr: &Vlr) -> bool {
     vlr.user_id == laz::LazVlr::USER_ID && vlr.record_id == laz::LazVlr::RECORD_ID
 }
 
-/// Parse a single chunk of points by reading the point data from the reader, running the given parser
-/// and outputting the parsed data into the output_points_buffer
-fn parse_chunk(
-    input_points_buffer: &[u8],
-    num_points_in_chunk: usize,
-    output_points_buffer: &mut [u8],
-    output_point_layout: &PointLayout,
-    parser: &mut PointParser,
-) {
-    // This method assumes that self.reader is currently at the starting point of the chunk to read
-    let input_point_size = input_points_buffer.len() / num_points_in_chunk;
-    let input_point_chunks = input_points_buffer.chunks(input_point_size);
-
-    let output_point_size = output_point_layout.size_of_point_entry() as usize;
-    let output_point_chunks = output_points_buffer.chunks_mut(output_point_size);
-
-    for (input_chunk, output_chunk) in input_point_chunks.zip(output_point_chunks) {
-        unsafe {
-            parser.parse_one(input_chunk, output_chunk);
+/// Returns a `BufferLayoutConverter` that performs a conversion from the given raw LAS `PointLayout` into
+/// the given `target_layout`
+fn get_default_las_converter<'a>(
+    raw_las_layout: &'a PointLayout,
+    target_layout: &'a PointLayout,
+    las_header: &Header,
+) -> Result<BufferLayoutConverter<'a>> {
+    let mut converter =
+        BufferLayoutConverter::for_layouts_with_default(raw_las_layout, target_layout);
+    // Add custom conversions depending on the target layout
+    if let Some(position_attribute) = target_layout.get_attribute_by_name(POSITION_3D.name()) {
+        let transforms = *las_header.transforms();
+        match position_attribute.datatype() {
+            PointAttributeDataType::Vec3f64 => converter.set_custom_mapping_with_transformation(&ATTRIBUTE_LOCAL_LAS_POSITION, position_attribute.attribute_definition(), move |pos: Vector3<f64>| -> Vector3<f64> {
+                Vector3::new(
+                    (pos.x * transforms.x.scale) + transforms.x.offset,
+                    (pos.y * transforms.y.scale) + transforms.y.offset,
+                    (pos.z * transforms.z.scale) + transforms.z.offset,
+                )
+            }, false),
+            PointAttributeDataType::Vec3f32 => converter.set_custom_mapping_with_transformation(&ATTRIBUTE_LOCAL_LAS_POSITION, position_attribute.attribute_definition(), move |pos: Vector3<f32>| -> Vector3<f32> {
+                Vector3::new(
+                    ((pos.x as f64 * transforms.x.scale) + transforms.x.offset) as f32,
+                    ((pos.y as f64 * transforms.y.scale) + transforms.y.offset) as f32,
+                    ((pos.z as f64 * transforms.z.scale) + transforms.z.offset) as f32,
+                )
+            }, false),
+            other => bail!("Invalid datatype {other} for POSITION_3D attribute. Only Vec3f64 and Vec3f32 are supported!"),
         }
     }
+
+    // Extract the bit attributes into separate attributes, if the target layout has them!
+    if raw_las_layout.has_attribute(&ATTRIBUTE_BASIC_FLAGS) {
+        if let Some(return_number_attribute) =
+            target_layout.get_attribute_by_name(RETURN_NUMBER.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                return_number_attribute.attribute_definition(),
+                |flags: u8| -> u8 { flags & 0b111 },
+                true,
+            );
+        }
+
+        if let Some(nr_returns_attribute) =
+            target_layout.get_attribute_by_name(NUMBER_OF_RETURNS.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                nr_returns_attribute.attribute_definition(),
+                |flags: u8| -> u8 { (flags >> 3) & 0b111 },
+                true,
+            );
+        }
+
+        if let Some(scan_direction_flag_attribute) =
+            target_layout.get_attribute_by_name(SCAN_DIRECTION_FLAG.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                scan_direction_flag_attribute.attribute_definition(),
+                |flags: u8| -> u8 { (flags >> 6) & 0b1 },
+                true,
+            );
+        }
+
+        if let Some(eof_attribute) = target_layout.get_attribute_by_name(EDGE_OF_FLIGHT_LINE.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                eof_attribute.attribute_definition(),
+                |flags: u8| -> u8 { (flags >> 7) & 0b1 },
+                true,
+            );
+        }
+    } else {
+        if let Some(return_number_attribute) =
+            target_layout.get_attribute_by_name(RETURN_NUMBER.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                return_number_attribute.attribute_definition(),
+                |flags: u16| -> u16 { flags & 0b1111 },
+                true,
+            );
+        }
+        if let Some(nr_returns_attribute) =
+            target_layout.get_attribute_by_name(NUMBER_OF_RETURNS.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                nr_returns_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 4) & 0b1111 },
+                true,
+            );
+        }
+        if let Some(classification_flags_attribute) =
+            target_layout.get_attribute_by_name(CLASSIFICATION_FLAGS.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                classification_flags_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 8) & 0b1111 },
+                true,
+            );
+        }
+        if let Some(scanner_channel_attribute) =
+            target_layout.get_attribute_by_name(SCANNER_CHANNEL.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                scanner_channel_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 12) & 0b11 },
+                true,
+            );
+        }
+        if let Some(scan_direction_flag_attribute) =
+            target_layout.get_attribute_by_name(SCAN_DIRECTION_FLAG.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                scan_direction_flag_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 14) & 0b1 },
+                true,
+            );
+        }
+        if let Some(eof_attribute) = target_layout.get_attribute_by_name(EDGE_OF_FLIGHT_LINE.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                eof_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 15) & 0b1 },
+                true,
+            );
+        }
+    }
+
+    Ok(converter)
 }
 
 pub(crate) trait LASReaderBase {
@@ -50,24 +176,27 @@ pub struct RawLASReader<T: Read + Seek> {
     reader: T,
     metadata: LASMetadata,
     layout: PointLayout,
+    las_point_records_layout: PointLayout,
     current_point_index: usize,
     offset_to_first_point_in_file: u64,
     size_of_point_in_file: u64,
-    default_parser: PointParser,
-    custom_parsers: HashMap<PointLayout, PointParser>,
-    //TODO Add an option to not convert the position fields into world space
 }
 
 impl<T: Read + Seek> RawLASReader<T> {
-    pub fn from_read(mut read: T) -> Result<Self> {
-        let raw_header = raw::Header::read_from(&mut read)?;
+    /// Creates a new `RawLASReader` from the given `reader`. If `point_layout_matches_memory_layout` is `true`, the
+    /// default `PointLayout` of the `RawLASReader` will exactly match the binary layout of the LAS point records.
+    /// Otherwise, a more practical `PointLayout` is used that stores positions as `Vector3<f64>` values in world-space
+    /// and stores attributes such as `RETURN_NUMBER`, `NUMBER_OF_RETURNS` etc. as separate values instead of the
+    /// packed bitfield values. See [`point_layout_from_las_point_format`] for more information
+    pub fn from_read(mut reader: T, point_layout_matches_memory_layout: bool) -> Result<Self> {
+        let raw_header = raw::Header::read_from(&mut reader)?;
         let offset_to_first_point_in_file = raw_header.offset_to_point_data as u64;
         let size_of_point_in_file = raw_header.point_data_record_length as u64;
 
         // Manually read the VLRs
-        read.seek(SeekFrom::Start(raw_header.header_size as u64))?;
+        reader.seek(SeekFrom::Start(raw_header.header_size as u64))?;
         let vlrs = (0..raw_header.number_of_variable_length_records as usize)
-            .map(|_| las_rs::raw::Vlr::read_from(&mut read, false).map(las_rs::Vlr::new))
+            .map(|_| las_rs::raw::Vlr::read_from(&mut reader, false).map(las_rs::Vlr::new))
             .collect::<Result<Vec<_>, _>>()
             .context("Failed to read VLRs")?;
 
@@ -80,9 +209,10 @@ impl<T: Read + Seek> RawLASReader<T> {
         // Note: Took this code pretty much straight from the las::Reader, but as far as I can tell, the
         // LAS 1.4 spec states that the `offset_to_point_data` field has to be updated by software that changes
         // the number of VLRs...
-        let position_after_reading_vlrs = read.stream_position()?;
+        let position_after_reading_vlrs = reader.stream_position()?;
         if position_after_reading_vlrs < offset_to_first_point_in_file {
-            read.by_ref()
+            reader
+                .by_ref()
                 .take(offset_to_first_point_in_file - position_after_reading_vlrs)
                 .read_to_end(&mut builder.vlr_padding)?;
         }
@@ -93,22 +223,20 @@ impl<T: Read + Seek> RawLASReader<T> {
             .clone()
             .try_into()
             .context("Failed to parse LAS header")?;
-        let point_layout = point_layout_from_las_metadata(&metadata, false)?;
+        let point_layout =
+            point_layout_from_las_metadata(&metadata, point_layout_matches_memory_layout)?;
+        let matching_memory_layout = point_layout_from_las_metadata(&metadata, true)?;
 
-        read.seek(SeekFrom::Start(offset_to_first_point_in_file))?;
-
-        let default_parser =
-            PointParser::build(&metadata, &point_layout).context("Failed to build point parser")?;
+        reader.seek(SeekFrom::Start(offset_to_first_point_in_file))?;
 
         Ok(Self {
-            reader: read,
+            reader,
             metadata,
             layout: point_layout,
+            las_point_records_layout: matching_memory_layout,
             current_point_index: 0,
             offset_to_first_point_in_file,
             size_of_point_in_file,
-            default_parser,
-            custom_parsers: Default::default(),
         })
     }
 
@@ -116,7 +244,7 @@ impl<T: Read + Seek> RawLASReader<T> {
         &self.metadata
     }
 
-    fn read_into_default_layout<'a, 'b, B: OwningBuffer<'a>>(
+    fn read_into_default_layout<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
         point_buffer: &'b mut B,
         count: usize,
@@ -129,41 +257,37 @@ impl<T: Read + Seek> RawLASReader<T> {
             return Ok(0);
         }
 
-        let size_of_input_chunk = num_points_to_read * self.size_of_point_in_file as usize;
-        let mut input_buffer = vec![0; size_of_input_chunk];
-        self.reader
-            .read_exact(&mut input_buffer)
-            .context("Failed to read chunk of points")?;
-
-        // Read into chunks of a fixed size. Within each chunk, read all data into an untyped buffer
-        // then push the untyped data into 'buffer'
-        let chunk_size = 50_000;
-        let output_point_size = self.layout.size_of_point_entry() as usize;
-        let output_chunk_bytes: usize = output_point_size * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut output_points_chunk: Vec<u8> = vec![0; output_chunk_bytes];
-
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_input_chunk = points_in_chunk * self.size_of_point_in_file as usize;
-            let bytes_in_output_chunk = points_in_chunk * output_point_size;
-
-            let chunk_bytes_begin = chunk_index * chunk_size * self.size_of_point_in_file as usize;
-            let chunk_bytes_end = chunk_bytes_begin + bytes_in_input_chunk;
-
-            parse_chunk(
-                &input_buffer[chunk_bytes_begin..chunk_bytes_end],
-                points_in_chunk,
-                &mut output_points_chunk[..],
-                &self.layout,
-                &mut self.default_parser,
-            );
-
-            // Safe because we know that `point_buffer` has the default point layout for the current LAS point
-            // record format, and `parse_chunk` is guaranteed to output data in the matching binary format
-            unsafe {
-                point_buffer.push_points(&output_points_chunk[0..bytes_in_output_chunk]);
+        if let Some(interleaved_buffer) = point_buffer.as_interleaved_mut() {
+            let new_point_data = interleaved_buffer.get_point_range_mut(0..num_points_to_read);
+            self.reader
+                .read_exact(new_point_data)
+                .context("Failed to read point records")?;
+        } else {
+            // Read point data in chunks of ~1MiB size to prevent memory problems for very large files if we were
+            // to read all data in a single chunk
+            const CHUNK_MEM_SIZE: usize = 1 << 20;
+            let num_points_per_chunk = CHUNK_MEM_SIZE / self.size_of_point_in_file as usize;
+            let num_chunks = (num_points_to_read + num_points_per_chunk - 1) / num_points_per_chunk;
+            let mut read_buffer =
+                vec![0; num_points_per_chunk * self.size_of_point_in_file as usize];
+            for chunk_idx in 0..num_chunks {
+                let bytes_in_chunk = if chunk_idx == num_chunks - 1 {
+                    (num_points_to_read - (chunk_idx * num_points_per_chunk))
+                        * self.size_of_point_in_file as usize
+                } else {
+                    read_buffer.len()
+                };
+                let chunk_bytes = &mut read_buffer[..bytes_in_chunk];
+                self.reader
+                    .read_exact(chunk_bytes)
+                    .context("Failed to read chunk of points")?;
+                let first_point_in_chunk = chunk_idx * num_points_per_chunk;
+                let chunk_end = ((chunk_idx + 1) * num_points_per_chunk).min(num_points_to_read);
+                // Safe because this function (`read_into_default_layout`) is only called if the buffer has the exact
+                // binary memory layout of the LAS file
+                unsafe {
+                    point_buffer.set_point_range(first_point_in_chunk..chunk_end, chunk_bytes);
+                }
             }
         }
 
@@ -172,7 +296,7 @@ impl<T: Read + Seek> RawLASReader<T> {
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout<'a, 'b, B: OwningBuffer<'a>>(
+    fn read_into_custom_layout<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
         point_buffer: &'b mut B,
         count: usize,
@@ -185,56 +309,19 @@ impl<T: Read + Seek> RawLASReader<T> {
             return Ok(0);
         }
 
-        let size_of_input_chunk = num_points_to_read * self.size_of_point_in_file as usize;
-        let mut input_buffer = vec![0; size_of_input_chunk];
-        self.reader
-            .read_exact(&mut input_buffer)
-            .context("Failed to read chunk of points")?;
+        let mut convert_buffer =
+            VectorBuffer::with_capacity(num_points_to_read, self.las_point_records_layout.clone());
+        convert_buffer.resize(num_points_to_read);
+        self.read_into_default_layout(&mut convert_buffer, num_points_to_read)?;
 
-        // Read in interleaved chunks, even if the `point_buffer` is not interleaved. `push_points_interleaved` will
-        // handle the memory transpose in this case
-        let chunk_size = 50_000;
-        let point_size = point_buffer.point_layout().size_of_point_entry() as usize;
-        let chunk_bytes = point_size * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
-
-        // Parser construction can be costly, so we cache parsers for known point layouts to amortize cost
-        // over multiple `read_into_custom_layout` calls
-        let parser = match self.custom_parsers.get_mut(point_buffer.point_layout()) {
-            Some(parser) => parser,
-            None => {
-                let new_parser = PointParser::build(&self.metadata, point_buffer.point_layout())
-                    .context("Failed to build point parser")?;
-                self.custom_parsers
-                    .insert(point_buffer.point_layout().clone(), new_parser);
-                self.custom_parsers
-                    .get_mut(point_buffer.point_layout())
-                    .unwrap()
-            }
-        };
-
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
-
-            parse_chunk(
-                &input_buffer,
-                points_in_chunk,
-                &mut points_chunk[..],
-                point_buffer.point_layout(),
-                parser,
-            );
-
-            // Safe because `parse_chunk` is guaranteed to output data in the matching `PointLayout` for
-            // `point_buffer`
-            unsafe {
-                point_buffer.push_points(&points_chunk[0..bytes_in_chunk]);
-            }
-        }
-
-        self.current_point_index += num_points_to_read;
+        let target_layout = point_buffer.point_layout().clone();
+        let converter = get_default_las_converter(
+            &self.las_point_records_layout,
+            &target_layout,
+            self.metadata.raw_las_header().expect("Missing LAS header"),
+        )
+        .context("Unsupported conversion")?;
+        converter.convert_into(&convert_buffer, point_buffer);
 
         Ok(num_points_to_read)
     }
@@ -251,7 +338,7 @@ impl<T: Read + Seek> LASReaderBase for RawLASReader<T> {
 }
 
 impl<T: Read + Seek> PointReader for RawLASReader<T> {
-    fn read_into<'a, 'b, B: OwningBuffer<'a>>(
+    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
         point_buffer: &'b mut B,
         count: usize,
@@ -259,7 +346,11 @@ impl<T: Read + Seek> PointReader for RawLASReader<T> {
     where
         'a: 'b,
     {
-        if *point_buffer.point_layout() != self.layout {
+        if point_buffer.len() < count {
+            panic!("point_buffer.len() must be >= count");
+        }
+
+        if *point_buffer.point_layout() != self.las_point_records_layout {
             self.read_into_custom_layout(point_buffer, count)
         } else {
             self.read_into_default_layout(point_buffer, count)
@@ -303,13 +394,13 @@ pub struct RawLAZReader<'a, T: Read + Seek + Send + 'a> {
     reader: LasZipDecompressor<'a, T>,
     metadata: LASMetadata,
     layout: PointLayout,
+    las_point_records_layout: PointLayout,
     current_point_index: usize,
     size_of_point_in_file: u64,
-    default_parser: PointParser,
 }
 
 impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
-    pub fn from_read(mut read: T) -> Result<Self> {
+    pub fn from_read(mut read: T, point_layout_matches_memory_layout: bool) -> Result<Self> {
         let raw_header = raw::Header::read_from(&mut read)?;
         let offset_to_first_point_in_file = raw_header.offset_to_point_data as u64;
         let size_of_point_in_file = raw_header.point_data_record_length as u64;
@@ -342,7 +433,9 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             .clone()
             .try_into()
             .context("Could not parse LAS header")?;
-        let point_layout = point_layout_from_las_metadata(&metadata, false)?;
+        let point_layout =
+            point_layout_from_las_metadata(&metadata, point_layout_matches_memory_layout)?;
+        let matching_memory_layout = point_layout_from_las_metadata(&metadata, true)?;
 
         read.seek(SeekFrom::Start(offset_to_first_point_in_file))?;
 
@@ -358,16 +451,13 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         }?;
         let reader = LasZipDecompressor::new(read, laszip_vlr).map_err(map_laz_err)?;
 
-        let default_parser =
-            PointParser::build(&metadata, &point_layout).context("Failed to build point parser")?;
-
         Ok(Self {
             reader,
             metadata,
             layout: point_layout,
+            las_point_records_layout: matching_memory_layout,
             current_point_index: 0,
             size_of_point_in_file,
-            default_parser,
         })
     }
 
@@ -375,65 +465,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         &self.metadata
     }
 
-    fn read_chunk_default_layout(
-        &mut self,
-        chunk_buffer: &mut [u8],
-        decompression_buffer: &mut [u8],
-        num_points_in_chunk: usize,
-    ) -> Result<()> {
-        let bytes_in_chunk = num_points_in_chunk * self.size_of_point_in_file as usize;
-
-        self.reader
-            .decompress_many(&mut decompression_buffer[0..bytes_in_chunk])?;
-
-        let input_points_chunk = &decompression_buffer[..bytes_in_chunk];
-
-        let num_output_bytes = num_points_in_chunk * self.layout.size_of_point_entry() as usize;
-        let output_points_chunk = &mut chunk_buffer[..num_output_bytes];
-
-        parse_chunk(
-            input_points_chunk,
-            num_points_in_chunk,
-            output_points_chunk,
-            &self.layout,
-            &mut self.default_parser,
-        );
-
-        Ok(())
-    }
-
-    fn read_chunk_custom_layout(
-        &mut self,
-        chunk_buffer: &mut [u8],
-        decompression_buffer: &mut [u8],
-        num_points_in_chunk: usize,
-        target_layout: &PointLayout,
-    ) -> Result<()> {
-        let bytes_in_chunk = num_points_in_chunk * self.size_of_point_in_file as usize;
-
-        self.reader
-            .decompress_many(&mut decompression_buffer[0..bytes_in_chunk])?;
-
-        let input_points_chunk = &decompression_buffer[..bytes_in_chunk];
-
-        let num_output_bytes = num_points_in_chunk * target_layout.size_of_point_entry() as usize;
-        let output_points_chunk = &mut chunk_buffer[..num_output_bytes];
-
-        let mut custom_parser = PointParser::build(&self.metadata, target_layout)
-            .context("Failed to build point parser")?;
-
-        parse_chunk(
-            input_points_chunk,
-            num_points_in_chunk,
-            output_points_chunk,
-            target_layout,
-            &mut custom_parser,
-        );
-
-        Ok(())
-    }
-
-    fn read_into_default_layout<'b, 'c, B: OwningBuffer<'b>>(
+    fn read_into_default_layout<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
         point_buffer: &'c mut B,
         count: usize,
@@ -446,62 +478,46 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             return Ok(0);
         }
 
-        // Read into chunks of a fixed size. Within each chunk, read all data into an untyped buffer
-        // then push the untyped data into 'buffer'
-        let chunk_size = 50_000;
-        let point_size = self.layout.size_of_point_entry() as usize;
-        let chunk_bytes = point_size * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-
-        let decompression_chunk_size = self.size_of_point_in_file as usize * chunk_size;
-        let mut decompression_chunk: Vec<u8> = vec![0; decompression_chunk_size];
-
-        // If the buffer is interleaved, we can directly read into the memory of the buffer and save one memcpy per chunk
-        // if point_buffer.as_interleaved_mut().is_some() {
-        //     let first_new_point_index = point_buffer.len();
-        //     point_buffer.resize(num_points_to_read);
-
-        //     let interleaved_buffer = point_buffer.as_interleaved_mut().unwrap();
-
-        //     for chunk_index in 0..num_chunks {
-        //         let points_in_chunk =
-        //             std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-        //         let first_point_index = first_new_point_index + chunk_index * chunk_size;
-        //         let end_of_chunk_index = first_point_index + points_in_chunk;
-
-        //         self.read_chunk_default_layout(
-        //             interleaved_buffer.get_raw_points_mut(first_point_index..end_of_chunk_index),
-        //             &mut decompression_chunk,
-        //             points_in_chunk,
-        //         )?;
-        //     }
-        // } else {
-        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
-
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
-
-            self.read_chunk_default_layout(
-                &mut points_chunk[..],
-                &mut decompression_chunk[..],
-                points_in_chunk,
-            )?;
-
-            // Safe because `read_chunk_default_layout` outputs data in the matching `PointLayout` of `point_buffer`
-            unsafe {
-                point_buffer.push_points(&points_chunk[0..bytes_in_chunk]);
+        if let Some(interleaved_buffer) = point_buffer.as_interleaved_mut() {
+            let new_point_data = interleaved_buffer.get_point_range_mut(0..num_points_to_read);
+            self.reader
+                .decompress_many(new_point_data)
+                .context("Failed to read point records")?;
+        } else {
+            // Read point data in chunks of ~1MiB size to prevent memory problems for very large files if we were
+            // to read all data in a single chunk
+            const CHUNK_MEM_SIZE: usize = 1 << 20;
+            let num_points_per_chunk = CHUNK_MEM_SIZE / self.size_of_point_in_file as usize;
+            let num_chunks = (num_points_to_read + num_points_per_chunk - 1) / num_points_per_chunk;
+            let mut read_buffer =
+                vec![0; num_points_per_chunk * self.size_of_point_in_file as usize];
+            for chunk_idx in 0..num_chunks {
+                let bytes_in_chunk = if chunk_idx == num_chunks - 1 {
+                    (num_points_to_read - (chunk_idx * num_points_per_chunk))
+                        * self.size_of_point_in_file as usize
+                } else {
+                    read_buffer.len()
+                };
+                let chunk_bytes = &mut read_buffer[..bytes_in_chunk];
+                self.reader
+                    .decompress_many(chunk_bytes)
+                    .context("Failed to read chunk of points")?;
+                let first_point_in_chunk = chunk_idx * num_points_per_chunk;
+                let chunk_end = ((chunk_idx + 1) * num_points_per_chunk).min(num_points_to_read);
+                // Safe because this function (`read_into_default_layout`) is only called if the buffer has the exact
+                // binary memory layout of the LAS file
+                unsafe {
+                    point_buffer.set_point_range(first_point_in_chunk..chunk_end, chunk_bytes);
+                }
             }
         }
-        // }
 
         self.current_point_index += num_points_to_read;
 
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout<'b, 'c, B: OwningBuffer<'b>>(
+    fn read_into_custom_layout<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
         point_buffer: &'c mut B,
         count: usize,
@@ -514,36 +530,19 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             return Ok(0);
         }
 
-        // Read in interleaved chunks, even if the `point_buffer` is not interleaved. `push_points_interleaved` will
-        // handle the memory transpose in this case
-        let chunk_size = 50_000;
-        let point_size = point_buffer.point_layout().size_of_point_entry() as usize;
-        let chunk_bytes = point_size * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
+        let mut convert_buffer =
+            VectorBuffer::with_capacity(num_points_to_read, self.las_point_records_layout.clone());
+        convert_buffer.resize(num_points_to_read);
+        self.read_into_default_layout(&mut convert_buffer, num_points_to_read)?;
 
-        let decompression_chunk_size = self.size_of_point_in_file as usize * chunk_size;
-        let mut decompression_chunk: Vec<u8> = vec![0; decompression_chunk_size];
-
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
-
-            self.read_chunk_custom_layout(
-                &mut points_chunk[..],
-                &mut decompression_chunk[..],
-                points_in_chunk,
-                point_buffer.point_layout(),
-            )?;
-
-            // Safe because `read_chunk_custom_layout` outputs data in the matching `PointLayout` of `point_buffer`
-            unsafe {
-                point_buffer.push_points(&points_chunk[0..bytes_in_chunk]);
-            }
-        }
-
-        self.current_point_index += num_points_to_read;
+        let target_layout = point_buffer.point_layout().clone();
+        let converter = get_default_las_converter(
+            &self.las_point_records_layout,
+            &target_layout,
+            self.metadata.raw_las_header().expect("Missing LAS header"),
+        )
+        .context("Unsupported conversion")?;
+        converter.convert_into(&convert_buffer, point_buffer);
 
         Ok(num_points_to_read)
     }
@@ -560,7 +559,7 @@ impl<'a, T: Read + Seek + Send + 'a> LASReaderBase for RawLAZReader<'a, T> {
 }
 
 impl<'a, T: Read + Seek + Send + 'a> PointReader for RawLAZReader<'a, T> {
-    fn read_into<'b, 'c, B: OwningBuffer<'b>>(
+    fn read_into<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
         point_buffer: &'c mut B,
         count: usize,
@@ -568,7 +567,11 @@ impl<'a, T: Read + Seek + Send + 'a> PointReader for RawLAZReader<'a, T> {
     where
         'b: 'c,
     {
-        if *point_buffer.point_layout() != self.layout {
+        if point_buffer.len() < count {
+            panic!("point_buffer.len() must be >= count");
+        }
+
+        if *point_buffer.point_layout() != self.las_point_records_layout {
             self.read_into_custom_layout(point_buffer, count)
         } else {
             self.read_into_default_layout(point_buffer, count)
@@ -653,7 +656,7 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_metadata() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
 
                     assert_eq!(reader.remaining_points(), test_data_point_count());
                     assert_eq!(reader.point_count()?, test_data_point_count());
@@ -674,7 +677,7 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
                     let format = Format::new($format)?;
 
                     let points = reader.read::<VectorBuffer>(10)?;
@@ -692,11 +695,12 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read_into_interleaved() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     let mut buffer = VectorBuffer::new_from_layout(layout);
+                    buffer.resize(10);
 
                     reader.read_into(&mut buffer, 10)?;
                     compare_to_reference_data(&buffer, format);
@@ -710,16 +714,17 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read_into_interleaved_in_multiple_chunks() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = VectorBuffer::new_from_layout(layout);
 
                     const POINTS_PER_CHUNK: usize = 5;
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
+                    buffer.resize(POINTS_PER_CHUNK);
+
                     const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
                     for chunk in 0..NUM_CHUNKS {
-                        buffer.clear();
                         reader.read_into(&mut buffer, POINTS_PER_CHUNK)?;
                         compare_to_reference_data_range(
                             &buffer,
@@ -737,11 +742,12 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read_into_columnar() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     let mut buffer = HashMapBuffer::new_from_layout(layout);
+                    buffer.resize(10);
 
                     reader.read_into(&mut buffer, 10)?;
                     compare_to_reference_data(&buffer, format);
@@ -755,16 +761,17 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read_into_columnar_in_multiple_chunks() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
                     let format = Format::new($format)?;
 
                     let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
-                    let mut buffer = HashMapBuffer::new_from_layout(layout);
 
                     const POINTS_PER_CHUNK: usize = 5;
+                    let mut buffer = HashMapBuffer::new_from_layout(layout);
+                    buffer.resize(POINTS_PER_CHUNK);
+
                     const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
                     for chunk in 0..NUM_CHUNKS {
-                        buffer.clear();
                         reader.read_into(&mut buffer, POINTS_PER_CHUNK)?;
                         compare_to_reference_data_range(
                             &buffer,
@@ -782,7 +789,7 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read_into_different_layout_interleaved() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
 
                     let format = Format::new($format)?;
                     let layout = PointLayout::from_attributes(&[
@@ -795,7 +802,7 @@ mod tests {
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
                     let mut buffer = VectorBuffer::new_from_layout(layout);
-
+                    buffer.resize(10);
                     reader.read_into(&mut buffer, 10)?;
 
                     let positions = buffer
@@ -882,7 +889,7 @@ mod tests {
                 fn test_raw_las_reader_read_into_different_layout_interleaved_in_multiple_chunks(
                 ) -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
 
                     let format = Format::new($format)?;
                     let layout = PointLayout::from_attributes(&[
@@ -895,11 +902,14 @@ mod tests {
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
                     let mut buffer = VectorBuffer::new_from_layout(layout);
+                    buffer.resize(test_data_point_count());
 
                     const POINTS_PER_CHUNK: usize = 5;
                     const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
-                    for _ in 0..NUM_CHUNKS {
-                        reader.read_into(&mut buffer, POINTS_PER_CHUNK)?;
+                    for chunk_index in 0..NUM_CHUNKS {
+                        let chunk_range = (chunk_index * POINTS_PER_CHUNK)
+                            ..((chunk_index + 1) * POINTS_PER_CHUNK);
+                        reader.read_into(&mut buffer.slice_mut(chunk_range), POINTS_PER_CHUNK)?;
                     }
 
                     let positions = buffer
@@ -985,7 +995,7 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_seek() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
                     let format = Format::new($format)?;
 
                     let seek_index: usize = 5;
@@ -1003,7 +1013,7 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_seek_out_of_bounds() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
 
                     let seek_index: usize = 23;
                     let new_pos = reader.seek_point(SeekFrom::Current(seek_index as i64))?;
@@ -1019,7 +1029,7 @@ mod tests {
                 fn test_raw_las_reader_read_with_extra_bytes() -> Result<()> {
                     let read =
                         BufReader::new(File::open(get_test_las_path_with_extra_bytes($format))?);
-                    let mut reader = RawLASReader::from_read(read)?;
+                    let mut reader = RawLASReader::from_read(read, false)?;
                     let mut format = Format::new($format)?;
                     format.extra_bytes = 4;
 

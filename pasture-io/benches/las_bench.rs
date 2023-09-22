@@ -104,14 +104,13 @@ fn remove_dummy_files() {
 }
 
 fn read_performance<'a, B: OwningBuffer<'a> + MakeBufferFromLayout<'a> + 'a>(path: &str) {
-    let mut reader = LASReader::from_path(path).unwrap();
+    let mut reader = LASReader::from_path(path, false).unwrap();
     let count = reader.remaining_points();
     reader.read::<B>(count).unwrap();
 }
 
 fn read_performance_custom_format<'a, B: OwningBuffer<'a>>(buffer: &'a mut B, path: &str) {
-    buffer.clear();
-    let mut reader = LASReader::from_path(path).unwrap();
+    let mut reader = LASReader::from_path(path, false).unwrap();
     let count = reader.remaining_points();
     reader.read_into(buffer, count).unwrap();
 }
@@ -144,6 +143,7 @@ fn bench(c: &mut Criterion) {
 
     {
         let mut read_buffer = VectorBuffer::with_capacity(1_000_000, CustomPointType::layout());
+        read_buffer.resize(1_000_000);
         c.bench_function("las_read_custom_format_interleaved", |b| {
             b.iter(|| read_performance_custom_format(&mut read_buffer, LAS_PATH))
         });
@@ -154,6 +154,7 @@ fn bench(c: &mut Criterion) {
 
     {
         let mut read_buffer = HashMapBuffer::with_capacity(1_000_000, CustomPointType::layout());
+        read_buffer.resize(1_000_000);
         c.bench_function("las_read_custom_format_columnar", |b| {
             b.iter(|| read_performance_custom_format(&mut read_buffer, LAS_PATH))
         });

@@ -8,7 +8,7 @@ use anyhow::Result;
 use las_rs::Header;
 
 use crate::base::{PointReader, SeekToPoint};
-use pasture_core::{containers::OwningBuffer, layout::PointLayout, meta::Metadata};
+use pasture_core::{containers::BorrowedMutBuffer, layout::PointLayout, meta::Metadata};
 
 use super::{path_is_compressed_las_file, LASMetadata, LASReaderBase, RawLASReader, RawLAZReader};
 
@@ -34,7 +34,7 @@ impl<'a, T: Read + Seek + Send + 'a> LASReaderFlavor<'a, T> {
 }
 
 impl<'a, T: Read + Seek + Send + 'a> PointReader for LASReaderFlavor<'a, T> {
-    fn read_into<'b, 'c, B: OwningBuffer<'b>>(
+    fn read_into<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
         point_buffer: &'c mut B,
         count: usize,
@@ -80,36 +80,47 @@ pub struct LASReader<'a, R: Read + Seek + Send + 'a> {
 impl LASReader<'static, BufReader<File>> {
     /// Creates a new `LASReader` by opening the file at the given `path`. Tries to determine whether
     /// the file is compressed from the file extension (i.e. files with extension `.laz` are assumed to be
-    /// compressed).
+    /// compressed). If `point_layout_matches_memory_layout`
+    /// is `true`, the reader will return point data with a `PointLayout` that exactly matches the binary
+    /// layout of the LAS point records. See [`point_layout_from_las_point_format`] for more information.
     ///
     /// # Errors
     ///
     /// If `path` does not exist, cannot be opened or does not point to a valid LAS/LAZ file, an error is returned.
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<LASReader<'static, BufReader<File>>> {
+    pub fn from_path<P: AsRef<Path>>(
+        path: P,
+        point_layout_matches_memory_layout: bool,
+    ) -> Result<LASReader<'static, BufReader<File>>> {
         let is_compressed = path_is_compressed_las_file(path.as_ref())?;
         let file = BufReader::new(File::open(path)?);
-        Self::from_read(file, is_compressed)
+        Self::from_read(file, is_compressed, point_layout_matches_memory_layout)
     }
 }
 
 impl<'a, R: Read + Seek + Send> LASReader<'a, R> {
-    // TODO LAS files store 32-bit integer coordinates in local space internally, but we almost always want
-    // floating point values in world space instead. The conversion from integer to float in world space will
-    // have to happen automatically during reading, and the default datatype of attribute POSITION_3D will be
-    // Vector3<f64>. However, we should make it possible to switch this default conversion off for cases where
-    // we want to read just the raw i32 data!
-
     /// Creates a new `LASReader` from the given `read`. This method has to know whether
-    /// the `read` points to a compressed LAZ file or a regular LAS file.
+    /// the `read` points to a compressed LAZ file or a regular LAS file. If `point_layout_matches_memory_layout`
+    /// is `true`, the reader will return point data with a `PointLayout` that exactly matches the binary
+    /// layout of the LAS point records. See [`point_layout_from_las_point_format`] for more information.
     ///
     /// # Errors
     ///
     /// If the given `Read` does not represent a valid LAS/LAZ file, an error is returned.
-    pub fn from_read(read: R, is_compressed: bool) -> Result<Self> {
+    pub fn from_read(
+        read: R,
+        is_compressed: bool,
+        point_layout_matches_memory_layout: bool,
+    ) -> Result<Self> {
         let raw_reader = if is_compressed {
-            LASReaderFlavor::LAZ(RawLAZReader::from_read(read)?)
+            LASReaderFlavor::LAZ(RawLAZReader::from_read(
+                read,
+                point_layout_matches_memory_layout,
+            )?)
         } else {
-            LASReaderFlavor::LAS(RawLASReader::from_read(read)?)
+            LASReaderFlavor::LAS(RawLASReader::from_read(
+                read,
+                point_layout_matches_memory_layout,
+            )?)
         };
         Ok(Self { raw_reader })
     }
@@ -141,7 +152,7 @@ impl<'a, R: Read + Seek + Send + 'a> PointReader for LASReader<'a, R> {
         self.raw_reader.get_default_point_layout()
     }
 
-    fn read_into<'b, 'c, B: OwningBuffer<'b>>(
+    fn read_into<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
         point_buffer: &'c mut B,
         count: usize,

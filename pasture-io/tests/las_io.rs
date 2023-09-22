@@ -53,7 +53,7 @@ where
 
     {
         in_memory_buffer.set_position(0);
-        let mut reader = LASReader::from_read(in_memory_buffer, compressed)?;
+        let mut reader = LASReader::from_read(in_memory_buffer, compressed, false)?;
         let actual_data = reader.read::<VectorBuffer>(count)?;
 
         assert_eq!(expected_points.len(), actual_data.len());
@@ -121,7 +121,7 @@ fn write_large_file_with_unsupported_attribute(count: usize, compressed: bool) -
 
     {
         in_memory_buffer.set_position(0);
-        let mut reader = LASReader::from_read(in_memory_buffer, compressed)?;
+        let mut reader = LASReader::from_read(in_memory_buffer, compressed, false)?;
         let actual_data = reader.read::<VectorBuffer>(count)?;
 
         assert_eq!(expected_points.len(), actual_data.len());
@@ -223,7 +223,7 @@ where
 
     {
         in_memory_buffer.set_position(0);
-        let mut reader = LASReader::from_read(in_memory_buffer, compressed)?;
+        let mut reader = LASReader::from_read(in_memory_buffer, compressed, false)?;
         let actual_data = reader.read::<HashMapBuffer>(count)?;
 
         assert_eq!(expected_points.len(), actual_data.len());

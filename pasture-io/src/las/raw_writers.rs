@@ -1224,7 +1224,7 @@ mod tests {
                     }
 
                     {
-                        let mut reader = LASReader::from_path(&out_path)?;
+                        let mut reader = LASReader::from_path(&out_path, false)?;
                         let metadata = reader.get_metadata();
                         assert_eq!(Some(test_data_bounds()), metadata.bounds());
                         assert_eq!(test_data.len(), reader.remaining_points());
@@ -1306,7 +1306,7 @@ mod tests {
                     }
 
                     {
-                        let mut reader = LASReader::from_path(&out_path)?;
+                        let mut reader = LASReader::from_path(&out_path, false)?;
                         let metadata = reader.get_metadata();
                         assert!(metadata.bounds().is_some());
                         let actual_bounds = metadata.bounds().unwrap();
@@ -1408,7 +1408,7 @@ mod tests {
                     }
 
                     {
-                        let mut reader = LASReader::from_path(&out_path)?;
+                        let mut reader = LASReader::from_path(&out_path, false)?;
                         let metadata = reader.get_metadata();
                         assert_eq!(Some(test_data_bounds()), metadata.bounds());
                         assert_eq!(Some(test_data.len()), metadata.number_of_points());
@@ -1491,7 +1491,7 @@ mod tests {
                     }
 
                     {
-                        let mut reader = LASReader::from_path(&out_path)?;
+                        let mut reader = LASReader::from_path(&out_path, false)?;
                         let metadata = reader.get_metadata();
                         assert!(metadata.bounds().is_some());
                         let actual_bounds = metadata.bounds().unwrap();

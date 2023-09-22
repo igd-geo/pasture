@@ -130,7 +130,7 @@ mod tests {
 
     use las::{point::Format, Builder};
     use pasture_core::{
-        containers::{MakeBufferFromLayout, VectorBuffer},
+        containers::{MakeBufferFromLayout, OwningBuffer, VectorBuffer},
         layout::PointType,
         nalgebra::Vector3,
     };
@@ -408,9 +408,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat0> = read_points_buffer.view().into_iter().collect();
 
@@ -447,9 +448,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat0> = read_points_buffer.view().into_iter().collect();
 
@@ -527,9 +529,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat1> = read_points_buffer.view().into_iter().collect();
 
@@ -566,9 +569,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat1> = read_points_buffer.view().into_iter().collect();
 
@@ -651,9 +655,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat2> = read_points_buffer.view().into_iter().collect();
 
@@ -690,9 +695,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat2> = read_points_buffer.view().into_iter().collect();
 
@@ -775,9 +781,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat3> = read_points_buffer.view().into_iter().collect();
 
@@ -814,9 +821,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat3> = read_points_buffer.view().into_iter().collect();
 
@@ -904,9 +912,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat4> = read_points_buffer.view().into_iter().collect();
 
@@ -943,9 +952,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat4> = read_points_buffer.view().into_iter().collect();
 
@@ -1047,9 +1057,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat5> = read_points_buffer.view().into_iter().collect();
 
@@ -1086,9 +1097,10 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
             let mut read_points_buffer =
                 VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
             reader.read_into(&mut read_points_buffer, source_points.len())?;
             let read_points: Vec<LasPointFormat5> = read_points_buffer.view().into_iter().collect();
 

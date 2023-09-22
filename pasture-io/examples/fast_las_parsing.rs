@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     let file = unsafe { MmapOptions::new().map(&File::open(file_path)?)? };
     file.advise(Advice::Sequential)?;
 
-    let las_metadata = LASReader::from_read(Cursor::new(&file), false)?
+    let las_metadata = LASReader::from_read(Cursor::new(&file), false, false)?
         .las_metadata()
         .clone();
 

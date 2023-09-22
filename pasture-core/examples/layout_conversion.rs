@@ -125,6 +125,10 @@ fn main() {
             &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3i32),
             &POSITION_3D,
             |local_position: Vector3<f64>| local_position.component_mul(&SCALE) + OFFSET,
+            // We also have to specify whether we want to transform the source attribute or the target attribute. Here, we
+            // want to retain the precision of the f64 offset and scale values, so we first apply the conversion i32->f64
+            // and then apply the transformation to the target attribute!
+            false,
         );
 
         let converted_points = default_converter.convert::<VectorBuffer, _>(&source_points_buffer);

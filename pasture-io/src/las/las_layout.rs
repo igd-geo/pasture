@@ -35,18 +35,28 @@ pub fn offset_to_extra_bytes(format: Format) -> Option<usize> {
 
 /// LAS flags for the basic (0-5) point record types
 pub const ATTRIBUTE_BASIC_FLAGS: PointAttributeDefinition =
-    PointAttributeDefinition::custom(Cow::Borrowed("LAS_BASIC_FLAGS"), PointAttributeDataType::U8);
+    PointAttributeDefinition::custom(Cow::Borrowed("LASBasicFlags"), PointAttributeDataType::U8);
 /// LAS flags for extended formats
 pub const ATTRIBUTE_EXTENDED_FLAGS: PointAttributeDefinition = PointAttributeDefinition::custom(
-    Cow::Borrowed("LAS_EXTENDED_FLAGS"),
+    Cow::Borrowed("LASExtendedFlags"),
     PointAttributeDataType::U16,
+);
+/// Custom position attribute for LAS positions in local space
+pub const ATTRIBUTE_LOCAL_LAS_POSITION: PointAttributeDefinition = PointAttributeDefinition::custom(
+    Cow::Borrowed("LASLocalPosition"),
+    PointAttributeDataType::Vec3i32,
 );
 
 /// Returns the default `PointLayout` for the given LAS point format. If `exact_binary_representation` is true, the
-/// layout mirrors the binary layout of the point records in the LAS format, as defined by the [LAS specification](http://www.asprs.org/wp-content/uploads/2019/03/LAS_1_4_r14.pdf).
-/// Mirroring in this context means that the binary layout exactly matches that of the specification. This is fast,
-/// as it allows parsing through `memcpy`, but it is not very usable, as this means positions are in local space instead
-/// of world space, and the bit fields are packed instead of represented as separate bytes
+/// layout mirrors the binary layout of the point records in the LAS format, as defined by the [LAS specification](http://www.asprs.org/wp-content/uploads/2019/03/LAS_1_4_r14.pdf). This means:
+/// - Positions are stored as `Vector3<i32>` in local space, using the custom [`ATTRIBUTE_LOCAL_LAS_POSITION`] instead of
+///   the [`POSITION_3D`] attribute
+/// - Bit flag values (e.g. [`RETURN_NUMBER`], [`NUMBER_OF_RETURNS`] etc.) are stored as a single attribute, either using
+///   [`ATTRIBUTE_BASIC_FLAGS`] for point record types 0-5, or [`ATTRIBUTE_EXTENDED_FLAGS`] for point record types 6-10
+///  that positions will be stored in local space (offset and scale
+///
+/// Otherwise, positions are stored in world-space using the default [`POSITION_3D`] attribute, and bit flag values are
+/// stored as separate attributes
 ///
 /// # Errors
 ///
@@ -60,10 +70,7 @@ pub fn point_layout_from_las_point_format(
     if exact_binary_representation {
         // Build the layout by hand!
         let mut layout = PointLayout::default();
-        layout.add_attribute(
-            POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3i32),
-            FieldAlignment::Packed(1),
-        );
+        layout.add_attribute(ATTRIBUTE_LOCAL_LAS_POSITION, FieldAlignment::Packed(1));
         layout.add_attribute(INTENSITY, FieldAlignment::Packed(1));
         if format.is_extended {
             layout.add_attribute(ATTRIBUTE_EXTENDED_FLAGS, FieldAlignment::Packed(1));

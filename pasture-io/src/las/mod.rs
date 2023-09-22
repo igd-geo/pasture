@@ -32,6 +32,3 @@ pub use self::write_helpers::*;
 
 mod las_err;
 pub(crate) use self::las_err::*;
-
-mod parsing;
-pub(crate) use self::parsing::*;

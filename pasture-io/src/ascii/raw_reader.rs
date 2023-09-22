@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
 use itertools::{EitherOrBoth::*, Itertools};
+use pasture_core::containers::BorrowedMutBuffer;
 use pasture_core::layout::attributes;
 use pasture_core::layout::PointAttributeDefinition;
 use pasture_core::layout::PointLayout;
@@ -290,7 +291,7 @@ fn generate_parse_error(datatype: &PointDataType, character: char) -> String {
 }
 
 impl<T: Read + BufRead> PointReader for RawAsciiReader<T> {
-    fn read_into<'a, 'b, B: pasture_core::containers::OwningBuffer<'a>>(
+    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
         point_buffer: &'b mut B,
         count: usize,
@@ -308,7 +309,7 @@ impl<T: Read + BufRead> PointReader for RawAsciiReader<T> {
                 .with_context(|| format!("ReadError in line {}.", index))?;
             //put it in the buffer
             unsafe {
-                point_buffer.push_points(temp_point.get_buffer());
+                point_buffer.set_point(index, temp_point.get_buffer());
             }
         }
         Ok(count)
@@ -345,7 +346,9 @@ mod tests {
         test_data_user_data,
     };
     use anyhow::Result;
-    use pasture_core::containers::{BorrowedBuffer, MakeBufferFromLayout, VectorBuffer};
+    use pasture_core::containers::{
+        BorrowedBuffer, MakeBufferFromLayout, OwningBuffer, VectorBuffer,
+    };
     use pasture_core::layout::{attributes, PointType};
     use pasture_core::nalgebra::Vector3;
     use pasture_derive::PointType;
@@ -476,6 +479,7 @@ mod tests {
         let reader = BufReader::new(File::open(path)?);
         let mut ascii_reader = RawAsciiReader::from_read(reader, "xyzirncuRGBtpedaI", ", ")?;
         let mut buffer = VectorBuffer::new_from_layout(TestPointAll::layout());
+        buffer.resize(10);
         ascii_reader.read_into(&mut buffer, 10)?;
 
         let positions = buffer
@@ -575,6 +579,7 @@ mod tests {
         let reader = BufReader::new(File::open(path)?);
         let mut ascii_reader = RawAsciiReader::from_read(reader, "xyzieRGB", ", ")?;
         let mut buffer = VectorBuffer::new_from_layout(TestPointDifferent::layout());
+        buffer.resize(10);
         ascii_reader.read_into(&mut buffer, 10)?;
 
         let position_expected = test_data_positions();

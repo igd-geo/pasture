@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
-    containers::OwningBuffer,
+    containers::BorrowedMutBuffer,
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
         conversion::get_converter_for_attributes,
@@ -244,7 +244,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         ))
     }
 
-    fn apply_rtc_center_offset<'a, 'b, B: OwningBuffer<'a>>(
+    fn apply_rtc_center_offset<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &self,
         point_buffer: &'b mut B,
     ) -> Result<()>
@@ -291,7 +291,7 @@ impl PntsReader<BufReader<File>> {
 }
 
 impl<R: BufRead + Seek> PointReader for PntsReader<R> {
-    fn read_into<'a, 'b, B: OwningBuffer<'a>>(
+    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
         point_buffer: &'b mut B,
         count: usize,
@@ -306,7 +306,6 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
         }
 
         let target_layout = point_buffer.point_layout().clone();
-        point_buffer.resize(num_to_read);
         for attribute in self.layout.attributes() {
             // Try to read this attribute only if it exists in the target buffer's PointLayout
             if let Some(target_attribute) = target_layout.get_attribute_by_name(attribute.name()) {
