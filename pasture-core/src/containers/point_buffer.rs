@@ -8,7 +8,7 @@ use crate::layout::{
 use super::{
     buffer_views::{AttributeView, AttributeViewMut, PointView, PointViewMut},
     AttributeViewConverting, BufferSliceColumnar, BufferSliceColumnarMut, BufferSliceInterleaved,
-    BufferSliceInterleavedMut, SliceBuffer, SliceBufferMut,
+    BufferSliceInterleavedMut, RawAttributeView, RawAttributeViewMut, SliceBuffer, SliceBufferMut,
 };
 
 /// Base trait for all point buffers in pasture. The only assumption this trait makes is that the
@@ -449,6 +449,16 @@ pub trait InterleavedBuffer<'a>: BorrowedBuffer<'a> {
     fn get_point_range_ref<'b>(&'b self, range: Range<usize>) -> &'b [u8]
     where
         'a: 'b;
+
+    /// Get a raw view over the given `attribute` from this point buffer. Unlike the typed view that `view_attribute`
+    /// returns, this view dereferences to byte slices, but it is potentially more efficient to use than calling
+    /// `get_attribute` repeatedly
+    fn view_raw_attribute<'b>(&'b self, attribute: &PointAttributeMember) -> RawAttributeView<'b>
+    where
+        'a: 'b,
+    {
+        RawAttributeView::from_interleaved_buffer(self, attribute)
+    }
 }
 
 /// Trait for buffers that store point data in interleaved memory layout and also borrow their memory mutably. Compared
@@ -470,6 +480,17 @@ pub trait InterleavedBufferMut<'a>: InterleavedBuffer<'a> + BorrowedMutBuffer<'a
     fn get_point_range_mut<'b>(&'b mut self, range: Range<usize>) -> &'b mut [u8]
     where
         'a: 'b;
+
+    /// Like `view_raw_attribute`, but returns mutable byte slices of the attribute data
+    fn view_raw_attribute_mut<'b>(
+        &'b mut self,
+        attribute: &PointAttributeMember,
+    ) -> RawAttributeViewMut<'b>
+    where
+        'a: 'b,
+    {
+        RawAttributeViewMut::from_interleaved_buffer(self, attribute)
+    }
 }
 
 /// Trait for point buffers that store their point data in columnar memory layout. This allows accessing point attributes
@@ -501,6 +522,16 @@ pub trait ColumnarBuffer<'a>: BorrowedBuffer<'a> {
     ) -> &'b [u8]
     where
         'a: 'b;
+
+    /// Get a raw view over the given `attribute` from this point buffer. Unlike the typed view that `view_attribute`
+    /// returns, this view dereferences to byte slices, but it is potentially more efficient to use than calling
+    /// `get_attribute` repeatedly
+    fn view_raw_attribute<'b>(&'b self, attribute: &PointAttributeMember) -> RawAttributeView<'b>
+    where
+        'a: 'b,
+    {
+        RawAttributeView::from_columnar_buffer(self, attribute.attribute_definition())
+    }
 }
 
 /// Trait for buffers that store point data in columnar memory layout and also borrow their memory mutably. Compared
@@ -534,6 +565,17 @@ pub trait ColumnarBufferMut<'a>: ColumnarBuffer<'a> + BorrowedMutBuffer<'a> {
     ) -> &'b mut [u8]
     where
         'a: 'b;
+
+    /// Like `view_raw_attribute`, but returns mutable byte slices of the attribute data
+    fn view_raw_attribute_mut<'b>(
+        &'b mut self,
+        attribute: &PointAttributeMember,
+    ) -> RawAttributeViewMut<'b>
+    where
+        'a: 'b,
+    {
+        RawAttributeViewMut::from_columnar_buffer(self, attribute.attribute_definition())
+    }
 }
 
 /// A point buffer that uses a `Vec<u8>` as its underlying storage. It stores point data in interleaved memory

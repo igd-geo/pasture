@@ -99,6 +99,9 @@ pub use self::point_buffer::*;
 mod attribute_iterators;
 pub use self::attribute_iterators::*;
 
+mod raw_attribute_view;
+pub use self::raw_attribute_view::*;
+
 mod point_iterators;
 pub use self::point_iterators::*;
 

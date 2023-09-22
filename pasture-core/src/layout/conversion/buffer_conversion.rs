@@ -1,7 +1,7 @@
 use crate::{
     containers::{
-        BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, ColumnarBufferMut, MakeBufferFromLayout,
-        OwningBuffer,
+        BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, ColumnarBufferMut, InterleavedBuffer,
+        InterleavedBufferMut, MakeBufferFromLayout, OwningBuffer,
     },
     layout::{PointAttributeDefinition, PointAttributeMember, PointLayout, PrimitiveType},
 };
@@ -283,27 +283,36 @@ impl<'a> BufferLayoutConverter<'a> {
             .map(|mapping| mapping.required_buffer_size())
             .max();
         if let Some(max_attribute_size) = max_attribute_size {
+            // Currently, we only support conversions between interleaved and/or columnar buffers. Buffers that implement
+            // neither `InterleavedBuffer` nor `ColumnarBuffer` would be possible, but more inefficient to implement
             match (source_buffer.as_columnar(), target_buffer.as_columnar_mut()) {
                 (Some(source_buffer), Some(target_buffer)) => {
                     self.convert_columnar_to_columnar(source_buffer, target_buffer);
                 }
                 (Some(source_buffer), None) => {
-                    self.convert_columnar_to_general(
+                    self.convert_columnar_to_interleaved(
                         source_buffer,
-                        target_buffer,
-                        max_attribute_size,
+                        target_buffer.as_interleaved_mut().expect(
+                            "Target buffer must either be an interleaved or columnar buffer",
+                        ),
                     );
                 }
                 (None, Some(target_buffer)) => {
-                    self.convert_general_to_columnar(
-                        source_buffer,
+                    self.convert_interleaved_to_columnar(
+                        source_buffer.as_interleaved().expect(
+                            "Source buffer must either be an interleaved or columnar buffer",
+                        ),
                         target_buffer,
                         max_attribute_size,
                     );
                 }
-                (None, None) => self.convert_general_to_general(
-                    source_buffer,
-                    target_buffer,
+                (None, None) => self.convert_interleaved_to_interleaved(
+                    source_buffer
+                        .as_interleaved()
+                        .expect("Source buffer must either be an interleaved or columnar buffer"),
+                    target_buffer
+                        .as_interleaved_mut()
+                        .expect("Target buffer must either be an interleaved or columnar buffer"),
                     max_attribute_size,
                 ),
             }
@@ -437,32 +446,29 @@ impl<'a> BufferLayoutConverter<'a> {
         }
     }
 
-    fn convert_columnar_to_general<'b, B: BorrowedMutBuffer<'b>>(
+    fn convert_columnar_to_interleaved<'b, B: InterleavedBufferMut<'b> + ?Sized>(
         &self,
         source_buffer: &dyn ColumnarBuffer,
         target_buffer: &mut B,
-        max_attribute_size: usize,
     ) {
         let num_points = source_buffer.len();
-        let mut convert_buffer = vec![0; max_attribute_size];
-        let mut transform_buffer = vec![0; max_attribute_size];
 
         for mapping in &self.mappings {
             let source_attribute_data = source_buffer.get_attribute_range_ref(
                 mapping.source_attribute.attribute_definition(),
                 0..num_points,
             );
+            let mut target_attribute_data =
+                target_buffer.view_raw_attribute_mut(mapping.target_attribute);
             let source_attribute_size = mapping.source_attribute.size() as usize;
-            let target_attribute_size = mapping.target_attribute.size() as usize;
 
             if let Some(converter) = mapping.converter {
-                let target_attribute_size = mapping.target_attribute.size() as usize;
-                let target_attribute_chunk = &mut convert_buffer[..target_attribute_size];
                 let mut source_tmp_buffer: Vec<u8> = vec![0; source_attribute_size];
                 for (index, source_chunk) in source_attribute_data
                     .chunks_exact(source_attribute_size)
                     .enumerate()
                 {
+                    let target_attribute_chunk = &mut target_attribute_data[index];
                     // Safe because we guarantee that the slice sizes match and their data comes from the
                     // correct attribute
                     unsafe {
@@ -478,11 +484,6 @@ impl<'a> BufferLayoutConverter<'a> {
                         } else {
                             converter(source_chunk, target_attribute_chunk);
                         }
-                        target_buffer.set_attribute(
-                            mapping.target_attribute.attribute_definition(),
-                            index,
-                            target_attribute_chunk,
-                        );
                     }
                 }
             } else {
@@ -490,31 +491,17 @@ impl<'a> BufferLayoutConverter<'a> {
                     .chunks_exact(source_attribute_size)
                     .enumerate()
                 {
-                    let attribute_data =
-                        if let Some(transformation) = mapping.transformation.as_ref() {
-                            let transform_slice = &mut transform_buffer[..target_attribute_size];
-                            transform_slice.copy_from_slice(attribute_data);
-                            (transformation.func)(transform_slice);
-                            transform_slice
-                        } else {
-                            attribute_data
-                        };
-
-                    // Safe because size matches and the source and target attributes match, otherwise there
-                    // would be a converter
-                    unsafe {
-                        target_buffer.set_attribute(
-                            mapping.target_attribute.attribute_definition(),
-                            index,
-                            attribute_data,
-                        );
+                    let target_attribute_chunk = &mut target_attribute_data[index];
+                    target_attribute_chunk.copy_from_slice(attribute_data);
+                    if let Some(transformation) = mapping.transformation.as_ref() {
+                        (transformation.func)(target_attribute_chunk);
                     }
                 }
             }
         }
     }
 
-    fn convert_general_to_columnar<'b, B: BorrowedBuffer<'b>>(
+    fn convert_interleaved_to_columnar<'b, B: InterleavedBuffer<'b> + ?Sized>(
         &self,
         source_buffer: &B,
         target_buffer: &mut dyn ColumnarBufferMut,
@@ -524,6 +511,7 @@ impl<'a> BufferLayoutConverter<'a> {
         let num_points = source_buffer.len();
 
         for mapping in &self.mappings {
+            let source_attribute_data = source_buffer.view_raw_attribute(mapping.source_attribute);
             let target_attribute_range = target_buffer.get_attribute_range_mut(
                 mapping.target_attribute.attribute_definition(),
                 0..num_points,
@@ -534,26 +522,20 @@ impl<'a> BufferLayoutConverter<'a> {
                 .chunks_exact_mut(target_attribute_size)
                 .enumerate()
             {
-                let buf = &mut buffer[..mapping.source_attribute.size() as usize];
-                // Safe because we check that the point layouts match
-                unsafe {
-                    source_buffer.get_attribute_unchecked(
-                        mapping.source_attribute,
-                        point_index,
-                        buf,
-                    );
-                }
+                let source_attribute_chunk = &source_attribute_data[point_index];
 
                 if let Some(converter) = mapping.converter {
                     if let Some(transformation) = mapping.transformation.as_ref() {
                         if transformation.apply_to_source_attribute {
+                            let buf = &mut buffer[..source_attribute_chunk.len()];
+                            buf.copy_from_slice(source_attribute_chunk);
                             (transformation.func)(buf);
                             unsafe {
                                 converter(buf, target_attribute_chunk);
                             }
                         } else {
                             unsafe {
-                                converter(buf, target_attribute_chunk);
+                                converter(source_attribute_chunk, target_attribute_chunk);
                             }
                             (transformation.func)(target_attribute_chunk);
                         }
@@ -562,24 +544,26 @@ impl<'a> BufferLayoutConverter<'a> {
                         // buffer sizes are correct because they come from the PointAttributeMembers
                         // set_attribute is correct for the same reasons
                         unsafe {
-                            converter(buf, target_attribute_chunk);
+                            converter(source_attribute_chunk, target_attribute_chunk);
                         }
                     }
-                } else {
-                    if let Some(transformation) = mapping.transformation.as_ref() {
-                        (transformation.func)(buf);
-                    }
+                } else if let Some(transformation) = mapping.transformation.as_ref() {
+                    let buf = &mut buffer[..source_attribute_chunk.len()];
+                    buf.copy_from_slice(source_attribute_chunk);
+                    (transformation.func)(buf);
                     target_attribute_chunk.copy_from_slice(buf);
+                } else {
+                    target_attribute_chunk.copy_from_slice(source_attribute_chunk);
                 }
             }
         }
     }
 
-    fn convert_general_to_general<
+    fn convert_interleaved_to_interleaved<
         'b,
         'c,
-        InBuffer: BorrowedBuffer<'b>,
-        OutBuffer: BorrowedMutBuffer<'c>,
+        InBuffer: InterleavedBuffer<'b> + ?Sized,
+        OutBuffer: InterleavedBufferMut<'c> + ?Sized,
     >(
         &self,
         source_buffer: &InBuffer,
@@ -587,60 +571,45 @@ impl<'a> BufferLayoutConverter<'a> {
         max_attribute_size: usize,
     ) {
         let mut buffer: Vec<u8> = vec![0; max_attribute_size];
-        let mut converter_buffer: Vec<u8> = vec![0; max_attribute_size];
 
+        // For each attribute...
         for mapping in &self.mappings {
+            let source_attribute_view = source_buffer.view_raw_attribute(mapping.source_attribute);
+            let mut target_attribute_view =
+                target_buffer.view_raw_attribute_mut(mapping.target_attribute);
+
+            // Then apply conversions and transformations for each point
             for point_index in 0..source_buffer.len() {
-                let buf = &mut buffer[..mapping.source_attribute.size() as usize];
-                // Safe because we check that the point layouts match
-                unsafe {
-                    source_buffer.get_attribute_unchecked(
-                        mapping.source_attribute,
-                        point_index,
-                        buf,
-                    );
-                }
+                let source_attribute_data = &source_attribute_view[point_index];
+                let target_attribute_data = &mut target_attribute_view[point_index];
 
                 if let Some(converter) = mapping.converter {
-                    let target_buf =
-                        &mut converter_buffer[..mapping.target_attribute.size() as usize];
                     if let Some(transformation) = mapping.transformation.as_ref() {
                         if transformation.apply_to_source_attribute {
+                            let buf = &mut buffer[..mapping.source_attribute.size() as usize];
+                            buf.copy_from_slice(source_attribute_data);
                             (transformation.func)(buf);
                             unsafe {
-                                converter(buf, target_buf);
+                                converter(buf, target_attribute_data);
                             }
                         } else {
                             unsafe {
-                                converter(buf, target_buf);
+                                converter(source_attribute_data, target_attribute_data);
                             }
-                            (transformation.func)(target_buf);
+                            (transformation.func)(target_attribute_data);
                         }
                     } else {
                         unsafe {
-                            converter(buf, target_buf);
+                            converter(source_attribute_data, target_attribute_data);
                         }
                     }
-
-                    unsafe {
-                        target_buffer.set_attribute(
-                            mapping.target_attribute.attribute_definition(),
-                            point_index,
-                            target_buf,
-                        );
-                    }
+                } else if let Some(transformation) = mapping.transformation.as_ref() {
+                    let buf = &mut buffer[..mapping.source_attribute.size() as usize];
+                    buf.copy_from_slice(source_attribute_data);
+                    (transformation.func)(buf);
+                    target_attribute_data.copy_from_slice(buf);
                 } else {
-                    if let Some(transformation) = mapping.transformation.as_ref() {
-                        (transformation.func)(buf);
-                    }
-                    // Safety: buf has the correct size because otherwise we would have a converter
-                    unsafe {
-                        target_buffer.set_attribute(
-                            mapping.target_attribute.attribute_definition(),
-                            point_index,
-                            buf,
-                        );
-                    }
+                    target_attribute_data.copy_from_slice(source_attribute_data);
                 }
             }
         }
