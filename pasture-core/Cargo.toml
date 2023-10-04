@@ -38,6 +38,10 @@ criterion = "0.3"
 name = "point_buffer_iterators_bench"
 harness = false
 
+[[bench]]
+name = "layout_conversion_bench"
+harness = false
+
 [features]
 gpu = ["wgpu", "futures"] 
 core_gpu_examples = ["gpu", "shaderc"]
