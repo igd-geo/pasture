@@ -1,3 +1,5 @@
+use std::iter::FromIterator;
+
 use float_ord::FloatOrd;
 use nalgebra::{ClosedSub, Point3, Scalar, Vector3};
 
@@ -265,6 +267,24 @@ impl AABB<f64> {
     }
 }
 
+impl<U: Into<Point3<f64>>> FromIterator<U> for AABB<f64> {
+    fn from_iter<V: IntoIterator<Item = U>>(iter: V) -> Self {
+        let mut min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
+        let mut max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
+        for point in iter.into_iter() {
+            let point: Point3<f64> = point.into();
+            min.x = if min.x < point.x { min.x } else { point.x };
+            min.y = if min.y < point.y { min.y } else { point.y };
+            min.z = if min.z < point.z { min.z } else { point.z };
+
+            max.x = if max.x > point.x { max.x } else { point.x };
+            max.y = if max.y > point.y { max.y } else { point.y };
+            max.z = if max.z > point.z { max.z } else { point.z };
+        }
+        Self::from_min_max(min, max)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +300,18 @@ mod tests {
         assert!(!bounds.contains_approx(&p1, 0.001));
         assert!(bounds.contains_approx(&p2, 0.0015));
         assert!(!bounds.contains_approx(&p2, 0.0001));
+    }
+
+    #[test]
+    fn aabb_from_iter() {
+        let points = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 1.0, 1.0),
+            Vector3::new(-1.0, -1.0, -1.0),
+        ];
+        let bounds: AABB<f64> = points.into_iter().collect();
+        let expected_bounds =
+            AABB::from_min_max(Point3::new(-1.0, -1.0, -1.0), Point3::new(1.0, 1.0, 1.0));
+        assert_eq!(expected_bounds, bounds);
     }
 }

@@ -42,6 +42,10 @@ harness = false
 name = "layout_conversion_bench"
 harness = false
 
+[[bench]]
+name = "aabb_bench"
+harness = false
+
 [features]
 gpu = ["wgpu", "futures"] 
 core_gpu_examples = ["gpu", "shaderc"]
