@@ -40,6 +40,11 @@ impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> Iterator for PointIteratorByVa
             Some(point)
         }
     }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
+    }
 }
 
 /// Iterator over strongly typed points by immutable borrow
@@ -72,6 +77,11 @@ impl<'a, T: PointType> Iterator for PointIteratorByRef<'a, T> {
             self.current_index += 1;
             Some(point)
         }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
     }
 }
 
@@ -109,6 +119,91 @@ impl<'a, T: PointType> Iterator for PointIteratorByMut<'a, T> {
                 self.current_index += 1;
                 Some(&mut *memory)
             }
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{thread_rng, Rng};
+
+    use crate::{
+        containers::{BorrowedMutBuffer, VectorBuffer},
+        test_utils::{CustomPointTypeSmall, DefaultPointDistribution},
+    };
+
+    use super::*;
+
+    #[test]
+    #[allow(clippy::iter_nth_zero)]
+    fn point_iterator_nth() {
+        const COUNT: usize = 16;
+        let mut points = thread_rng()
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(COUNT)
+            .collect::<VectorBuffer>();
+        let mut points_clone = points.clone();
+
+        let points_view = points.view::<CustomPointTypeSmall>();
+        {
+            let mut points_iter = points_view.clone().into_iter();
+            assert_eq!(points_iter.nth(0), Some(points_view.at(0)));
+        }
+        {
+            let mut points_iter = points_view.clone().into_iter();
+            assert_eq!(points_iter.nth(6), Some(points_view.at(6)));
+        }
+        {
+            let mut points_iter = points_view.clone().into_iter();
+            assert_eq!(points_iter.nth(COUNT), None);
+        }
+        {
+            let mut points_iter = points_view.clone().into_iter();
+            points_iter.nth(0);
+            assert_eq!(points_iter.nth(0), Some(points_view.at(1)));
+        }
+
+        {
+            let mut points_iter = points_view.iter();
+            assert_eq!(points_iter.nth(0), Some(points_view.at_ref(0)));
+        }
+        {
+            let mut points_iter = points_view.iter();
+            assert_eq!(points_iter.nth(6), Some(points_view.at_ref(6)));
+        }
+        {
+            let mut points_iter = points_view.iter();
+            assert_eq!(points_iter.nth(COUNT), None);
+        }
+        {
+            let mut points_iter = points_view.iter();
+            points_iter.nth(0);
+            assert_eq!(points_iter.nth(0), Some(points_view.at_ref(1)));
+        }
+
+        let mut points_view_mut = points.view_mut::<CustomPointTypeSmall>();
+        let mut cloned_points_view_mut = points_clone.view_mut::<CustomPointTypeSmall>();
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            assert_eq!(points_iter.nth(0), Some(cloned_points_view_mut.at_mut(0)));
+        }
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            assert_eq!(points_iter.nth(6), Some(cloned_points_view_mut.at_mut(6)));
+        }
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            assert_eq!(points_iter.nth(COUNT), None);
+        }
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            points_iter.nth(0);
+            assert_eq!(points_iter.nth(0), Some(cloned_points_view_mut.at_mut(1)));
         }
     }
 }

@@ -53,6 +53,11 @@ impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>> Iterator
             Some(attribute)
         }
     }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
+    }
 }
 
 /// Like [`AttributeIteratorByValue`], but returns attribute data by immutable reference. Can only be
@@ -89,6 +94,11 @@ impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByRef<'a, T> {
             self.current_index += 1;
             Some(ret)
         }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
     }
 }
 
@@ -127,6 +137,110 @@ impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByMut<'a, T> {
                 self.current_index += 1;
                 Some(&mut *attribute_ptr)
             }
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::Vector3;
+    use rand::{thread_rng, Rng};
+
+    use crate::{
+        containers::{BorrowedMutBuffer, HashMapBuffer},
+        layout::attributes::POSITION_3D,
+        test_utils::{CustomPointTypeSmall, DefaultPointDistribution},
+    };
+
+    use super::*;
+
+    #[test]
+    #[allow(clippy::iter_nth_zero)]
+    fn attribute_iterator_nth() {
+        const COUNT: usize = 16;
+        let mut points = thread_rng()
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(COUNT)
+            .collect::<HashMapBuffer>();
+        let mut points_clone = points.clone();
+
+        let positions_view = points.view_attribute::<Vector3<f64>>(&POSITION_3D);
+        {
+            let mut positions_iter = positions_view.clone().into_iter();
+            assert_eq!(positions_iter.nth(0), Some(positions_view.at(0)));
+        }
+        {
+            let mut positions_iter = positions_view.clone().into_iter();
+            assert_eq!(positions_iter.nth(6), Some(positions_view.at(6)));
+        }
+        {
+            let mut positions_iter = positions_view.clone().into_iter();
+            assert_eq!(positions_iter.nth(COUNT), None);
+        }
+        {
+            let mut positions_iter = positions_view.clone().into_iter();
+            positions_iter.nth(0);
+            assert_eq!(positions_iter.nth(0), Some(positions_view.at(1)));
+        }
+
+        {
+            let mut positions_iter = positions_view.iter();
+            assert_eq!(positions_iter.nth(0), Some(positions_view.at_ref(0)));
+        }
+        {
+            let mut positions_iter = positions_view.iter();
+            assert_eq!(positions_iter.nth(6), Some(positions_view.at_ref(6)));
+        }
+        {
+            let mut positions_iter = positions_view.iter();
+            assert_eq!(positions_iter.nth(COUNT), None);
+        }
+        {
+            let mut positions_iter = positions_view.iter();
+            positions_iter.nth(0);
+            assert_eq!(positions_iter.nth(0), Some(positions_view.at_ref(1)));
+        }
+
+        {
+            let mut positions_view_mut = points.view_attribute_mut::<Vector3<f64>>(&POSITION_3D);
+            let mut cloned_positions_view_mut =
+                points_clone.view_attribute_mut::<Vector3<f64>>(&POSITION_3D);
+            let mut positions_iter = positions_view_mut.iter_mut();
+            assert_eq!(
+                positions_iter.nth(0),
+                Some(cloned_positions_view_mut.at_mut(0))
+            );
+        }
+        {
+            let mut positions_view_mut = points.view_attribute_mut::<Vector3<f64>>(&POSITION_3D);
+            let mut cloned_positions_view_mut =
+                points_clone.view_attribute_mut::<Vector3<f64>>(&POSITION_3D);
+            let mut positions_iter = positions_view_mut.iter_mut();
+            assert_eq!(
+                positions_iter.nth(6),
+                Some(cloned_positions_view_mut.at_mut(6))
+            );
+        }
+        {
+            let mut positions_view_mut = points.view_attribute_mut::<Vector3<f64>>(&POSITION_3D);
+            let mut positions_iter = positions_view_mut.iter_mut();
+            assert_eq!(positions_iter.nth(COUNT), None);
+        }
+        {
+            let mut positions_view_mut = points.view_attribute_mut::<Vector3<f64>>(&POSITION_3D);
+            let mut cloned_positions_view_mut =
+                points_clone.view_attribute_mut::<Vector3<f64>>(&POSITION_3D);
+            let mut positions_iter = positions_view_mut.iter_mut();
+            positions_iter.nth(0);
+            assert_eq!(
+                positions_iter.nth(0),
+                Some(cloned_positions_view_mut.at_mut(1))
+            );
         }
     }
 }
