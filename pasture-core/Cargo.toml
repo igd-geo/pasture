@@ -46,6 +46,10 @@ harness = false
 name = "aabb_bench"
 harness = false
 
+[[bench]]
+name = "buffer_filter_bench"
+harness = false
+
 [features]
 gpu = ["wgpu", "futures"] 
 core_gpu_examples = ["gpu", "shaderc"]

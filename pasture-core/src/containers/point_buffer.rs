@@ -1003,6 +1003,81 @@ impl HashMapBuffer {
         HashMapBufferAttributePusher::new(self)
     }
 
+    /// Like `Iterator::filter`, but filters into a point buffer of type `B`
+    pub fn filter<
+        B: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
+        F: Fn(usize) -> bool,
+    >(
+        &self,
+        predicate: F,
+    ) -> B {
+        let num_matches = (0..self.len()).filter(|idx| predicate(*idx)).count();
+        let mut filtered_points = B::new_from_layout(self.point_layout.clone());
+        filtered_points.resize(num_matches);
+        self.filter_into(&mut filtered_points, predicate, Some(num_matches));
+        filtered_points
+    }
+
+    /// Like `filter`, but writes the filtered points into the given `buffer`
+    ///
+    /// # panics
+    ///
+    /// If `buffer.len()` is less than the number of matching points according to `predicate`
+    /// If the `PointLayout` of `buffer` does not match the `PointLayout` of `self`
+    pub fn filter_into<B: for<'a> BorrowedMutBuffer<'a>, F: Fn(usize) -> bool>(
+        &self,
+        buffer: &mut B,
+        predicate: F,
+        num_matches_hint: Option<usize>,
+    ) {
+        if buffer.point_layout() != self.point_layout() {
+            panic!("PointLayouts must match");
+        }
+        let num_matches = num_matches_hint
+            .unwrap_or_else(|| (0..self.len()).filter(|idx| predicate(*idx)).count());
+        if buffer.len() < num_matches {
+            panic!("buffer.len() must be at least as large as the number of predicate matches");
+        }
+        if let Some(columnar_buffer) = buffer.as_columnar_mut() {
+            for attribute in self.point_layout.attributes() {
+                let src_attribute_data =
+                    self.get_attribute_range_ref(attribute.attribute_definition(), 0..self.len());
+                let dst_attribute_data = columnar_buffer
+                    .get_attribute_range_mut(attribute.attribute_definition(), 0..num_matches);
+                let stride = attribute.size() as usize;
+                for (dst_index, src_index) in
+                    (0..self.len()).filter(|idx| predicate(*idx)).enumerate()
+                {
+                    dst_attribute_data[(dst_index * stride)..((dst_index + 1) * stride)]
+                        .copy_from_slice(
+                            &src_attribute_data[(src_index * stride)..((src_index + 1) * stride)],
+                        );
+                }
+            }
+        } else if let Some(interleaved_buffer) = buffer.as_interleaved_mut() {
+            let dst_data = interleaved_buffer.get_point_range_mut(0..num_matches);
+            for attribute in self.point_layout.attributes() {
+                let src_attribute_data =
+                    self.get_attribute_range_ref(attribute.attribute_definition(), 0..self.len());
+                let src_stride = attribute.size() as usize;
+                let dst_offset = attribute.offset() as usize;
+                let dst_stride = self.point_layout.size_of_point_entry() as usize;
+                for (dst_index, src_index) in
+                    (0..self.len()).filter(|idx| predicate(*idx)).enumerate()
+                {
+                    let dst_attribute_start = dst_offset + (dst_index * dst_stride);
+                    let dst_point_range = dst_attribute_start..(dst_attribute_start + src_stride);
+                    dst_data[dst_point_range].copy_from_slice(
+                        &src_attribute_data
+                            [(src_index * src_stride)..((src_index + 1) * src_stride)],
+                    );
+                }
+            }
+        } else {
+            unimplemented!()
+        }
+    }
+
     fn get_byte_range_for_attribute(
         point_index: usize,
         attribute: &PointAttributeDefinition,
@@ -2201,5 +2276,41 @@ mod tests {
             .slice_mut(0..0)
             .as_columnar_mut()
             .is_none());
+    }
+
+    #[test]
+    fn test_hash_map_buffer_filter() {
+        const COUNT: usize = 16;
+        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+        let even_points = test_data
+            .iter()
+            .enumerate()
+            .filter_map(
+                |(idx, point)| {
+                    if idx % 2 == 0 {
+                        Some(*point)
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect_vec();
+
+        let src_buffer = test_data.iter().copied().collect::<HashMapBuffer>();
+
+        let even_points_columnar = src_buffer.filter::<HashMapBuffer, _>(|idx| idx % 2 == 0);
+        assert_eq!(
+            even_points_columnar,
+            even_points.iter().copied().collect::<HashMapBuffer>()
+        );
+
+        let even_points_interleaved = src_buffer.filter::<VectorBuffer, _>(|idx| idx % 2 == 0);
+        assert_eq!(
+            even_points_interleaved,
+            even_points.iter().copied().collect::<VectorBuffer>()
+        );
     }
 }
