@@ -1,6 +1,6 @@
 [package]
 name = "pasture-core"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
 license-file = "LICENSE"
@@ -12,7 +12,7 @@ categories = ["data-structures"]
 readme = "README.md"
 
 [dependencies]
-pasture-derive = {version = "=0.2.0", path = "../pasture-derive" }
+pasture-derive = {version = "=0.4.0", path = "../pasture-derive" }
 nalgebra = {version = "0.32", features = ["serde-serialize", "convert-bytemuck"] }
 anyhow = "1.0.34"
 float-ord = "0.2.0"

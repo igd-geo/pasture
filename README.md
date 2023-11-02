@@ -13,9 +13,9 @@ To this end, `pasture` chooses flexibility over simplicity. If you are looking f
 Add this to your `Cargo.toml`:
 ```
 [dependencies]
-pasture-core = "0.3.0"
+pasture-core = "0.4.0"
 # You probably also want I/O support
-pasture-io = "0.3.0"
+pasture-io = "0.4.0"
 ```
 
 Here is an example on how to load a pointcloud from an LAS file and do something with it:
@@ -52,9 +52,36 @@ fn main() -> Result<()> {
 
 For more examples, check out the [`pasture_core` examples](pasture-core/examples) and the [`pasture_io` examples](pasture-io/examples).
 
+## Migration from versions < 0.4
+
+With version `0.4`, the buffer API of `pasture-core` was rewritten. If you are migrating from an earlier version, here are some guidelines for migration. Also check out the documentation of the [`containers` module](https://docs.rs/pasture-core/latest/pasture_core/containers/index.html).
+
+### New buffer types
+
+The main buffer types were renamed:
+* `InterleavedVecPointStorage` is now `VectorBuffer`
+* `PerAttributeVecPointStorage` is now `HashMapBuffer`
+
+The trait structure is also different:
+* `PointBuffer` and `PointBufferWriteable` are replaced by `BorrowedBuffer`, `BorrowedMutBuffer`, and `OwningBuffer`, which define the ownership model of the buffer memory
+* `InterleavedPointBuffer` and `InterleavedPointBufferMut` are now `InterleavedBuffer` and `InterleavedBufferMut`
+* `PerAttributePointBuffer` and `PerAttributePointBufferMut` are now `ColumnarBuffer` and `ColumnarBufferMut`. In general, the term `PerAttribute` is replaced by the more common term `Columnar`
+
+There are no more extension traits (e.g. `PointBufferExt`). To get/set strongly typed point data, you now use *views* which can be obtained through the `BorrowedBuffer` and `BorrowedBufferMut` traits:
+
+```
+let view = buffer.view_attribute::<Vector3<f64>>(&POSITION_3D);
+```
+
+Views support strongly typed access to the data and are convertible to iterators. 
+
+### New interface for readers and writers
+
+The `PointReader` and `PointWriter` traits are no longer object safe. Instead, they have `read` and `read_into` methods that are strongly typed over the buffer type for improved efficiency. There is a `GenericPointReader` type, which uses static dispatch and encapsulates readers for LAS, LAZ, and 3D Tiles. 
+
 # Development
 
-`pasture` is in the early stages of development and bugs may occur. The GPU features of `pasture_core` are highly unstable and under active development. 
+`pasture` is in the early stages of development and bugs may occur. 
 
 # License
 
