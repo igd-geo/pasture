@@ -35,14 +35,6 @@ num-traits = "0.2.16"
 memmap2 = "0.7.1"
 lazy_static = "1.4.0"
 
-# Used by the examples
-crevice = { version = "0.7.1", optional = true }
-mint = { version = "0.5.6", optional = true }
-log = { version = "0.4.0", optional = true }
-env_logger = { version = "0.9.0", optional = true }
-futures = { version = "0.3", optional=true }
-shaderc = { version = "0.7.2", optional = true }
-
 [dev-dependencies]
 criterion = "0.3"
 rand = {version = "0.8.3" }
@@ -50,6 +42,3 @@ rand = {version = "0.8.3" }
 [[bench]]
 name = "las_bench"
 harness = false
-
-[features]
-io_gpu_examples = ["pasture-core/gpu", "crevice", "mint", "log", "env_logger", "futures", "shaderc"]
