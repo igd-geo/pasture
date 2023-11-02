@@ -3,7 +3,10 @@ use std::{fs::File, io::BufWriter};
 use criterion::{criterion_group, criterion_main, Criterion};
 use las::Builder;
 use pasture_core::{
-    containers::{InterleavedVecPointStorage, PointBuffer, PointBufferWriteable, OwningPointBuffer},
+    containers::{
+        BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, MakeBufferFromLayout, OwningBuffer,
+        VectorBuffer,
+    },
     layout::PointType,
     nalgebra::Vector3,
 };
@@ -15,12 +18,12 @@ use pasture_io::{
 use rand::{distributions::Uniform, thread_rng, Rng};
 use scopeguard::defer;
 
-const LAS_PATH: &'static str = "las_bench_file.las";
-const LAZ_PATH: &'static str = "laz_bench_file.laz";
-const WRITE_DUMMY_FILE: &'static str = "write_dummy.las";
+const LAS_PATH: &str = "las_bench_file.las";
+const LAZ_PATH: &str = "laz_bench_file.laz";
+const WRITE_DUMMY_FILE: &str = "write_dummy.las";
 
-#[derive(PointType)]
-#[repr(C)]
+#[derive(PointType, Copy, Clone, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
+#[repr(C, packed)]
 struct CustomPointType {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -31,7 +34,7 @@ struct CustomPointType {
 fn random_las_point<R: Rng + ?Sized>(rng: &mut R) -> LasPointFormat0 {
     LasPointFormat0 {
         classification: rng.sample(Uniform::new(0u8, 8)),
-        edge_of_flight_line: rng.gen::<bool>(),
+        edge_of_flight_line: rng.gen(),
         intensity: rng.gen::<u16>(),
         number_of_returns: rng.sample(Uniform::new(0u8, 5)),
         point_source_id: 0,
@@ -42,7 +45,7 @@ fn random_las_point<R: Rng + ?Sized>(rng: &mut R) -> LasPointFormat0 {
             rng.sample(Uniform::new(-100.0, 100.0)),
         ),
         scan_angle_rank: rng.gen::<i8>(),
-        scan_direction_flag: rng.gen::<bool>(),
+        scan_direction_flag: rng.gen(),
         user_data: 0,
     }
 }
@@ -58,24 +61,22 @@ fn random_custom_point<R: Rng + ?Sized>(rng: &mut R) -> CustomPointType {
     }
 }
 
-fn get_dummy_points() -> InterleavedVecPointStorage {
+fn get_dummy_points() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000_000;
-    let mut buffer =
-        InterleavedVecPointStorage::with_capacity(NUM_POINTS, LasPointFormat0::layout());
+    let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, LasPointFormat0::layout());
     let mut rng = thread_rng();
     for _ in 0..NUM_POINTS {
-        buffer.push_point(random_las_point(&mut rng));
+        buffer.view_mut().push_point(random_las_point(&mut rng));
     }
     buffer
 }
 
-fn get_dummy_points_custom_format() -> InterleavedVecPointStorage {
+fn get_dummy_points_custom_format() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000_000;
-    let mut buffer =
-        InterleavedVecPointStorage::with_capacity(NUM_POINTS, CustomPointType::layout());
+    let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, CustomPointType::layout());
     let mut rng = thread_rng();
     for _ in 0..NUM_POINTS {
-        buffer.push_point(random_custom_point(&mut rng));
+        buffer.view_mut().push_point(random_custom_point(&mut rng));
     }
     buffer
 }
@@ -102,20 +103,19 @@ fn remove_dummy_files() {
     std::fs::remove_file(WRITE_DUMMY_FILE).unwrap();
 }
 
-fn read_performance(path: &str) {
-    let mut reader = LASReader::from_path(path).unwrap();
+fn read_performance<'a, B: OwningBuffer<'a> + MakeBufferFromLayout<'a> + 'a>(path: &str) {
+    let mut reader = LASReader::from_path(path, false).unwrap();
     let count = reader.remaining_points();
-    reader.read(count).unwrap();
+    reader.read::<B>(count).unwrap();
 }
 
-fn read_performance_custom_format(buffer: &mut dyn PointBufferWriteable, path: &str) {
-    buffer.clear();
-    let mut reader = LASReader::from_path(path).unwrap();
+fn read_performance_custom_format<'a, B: OwningBuffer<'a>>(buffer: &'a mut B, path: &str) {
+    let mut reader = LASReader::from_path(path, false).unwrap();
     let count = reader.remaining_points();
     reader.read_into(buffer, count).unwrap();
 }
 
-fn write_performance(points: &dyn PointBuffer, compressed: bool) {
+fn write_performance<'a, B: BorrowedBuffer<'a>>(points: &'a B, compressed: bool) {
     let writer = BufWriter::new(File::create(WRITE_DUMMY_FILE).unwrap());
     let header = Builder::from((1, 4)).into_header().unwrap();
     let mut writer = LASWriter::from_writer_and_header(writer, header, compressed).unwrap();
@@ -128,16 +128,37 @@ fn bench(c: &mut Criterion) {
     defer! {
         remove_dummy_files();
     }
-    c.bench_function("las_read", |b| b.iter(|| read_performance(LAS_PATH)));
-    c.bench_function("laz_read", |b| b.iter(|| read_performance(LAZ_PATH)));
+    c.bench_function("las_read_interleaved", |b| {
+        b.iter(|| read_performance::<VectorBuffer>(LAS_PATH))
+    });
+    c.bench_function("las_read_columnar", |b| {
+        b.iter(|| read_performance::<HashMapBuffer>(LAS_PATH))
+    });
+    c.bench_function("laz_read_interleaved", |b| {
+        b.iter(|| read_performance::<VectorBuffer>(LAZ_PATH))
+    });
+    c.bench_function("laz_read_columnar", |b| {
+        b.iter(|| read_performance::<HashMapBuffer>(LAZ_PATH))
+    });
 
     {
-        let mut read_buffer =
-            InterleavedVecPointStorage::with_capacity(1_000_000, CustomPointType::layout());
-        c.bench_function("las_read_custom_format", |b| {
+        let mut read_buffer = VectorBuffer::with_capacity(1_000_000, CustomPointType::layout());
+        read_buffer.resize(1_000_000);
+        c.bench_function("las_read_custom_format_interleaved", |b| {
             b.iter(|| read_performance_custom_format(&mut read_buffer, LAS_PATH))
         });
-        c.bench_function("laz_read_custom_format", |b| {
+        c.bench_function("laz_read_custom_format_interleaved", |b| {
+            b.iter(|| read_performance_custom_format(&mut read_buffer, LAZ_PATH))
+        });
+    }
+
+    {
+        let mut read_buffer = HashMapBuffer::with_capacity(1_000_000, CustomPointType::layout());
+        read_buffer.resize(1_000_000);
+        c.bench_function("las_read_custom_format_columnar", |b| {
+            b.iter(|| read_performance_custom_format(&mut read_buffer, LAS_PATH))
+        });
+        c.bench_function("laz_read_custom_format_columnar", |b| {
             b.iter(|| read_performance_custom_format(&mut read_buffer, LAZ_PATH))
         });
     }

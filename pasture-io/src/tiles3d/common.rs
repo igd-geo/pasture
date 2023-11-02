@@ -46,7 +46,7 @@ pub fn write_json_header<W: Write>(
 
     if num_padding_bytes > 0 {
         writer
-            .write(&vec![0x20; num_padding_bytes as usize])
+            .write(&vec![0x20; num_padding_bytes])
             .context("Could not write padding bytes of JSON header to writer")?;
     }
 

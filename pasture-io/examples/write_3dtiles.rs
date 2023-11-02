@@ -2,7 +2,7 @@ use std::{fs::File, io::BufWriter};
 
 use anyhow::Result;
 use pasture_core::{
-    containers::{PerAttributeVecPointStorage, OwningPointBuffer},
+    containers::{BorrowedMutBuffer, HashMapBuffer},
     layout::PointType,
     math::AABB,
     nalgebra::{Point3, Vector3},
@@ -13,7 +13,7 @@ use pasture_io::{
     tiles3d::{BoundingVolume, PntsWriter, Refinement, RootTileset, Tileset, TilesetBuilder},
 };
 
-#[derive(Copy, Clone, Debug, PointType)]
+#[derive(Copy, Clone, Debug, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]
 struct Point {
     #[pasture(BUILTIN_POSITION_3D)]
@@ -25,14 +25,14 @@ struct Point {
 }
 
 /// Generates a bunch of points with a nice pattern
-fn gen_points() -> PerAttributeVecPointStorage {
+fn gen_points() -> HashMapBuffer {
     let points_per_axis = 64;
     let height = 4.0;
-    let mut buffer = PerAttributeVecPointStorage::with_capacity(points_per_axis, Point::layout());
+    let mut buffer = HashMapBuffer::with_capacity(points_per_axis, Point::layout());
 
     let z_at = |x: f32, y: f32| -> f32 {
-        let z1 = (x as f32 / points_per_axis as f32 * 8.0).sin();
-        let z2 = (y as f32 / points_per_axis as f32 * 12.0).sin();
+        let z1 = (x / points_per_axis as f32 * 8.0).sin();
+        let z2 = (y / points_per_axis as f32 * 12.0).sin();
         z1 * z2 * height
     };
 
@@ -40,10 +40,10 @@ fn gen_points() -> PerAttributeVecPointStorage {
         for x in 0..points_per_axis {
             let z = z_at(x as f32, y as f32);
 
-            let w = z_at((x - 1) as f32, y as f32);
-            let e = z_at((x + 1) as f32, y as f32);
-            let n = z_at(x as f32, (y - 1) as f32);
-            let s = z_at(x as f32, (y + 1) as f32);
+            let w = z_at((x as f32) - 1.0, y as f32);
+            let e = z_at((x as f32) + 1.0, y as f32);
+            let n = z_at(x as f32, (y as f32) - 1.0);
+            let s = z_at(x as f32, (y as f32) + 1.0);
 
             let dnx = e - w;
             let dny = s - n;
@@ -53,7 +53,7 @@ fn gen_points() -> PerAttributeVecPointStorage {
                 + Vector3::new(0.0, 0.0, 1.0))
             .normalize();
 
-            buffer.push_point(Point {
+            buffer.view_mut().push_point(Point {
                 position: Vector3::new(x as f32, y as f32, z),
                 color: Vector3::new((x * 4) as u8, (y * 4) as u8, 0),
                 normal,
@@ -71,7 +71,7 @@ fn create_tileset_for_points() -> RootTileset {
 
     // We have a single tileset in this example, which has the given bounds, references the .pnts file
     // and has some extra parameters that are required for the visualization in e.g. Cesium
-    let tileset: Tileset = TilesetBuilder::new()
+    let tileset: Tileset = TilesetBuilder::default()
         .bounding_volume(BoundingVolume::Box(bounds.into()))
         .content("points.pnts".into(), None)
         .geometric_error(16.0)

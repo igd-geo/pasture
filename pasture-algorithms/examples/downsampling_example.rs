@@ -1,15 +1,13 @@
 use pasture_algorithms::voxel_grid::voxelgrid_filter;
 use pasture_core::{
-    containers::{PerAttributeVecPointStorage, PointBuffer, OwningPointBuffer},
-    layout::PointType,
+    containers::{BorrowedBuffer, HashMapBuffer, MakeBufferFromLayout},
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
 use rand::{prelude::ThreadRng, Rng};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-#[repr(C)]
-#[derive(PointType, Debug)]
+#[repr(C, packed)]
+#[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 pub struct SimplePoint {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -24,9 +22,9 @@ pub struct SimplePoint {
     #[pasture(BUILTIN_SCANNER_CHANNEL)]
     pub scanner_channel: u8,
     #[pasture(BUILTIN_SCAN_DIRECTION_FLAG)]
-    pub scan_dir_flag: bool,
+    pub scan_dir_flag: u8,
     #[pasture(BUILTIN_EDGE_OF_FLIGHT_LINE)]
-    pub edge_of_flight_line: bool,
+    pub edge_of_flight_line: u8,
     #[pasture(BUILTIN_CLASSIFICATION)]
     pub classification: u8,
     #[pasture(BUILTIN_SCAN_ANGLE_RANK)]
@@ -65,12 +63,9 @@ fn generate_vec3u16(rng: &mut ThreadRng) -> Vector3<u16> {
     Vector3::new(rng.gen_range(11..120), rng.gen_range(11..120), 42)
 }
 
-fn main() -> () {
-    let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-
+fn main() {
     //generate random points for the pointcloud
-    let points: Vec<SimplePoint> = (0..100000)
-        .into_par_iter()
+    let buffer = (0..100000)
         .map(|p| {
             let mut rng = rand::thread_rng();
             //generate plane points (along x- and y-axis)
@@ -81,8 +76,8 @@ fn main() -> () {
                 num_of_returns: rng.gen_range(20..80),
                 classification_flags: rng.gen_range(7..20),
                 scanner_channel: rng.gen_range(7..20),
-                scan_dir_flag: rng.gen_bool(0.47),
-                edge_of_flight_line: rng.gen_bool(0.81),
+                scan_dir_flag: rng.gen_range(0..47),
+                edge_of_flight_line: rng.gen_range(0..81),
                 classification: rng.gen_range(121..200),
                 scan_angle_rank: rng.gen_range(-121..20),
                 scan_angle: rng.gen_range(-21..8),
@@ -104,16 +99,16 @@ fn main() -> () {
             }
             //generate outliers
             if p % 50 == 0 {
-                point.position.z = rng.gen_range(5.0..7.3);
+                let position = point.position;
+                point.position = Vector3::new(position.x, position.y, rng.gen_range(5.0..7.3));
                 point.intensity = 100
             }
             point
         })
-        .collect();
+        .collect::<HashMapBuffer>();
 
-    buffer.push_points(&points);
     println!("done generating pointcloud, size: {}", buffer.len());
-    let mut filtered = PerAttributeVecPointStorage::new(buffer.point_layout().clone());
+    let mut filtered = HashMapBuffer::new_from_layout(buffer.point_layout().clone());
     voxelgrid_filter(&buffer, 0.9, 0.9, 0.9, &mut filtered);
     println!("done filtering pointcloud");
     println!("filtered cloud size: {:?}", filtered.len());

@@ -1,19 +1,10 @@
 use pasture_core::meta::Metadata;
 use std::fmt::Display;
 
-
-
-
-
 /// `Metadata` implementation for ascii files
 /// In general there is no metadata in ascii files.
-#[derive(Debug, Clone)]
-pub struct AsciiMetadata {}
-impl AsciiMetadata {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
+#[derive(Debug, Clone, Default)]
+pub struct AsciiMetadata;
 
 impl Display for AsciiMetadata {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

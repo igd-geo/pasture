@@ -1,9 +1,8 @@
 use std::vec;
 
 use pasture_core::{
-    containers::{PointBuffer, PointBufferExt},
     layout::attributes::POSITION_3D,
-    nalgebra::Vector3,
+    nalgebra::Vector3, containers::BorrowedBuffer,
 };
 use rand::Rng;
 use rayon::prelude::*;
@@ -32,7 +31,7 @@ pub struct Plane {
 fn distance_point_plane(point: &Vector3<f64>, plane: &Plane) -> f64 {
     let d = (plane.a * point.x + plane.b * point.y + plane.c * point.z + plane.d).abs();
     let e = (plane.a * plane.a + plane.b * plane.b + plane.c * plane.c).sqrt();
-    return d / e;
+    d / e
 }
 
 /// calculates the distance between a point and a line
@@ -45,7 +44,7 @@ fn distance_point_line(point: &Vector3<f64>, line: &Line) -> f64 {
 }
 
 /// generates a random plane from three points of the buffer
-fn generate_rng_plane<T: PointBuffer>(buffer: &T) -> Plane {
+fn generate_rng_plane<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Plane {
     // choose three random points from the pointcloud
     let mut rng = rand::thread_rng();
     let rand1 = rng.gen_range(0..buffer.len());
@@ -58,9 +57,9 @@ fn generate_rng_plane<T: PointBuffer>(buffer: &T) -> Plane {
     while rand2 == rand3 || rand1 == rand3 {
         rand3 = rng.gen_range(0..buffer.len());
     }
-    let p_a: Vector3<f64> = buffer.get_attribute(&POSITION_3D, rand1);
-    let p_b: Vector3<f64> = buffer.get_attribute(&POSITION_3D, rand2);
-    let p_c: Vector3<f64> = buffer.get_attribute(&POSITION_3D, rand3);
+    let p_a: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(rand1);
+    let p_b: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(rand2);
+    let p_c: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(rand3);
 
     // compute plane from the three positions
     let vec1 = p_b - p_a;
@@ -77,7 +76,7 @@ fn generate_rng_plane<T: PointBuffer>(buffer: &T) -> Plane {
 }
 
 /// generates a random line from two points of the buffer
-fn generate_rng_line<T: PointBuffer>(buffer: &T) -> Line {
+fn generate_rng_line<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Line {
     // choose two random points from the pointcloud
     let mut rng = rand::thread_rng();
     let rand1 = rng.gen_range(0..buffer.len());
@@ -88,19 +87,20 @@ fn generate_rng_line<T: PointBuffer>(buffer: &T) -> Line {
     }
     // generate line from the two points
     Line {
-        first: buffer.get_attribute(&POSITION_3D, rand1),
-        second: buffer.get_attribute(&POSITION_3D, rand2),
+        first: buffer.view_attribute(&POSITION_3D).at(rand1),
+        second: buffer.view_attribute(&POSITION_3D).at(rand2),
         ranking: 0,
     }
 }
 
-fn generate_line_model<T: PointBuffer>(buffer: &T, distance_threshold: f64) -> (Line, Vec<usize>) {
+fn generate_line_model<'a, T: BorrowedBuffer<'a>>(buffer: &'a T, distance_threshold: f64) -> (Line, Vec<usize>) {
     // generate random line from three points in the buffer
     let mut curr_hypo = generate_rng_line(buffer);
     let mut curr_positions = vec![];
     // find all points that belong to the line
     for (index, p) in buffer
-        .iter_attribute::<Vector3<f64>>(&POSITION_3D)
+        .view_attribute::<Vector3<f64>>(&POSITION_3D)
+        .into_iter()
         .enumerate()
     {
         let distance = distance_point_line(&p, &curr_hypo);
@@ -114,8 +114,7 @@ fn generate_line_model<T: PointBuffer>(buffer: &T, distance_threshold: f64) -> (
     (curr_hypo, curr_positions)
 }
 
-fn generate_plane_model<T: PointBuffer>(
-    buffer: &T,
+fn generate_plane_model<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
     distance_threshold: f64,
 ) -> (Plane, Vec<usize>) {
     // generate random plane from three points in the buffer
@@ -124,7 +123,8 @@ fn generate_plane_model<T: PointBuffer>(
     let mut curr_positions = vec![];
 
     for (index, p) in buffer
-        .iter_attribute::<Vector3<f64>>(&POSITION_3D)
+        .view_attribute::<Vector3<f64>>(&POSITION_3D)
+        .into_iter()
         .enumerate()
     {
         let distance = distance_point_plane(&p, &curr_hypo);
@@ -152,7 +152,7 @@ fn generate_plane_model<T: PointBuffer>(
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_plane_par;
 /// #[repr(C)]
-/// #[derive(PointType)]
+/// #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///    pub position: Vector3<f64>,
@@ -164,8 +164,7 @@ fn generate_plane_model<T: PointBuffer>(
 /// }
 /// // generate an outlier
 /// points.push(SimplePoint{position: Vector3::new(9.0, 0.0, 0.0)});
-/// let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-/// buffer.push_points(&points);
+/// let buffer = points.into_iter().collect::<HashMapBuffer>();
 /// let plane_and_indices = ransac_plane_par(&buffer, 0.5, 10);
 /// for i in 0..199{
 ///     // inliers are in the plane
@@ -178,8 +177,7 @@ fn generate_plane_model<T: PointBuffer>(
 /// # Panics
 ///
 /// If the size of the buffer is < 3.
-pub fn ransac_plane_par<T: PointBuffer + Sync>(
-    buffer: &T,
+pub fn ransac_plane_par<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Plane, Vec<usize>) {
@@ -213,7 +211,7 @@ pub fn ransac_plane_par<T: PointBuffer + Sync>(
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_plane_serial;
 /// #[repr(C)]
-/// #[derive(PointType)]
+/// #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///    pub position: Vector3<f64>,
@@ -225,8 +223,7 @@ pub fn ransac_plane_par<T: PointBuffer + Sync>(
 /// }
 /// // generate an outlier
 /// points.push(SimplePoint{position: Vector3::new(9.0, 0.0, 0.0)});
-/// let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-/// buffer.push_points(&points);
+/// let buffer = points.into_iter().collect::<HashMapBuffer>();
 /// let plane_and_indices = ransac_plane_serial(&buffer, 0.5, 10);
 /// for i in 0..199{
 ///     // inliers are in the plane
@@ -239,8 +236,7 @@ pub fn ransac_plane_par<T: PointBuffer + Sync>(
 /// # Panics
 ///
 /// If the size of the buffer is < 3.
-pub fn ransac_plane_serial<T: PointBuffer>(
-    buffer: &T,
+pub fn ransac_plane_serial<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Plane, Vec<usize>) {
@@ -248,7 +244,6 @@ pub fn ransac_plane_serial<T: PointBuffer>(
         panic!("buffer needs to include at least 3 points to generate a plane.");
     }
     (0..num_of_iterations)
-        .into_iter()
         .map(|_x| 
             // generate one model for the current iteration
             generate_plane_model(buffer, distance_threshold))
@@ -272,7 +267,7 @@ pub fn ransac_plane_serial<T: PointBuffer>(
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_line_par;
 /// #[repr(C)]
-/// #[derive(PointType)]
+/// #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///    pub position: Vector3<f64>,
@@ -284,8 +279,7 @@ pub fn ransac_plane_serial<T: PointBuffer>(
 /// }
 /// // generate an outlier
 /// points.push(SimplePoint{position: Vector3::new(9.0, 0.0, 0.0)});
-/// let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-/// buffer.push_points(&points);
+/// let buffer = points.into_iter().collect::<HashMapBuffer>();
 /// let line_and_indices = ransac_line_par(&buffer, 0.5, 10);
 /// for i in 0..199{
 ///     // inliers are in the plane
@@ -298,8 +292,7 @@ pub fn ransac_plane_serial<T: PointBuffer>(
 /// # Panics
 ///
 /// If the size of the buffer is < 2.
-pub fn ransac_line_par<T: PointBuffer + Sync>(
-    buffer: &T,
+pub fn ransac_line_par<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Line, Vec<usize>) {
@@ -332,7 +325,7 @@ pub fn ransac_line_par<T: PointBuffer + Sync>(
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::segmentation::ransac_line_serial;
 /// #[repr(C)]
-/// #[derive(PointType)]
+/// #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///    pub position: Vector3<f64>,
@@ -344,8 +337,7 @@ pub fn ransac_line_par<T: PointBuffer + Sync>(
 /// }
 /// // generate an outlier
 /// points.push(SimplePoint{position: Vector3::new(9.0, 0.0, 0.0)});
-/// let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-/// buffer.push_points(&points);
+/// let buffer = points.into_iter().collect::<HashMapBuffer>();
 /// let line_and_indices = ransac_line_serial(&buffer, 0.5, 10);
 /// for i in 0..199{
 ///     // inliers are in the plane
@@ -358,8 +350,7 @@ pub fn ransac_line_par<T: PointBuffer + Sync>(
 /// # Panics
 ///
 /// If the size of the buffer is < 2.
-pub fn ransac_line_serial<T: PointBuffer>(
-    buffer: &T,
+pub fn ransac_line_serial<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Line, Vec<usize>) {
@@ -369,7 +360,7 @@ pub fn ransac_line_serial<T: PointBuffer>(
 
     // iterate num_of_iterations in parallel
     (0..num_of_iterations)
-        .into_iter()
+        
         .map(|_x| 
             // generate one model for the current iteration
             generate_line_model(buffer, distance_threshold))
@@ -381,26 +372,23 @@ pub fn ransac_line_serial<T: PointBuffer>(
 #[cfg(test)]
 mod tests {
 
-    use pasture_core::{
-        containers::{PerAttributeVecPointStorage, OwningPointBuffer}, layout::PointType, nalgebra::Vector3,
+    use pasture_core::{nalgebra::Vector3, containers::HashMapBuffer,
     };
     use pasture_derive::PointType;
 
     use super::*;
 
     #[repr(C)]
-    #[derive(PointType, Debug)]
+    #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     pub struct SimplePoint {
         #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
     }
 
-    fn setup_point_cloud() -> PerAttributeVecPointStorage {
-        let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-
+    fn setup_point_cloud() -> HashMapBuffer {
         // generate random points for the pointcloud
-        let points: Vec<SimplePoint> = (2..2002)
-            .into_par_iter()
+        (2..2002)
+            
             .map(|p| {
                 // let mut rng = rand::thread_rng();
                 // generate plane points (along x- and y-axis)
@@ -418,9 +406,7 @@ mod tests {
                 }
                 point
             })
-            .collect();
-        buffer.push_points(&points);
-        buffer
+            .collect()
     }
 
     #[test]
@@ -429,7 +415,7 @@ mod tests {
         let (_plane, indices) = ransac_plane_par(&buffer, 0.1, 300);
         assert!(indices.len() == 1600);
         for i in 0..2000 {
-            if !(i % 5 == 3) {
+            if i % 5 != 3 {
                 assert!(indices.contains(&i));
             }
         }
@@ -441,7 +427,7 @@ mod tests {
         let (_plane, indices) = ransac_plane_serial(&buffer, 0.1, 300);
         assert!(indices.len() == 1600);
         for i in 0..2000 {
-            if !(i % 5 == 3) {
+            if i % 5 != 3 {
                 assert!(indices.contains(&i));
             }
         }

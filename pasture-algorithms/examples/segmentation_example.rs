@@ -2,20 +2,15 @@ use pasture_algorithms::segmentation::{
     ransac_line_par, ransac_line_serial, ransac_plane_par, ransac_plane_serial,
 };
 use pasture_core::{
-    attributes_mut,
-    containers::{PerAttributeVecPointStorage, OwningPointBuffer},
-    layout::{
-        attributes::{INTENSITY, POSITION_3D},
-        PointType,
-    },
+    containers::{BorrowedMutBuffer, HashMapBuffer},
+    layout::attributes::INTENSITY,
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
 use rand::Rng;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-#[repr(C)]
-#[derive(PointType, Debug)]
+#[repr(C, packed)]
+#[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 pub struct SimplePoint {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -23,12 +18,9 @@ pub struct SimplePoint {
     pub intensity: u16,
 }
 
-fn main() -> () {
-    let mut buffer = PerAttributeVecPointStorage::new(SimplePoint::layout());
-
+fn main() {
     //generate random points for the pointcloud
-    let points: Vec<SimplePoint> = (0..20000)
-        .into_par_iter()
+    let mut buffer = (0..20000)
         .map(|p| {
             let mut rng = rand::thread_rng();
             //generate plane points (along x- and y-axis)
@@ -42,31 +34,32 @@ fn main() -> () {
             }
             //generate outliers
             if p % 50 == 0 {
-                point.position.z = rng.gen_range(-50.0..50.2);
+                let position = point.position;
+                point.position = Vector3::new(position.x, position.y, rng.gen_range(-50.0..50.2));
             }
             point
         })
-        .collect();
+        .collect::<HashMapBuffer>();
 
-    buffer.push_points(&points);
     println!("done generating pointcloud");
-    let plane_and_points = ransac_plane_par::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
+    let plane_and_points = ransac_plane_par(&buffer, 0.01, 50);
     println!("done ransac_plane");
     println!("{:?}", plane_and_points.0);
-    let plane_and_points_ser =
-        ransac_plane_serial::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
+    let plane_and_points_ser = ransac_plane_serial(&buffer, 0.01, 50);
     println!("done ransac_plane_ser");
     println!("{:?}", plane_and_points_ser.0);
-    let line_and_points = ransac_line_par::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
+    let line_and_points = ransac_line_par(&buffer, 0.01, 50);
     println!("done ransac_line");
     println!("{:?}", line_and_points.0);
-    let line_and_points_ser = ransac_line_serial::<PerAttributeVecPointStorage>(&buffer, 0.01, 50);
+    let line_and_points_ser = ransac_line_serial(&buffer, 0.01, 50);
     println!("done ransac_line_ser");
     println!("{:?}", line_and_points_ser.0);
 
     // change intensity for the line and plane points
-    for (index, (_position, intensity)) in
-        attributes_mut![&POSITION_3D => Vector3<f64>, &INTENSITY => u16, &mut buffer].enumerate()
+    for (index, intensity) in buffer
+        .view_attribute_mut::<u16>(&INTENSITY)
+        .iter_mut()
+        .enumerate()
     {
         if line_and_points.1.contains(&index) {
             *intensity = 500;

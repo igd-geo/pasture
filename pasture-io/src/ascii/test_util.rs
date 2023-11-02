@@ -1,9 +1,9 @@
+use anyhow::Result;
 use pasture_core::{
-    containers::{PerAttributeVecPointStorage, PointBuffer, OwningPointBuffer},
+    containers::HashMapBuffer,
     layout::{attributes, PointLayout},
     nalgebra::Vector3,
 };
-use anyhow::Result;
 use std::path::PathBuf;
 
 /// Returns the resource/test/folder
@@ -13,7 +13,7 @@ pub(crate) fn get_test_file_path(filename: &str) -> PathBuf {
     test_file_path
 }
 
-pub(crate) fn test_data_buffer() -> Result<Box<dyn PointBuffer>> {
+pub(crate) fn test_data_buffer() -> Result<HashMapBuffer> {
     let layout = PointLayout::from_attributes(&[
         attributes::POSITION_3D,
         attributes::INTENSITY,
@@ -29,7 +29,7 @@ pub(crate) fn test_data_buffer() -> Result<Box<dyn PointBuffer>> {
         attributes::COLOR_RGB,
         attributes::NIR,
     ]);
-    let mut buffer = PerAttributeVecPointStorage::with_capacity(10, layout);
+    let mut buffer = HashMapBuffer::with_capacity(10, layout);
     let mut pusher = buffer.begin_push_attributes();
     pusher.push_attribute_range(&attributes::POSITION_3D, test_data_positions().as_slice());
     pusher.push_attribute_range(&attributes::INTENSITY, test_data_intensities().as_slice());
@@ -39,7 +39,7 @@ pub(crate) fn test_data_buffer() -> Result<Box<dyn PointBuffer>> {
     );
     pusher.push_attribute_range(
         &attributes::NUMBER_OF_RETURNS,
-        &test_data_number_of_returns().as_slice(),
+        test_data_number_of_returns().as_slice(),
     );
     pusher.push_attribute_range(
         &attributes::SCAN_DIRECTION_FLAG,
@@ -67,7 +67,7 @@ pub(crate) fn test_data_buffer() -> Result<Box<dyn PointBuffer>> {
     pusher.push_attribute_range(&attributes::NIR, test_data_nirs().as_slice());
     pusher.done();
 
-    Ok(Box::new(buffer))
+    Ok(buffer)
 }
 
 pub(crate) fn test_data_positions() -> Vec<Vector3<f64>> {
@@ -97,16 +97,12 @@ pub(crate) fn test_data_number_of_returns() -> Vec<u8> {
     vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
 
-pub(crate) fn test_data_scan_direction_flags() -> Vec<bool> {
-    vec![
-        false, true, false, true, false, true, false, true, false, true,
-    ]
+pub(crate) fn test_data_scan_direction_flags() -> Vec<u8> {
+    vec![0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
 }
 
-pub(crate) fn test_data_edge_of_flight_lines() -> Vec<bool> {
-    vec![
-        false, true, false, true, false, true, false, true, false, true,
-    ]
+pub(crate) fn test_data_edge_of_flight_lines() -> Vec<u8> {
+    vec![0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
 }
 
 pub(crate) fn test_data_classifications() -> Vec<u8> {

@@ -1,15 +1,10 @@
-use std::{
-    path::{Path, PathBuf},
-    time::Instant,
-};
+use std::{path::PathBuf, time::Instant};
 
 use anyhow::Result;
 use clap::{App, Arg};
 use pasture_algorithms::minmax::minmax_attribute;
 use pasture_core::{
-    containers::InterleavedVecPointStorage,
-    containers::{PointBuffer, OwningPointBuffer},
-    containers::PointBufferWriteable,
+    containers::{BorrowedBuffer, OwningBuffer, VectorBuffer},
     layout::attributes::NIR,
     layout::attributes::NUMBER_OF_RETURNS,
     layout::attributes::POINT_SOURCE_ID,
@@ -24,7 +19,7 @@ use pasture_core::{
     math::MinMax,
     nalgebra::Vector3,
 };
-use pasture_io::base::{IOFactory, PointReadAndSeek};
+use pasture_io::base::{GenericPointReader, PointReader, SeekToPoint};
 
 struct Args {
     pub input_file: PathBuf,
@@ -61,11 +56,6 @@ fn get_args() -> Result<Args> {
     })
 }
 
-fn open_file(file: &Path) -> Result<Box<dyn PointReadAndSeek>> {
-    let factory: IOFactory = Default::default();
-    factory.make_reader(file)
-}
-
 fn print_attributes(point_layout: &PointLayout) {
     println!("Attributes");
     for attribute in point_layout.attributes() {
@@ -93,7 +83,7 @@ macro_rules! minmax_chunk {
     };
 }
 
-fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
+fn analyze_file<R: PointReader + SeekToPoint>(reader: &mut R) -> Result<()> {
     print_attributes(reader.get_default_point_layout());
 
     let total_points = reader.point_count()?;
@@ -106,10 +96,8 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
     println!("Analyzing minimum and maximum values for all point attributes...");
 
     let chunk_size = 1_000_000;
-    let mut buffer = InterleavedVecPointStorage::with_capacity(
-        chunk_size,
-        reader.get_default_point_layout().clone(),
-    );
+    let mut buffer =
+        VectorBuffer::with_capacity(chunk_size, reader.get_default_point_layout().clone());
     let num_chunks = (total_points + chunk_size - 1) / chunk_size;
     //let num_chunks = 4;
 
@@ -140,18 +128,8 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
         minmax_chunk!(minmax_intensity, buffer, INTENSITY, u16);
         minmax_chunk!(minmax_return_number, buffer, RETURN_NUMBER, u8);
         minmax_chunk!(minmax_number_of_returns, buffer, NUMBER_OF_RETURNS, u8);
-        minmax_chunk!(
-            minmax_scan_direction_flag,
-            buffer,
-            SCAN_DIRECTION_FLAG,
-            bool
-        );
-        minmax_chunk!(
-            minmax_edge_of_flight_line,
-            buffer,
-            EDGE_OF_FLIGHT_LINE,
-            bool
-        );
+        minmax_chunk!(minmax_scan_direction_flag, buffer, SCAN_DIRECTION_FLAG, u8);
+        minmax_chunk!(minmax_edge_of_flight_line, buffer, EDGE_OF_FLIGHT_LINE, u8);
         minmax_chunk!(minmax_classification, buffer, CLASSIFICATION, u8);
         minmax_chunk!(minmax_scan_angle_rank, buffer, SCAN_ANGLE_RANK, i8);
         minmax_chunk!(minmax_user_data, buffer, USER_DATA, u8);
@@ -166,49 +144,49 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
         // );
     }
 
-    minmax_position.map(|v| {
-        println!("\tX:                      {}  {}", v.0.x, v.1.x);
-        println!("\tY:                      {}  {}", v.0.y, v.1.y);
-        println!("\tZ:                      {}  {}", v.0.z, v.1.z);
-    });
-    minmax_intensity.map(|v| {
-        println!("\tIntensity:              {}  {}", v.0, v.1);
-    });
-    minmax_return_number.map(|v| {
-        println!("\tReturn number:          {}  {}", v.0, v.1);
-    });
-    minmax_number_of_returns.map(|v| {
-        println!("\tNumber of returns:      {}  {}", v.0, v.1);
-    });
-    minmax_scan_direction_flag.map(|v| {
-        println!("\tScan direction flag:    {}  {}", v.0 as u8, v.1 as u8);
-    });
-    minmax_edge_of_flight_line.map(|v| {
-        println!("\tEdge of flight line:    {}  {}", v.0 as u8, v.1 as u8);
-    });
-    minmax_classification.map(|v| {
-        println!("\tClassification:         {}  {}", v.0, v.1);
-    });
-    minmax_scan_angle_rank.map(|v| {
-        println!("\tScan angle rank:        {}  {}", v.0, v.1);
-    });
-    minmax_user_data.map(|v| {
-        println!("\tUser data:              {}  {}", v.0, v.1);
-    });
-    minmax_point_source_id.map(|v| {
-        println!("\tPoint source ID:        {}  {}", v.0, v.1);
-    });
-    minmax_color_rgb.map(|v| {
-        println!("\tColor R:                {}  {}", v.0.x, v.1.x);
-        println!("\tColor G:                {}  {}", v.0.y, v.1.y);
-        println!("\tColor B:                {}  {}", v.0.z, v.1.z);
-    });
-    minmax_gps_time.map(|v| {
-        println!("\tGPS time:               {}  {}", v.0, v.1);
-    });
-    minmax_nir.map(|v| {
-        println!("\tNIR:                    {}  {}", v.0, v.1);
-    });
+    if let Some((min, max)) = minmax_position {
+        println!("\tX:                      {}  {}", min.x, max.x);
+        println!("\tY:                      {}  {}", min.y, max.y);
+        println!("\tZ:                      {}  {}", min.z, max.z);
+    }
+    if let Some((min, max)) = minmax_intensity {
+        println!("\tIntensity:              {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_return_number {
+        println!("\tReturn number:          {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_number_of_returns {
+        println!("\tNumber of returns:      {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_scan_direction_flag {
+        println!("\tScan direction flag:    {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_edge_of_flight_line {
+        println!("\tEdge of flight line:    {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_classification {
+        println!("\tClassification:         {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_scan_angle_rank {
+        println!("\tScan angle rank:        {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_user_data {
+        println!("\tUser data:              {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_point_source_id {
+        println!("\tPoint source ID:        {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_color_rgb {
+        println!("\tColor R:                {}  {}", min.x, max.x);
+        println!("\tColor G:                {}  {}", min.y, max.y);
+        println!("\tColor B:                {}  {}", min.z, max.z);
+    }
+    if let Some((min, max)) = minmax_gps_time {
+        println!("\tGPS time:               {}  {}", min, max);
+    }
+    if let Some((min, max)) = minmax_nir {
+        println!("\tNIR:                    {}  {}", min, max);
+    }
 
     println!("Took {:.2}s", t_start.elapsed().as_secs_f64());
 
@@ -217,12 +195,13 @@ fn analyze_file(reader: &mut dyn PointReadAndSeek) -> Result<()> {
 
 fn main() -> Result<()> {
     let args = get_args()?;
-    let mut reader = open_file(&args.input_file)?;
+    let mut reader = GenericPointReader::open_file(&args.input_file)?;
     let meta = reader.get_metadata();
+    println!("pasture info report for {}", args.input_file.display());
     println!("{}", meta);
 
     if args.detailed {
-        analyze_file(reader.as_mut())?;
+        analyze_file(&mut reader)?;
     }
 
     Ok(())

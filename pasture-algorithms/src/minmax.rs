@@ -1,5 +1,5 @@
 use pasture_core::{
-    containers::{PointBuffer, PointBufferExt},
+    containers::BorrowedBuffer,
     layout::{PointAttributeDefinition, PrimitiveType},
     math::MinMax,
 };
@@ -10,8 +10,8 @@ use pasture_core::{
 /// # Panics
 ///
 /// If `attribute` is not part of the point layout of `buffer`, or the attribute within `buffer` is not of type `T`
-pub fn minmax_attribute<T: PrimitiveType + MinMax + Copy, B: PointBuffer>(
-    buffer: &B,
+pub fn minmax_attribute<'a, T: PrimitiveType + MinMax + Copy, B: BorrowedBuffer<'a>>(
+    buffer: &'a B,
     attribute: &PointAttributeDefinition,
 ) -> Option<(T, T)> {
     if !buffer
@@ -28,7 +28,7 @@ pub fn minmax_attribute<T: PrimitiveType + MinMax + Copy, B: PointBuffer>(
     let mut minmax = None;
 
     if T::data_type() == attribute.datatype() {
-        for val in buffer.iter_attribute::<T>(attribute) {
+        for val in buffer.view_attribute::<T>(attribute) {
             match minmax {
                 None => minmax = Some((val, val)),
                 Some((old_min, old_max)) => {
@@ -37,7 +37,7 @@ pub fn minmax_attribute<T: PrimitiveType + MinMax + Copy, B: PointBuffer>(
             }
         }
     } else {
-        for val in buffer.iter_attribute_as::<T>(attribute) {
+        for val in buffer.view_attribute_with_conversion::<T>(attribute).ok()? {
             match minmax {
                 None => minmax = Some((val, val)),
                 Some((old_min, old_max)) => {

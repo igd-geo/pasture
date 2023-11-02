@@ -16,7 +16,6 @@ pub mod layout;
 pub mod math;
 /// Data structures for handling point cloud metadata
 pub mod meta;
-/// Utilities
-pub mod util;
-#[cfg(feature = "gpu")]
-pub mod gpu;
+
+#[cfg(test)]
+pub(crate) mod test_utils;

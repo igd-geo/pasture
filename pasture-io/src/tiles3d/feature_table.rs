@@ -79,9 +79,9 @@ impl TryFrom<&Value> for FeatureTableValue {
     }
 }
 
-impl Into<Value> for FeatureTableValue {
-    fn into(self) -> Value {
-        match self {
+impl From<FeatureTableValue> for Value {
+    fn from(val: FeatureTableValue) -> Self {
+        match val {
             FeatureTableValue::SingleValue(val) => val,
             FeatureTableValue::Array(arr) => Value::Array(arr),
             FeatureTableValue::DataReference(data_reference) => {
@@ -92,9 +92,9 @@ impl Into<Value> for FeatureTableValue {
     }
 }
 
-impl Into<Value> for &FeatureTableValue {
-    fn into(self) -> Value {
-        match self {
+impl From<&FeatureTableValue> for Value {
+    fn from(val: &FeatureTableValue) -> Self {
+        match val {
             FeatureTableValue::SingleValue(val) => val.clone(),
             FeatureTableValue::Array(arr) => Value::Array(arr.clone()),
             FeatureTableValue::DataReference(data_reference) => {
@@ -133,13 +133,13 @@ pub fn deser_feature_table_header<R: BufRead + Seek>(
         .as_object()
         .ok_or(anyhow!("FeatureTable JSON header was no JSON object"))?;
     // Convert the object to our `FeatureTableHeader` type
-    Ok(feature_table_obj
+    feature_table_obj
         .iter()
         .map(|(k, v)| -> Result<(String, FeatureTableValue)> {
             let feature_table_value: FeatureTableValue = v.try_into()?;
             Ok((k.clone(), feature_table_value))
         })
-        .collect::<Result<HashMap<_, _>, _>>()?)
+        .collect::<Result<HashMap<_, _>, _>>()
 }
 
 /// Serializes the given `FeatureTableHeader` to the given `writer`. If successful, the `writer` will be at the appropriate
@@ -194,7 +194,7 @@ mod tests {
         ser_feature_table_header(&mut writer, &expected_header, 0)?;
 
         // Make sure that the header is written with padding bytes so that we are at an 8-byte boundary
-        let header_size_in_file = writer.seek(SeekFrom::Current(0))? as usize;
+        let header_size_in_file = writer.stream_position()? as usize;
         assert_eq!(header_size_in_file % 8, 0);
 
         let mut cursor = writer.into_inner()?;

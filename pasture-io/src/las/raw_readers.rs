@@ -1,36 +1,169 @@
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::convert::TryInto;
+use std::io::{Read, Seek, SeekFrom};
 
-use anyhow::{anyhow, Result};
-use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
-use las_rs::{point::Format, Header};
+use anyhow::{anyhow, bail, Context, Result};
+use las_rs::Header;
 use las_rs::{raw, Builder, Vlr};
 use laz::LasZipDecompressor;
-use pasture_core::containers::OwningPointBuffer;
-use pasture_core::layout::PointAttributeDefinition;
-use pasture_core::{
-    containers::InterleavedPointView,
-    containers::{InterleavedVecPointStorage, PointBuffer, PointBufferWriteable},
-    layout::attributes,
-    layout::conversion::get_converter_for_attributes,
-    layout::{conversion::AttributeConversionFn, PointLayout},
-    meta::Metadata,
-    nalgebra::Vector3,
-    util::view_raw_bytes,
+use pasture_core::containers::{BorrowedMutBuffer, OwningBuffer, VectorBuffer};
+use pasture_core::layout::attributes::{
+    CLASSIFICATION_FLAGS, EDGE_OF_FLIGHT_LINE, NUMBER_OF_RETURNS, POSITION_3D, RETURN_NUMBER,
+    SCANNER_CHANNEL, SCAN_DIRECTION_FLAG,
 };
+use pasture_core::layout::conversion::BufferLayoutConverter;
+use pasture_core::layout::PointAttributeDataType;
+use pasture_core::nalgebra::Vector3;
+use pasture_core::{layout::PointLayout, meta::Metadata};
 
 use super::{
-    map_laz_err, point_layout_from_las_point_format, BitAttributes, BitAttributesExtended,
-    BitAttributesRegular, LASMetadata,
+    map_laz_err, point_layout_from_las_metadata, LASMetadata, ATTRIBUTE_LOCAL_LAS_POSITION,
 };
 use crate::base::{PointReader, SeekToPoint};
+use crate::las::{ATTRIBUTE_BASIC_FLAGS, ATTRIBUTE_EXTENDED_FLAGS};
 
 /// Is the given VLR the LASzip VLR? Function taken from the `las` crate because it is not exported there
 fn is_laszip_vlr(vlr: &Vlr) -> bool {
-    if &vlr.user_id == laz::LazVlr::USER_ID && vlr.record_id == laz::LazVlr::RECORD_ID {
-        true
-    } else {
-        false
+    vlr.user_id == laz::LazVlr::USER_ID && vlr.record_id == laz::LazVlr::RECORD_ID
+}
+
+/// Returns a `BufferLayoutConverter` that performs a conversion from the given raw LAS `PointLayout` into
+/// the given `target_layout`
+fn get_default_las_converter<'a>(
+    raw_las_layout: &'a PointLayout,
+    target_layout: &'a PointLayout,
+    las_header: &Header,
+) -> Result<BufferLayoutConverter<'a>> {
+    let mut converter =
+        BufferLayoutConverter::for_layouts_with_default(raw_las_layout, target_layout);
+    // Add custom conversions depending on the target layout
+    if let Some(position_attribute) = target_layout.get_attribute_by_name(POSITION_3D.name()) {
+        let transforms = *las_header.transforms();
+        match position_attribute.datatype() {
+            PointAttributeDataType::Vec3f64 => converter.set_custom_mapping_with_transformation(&ATTRIBUTE_LOCAL_LAS_POSITION, position_attribute.attribute_definition(), move |pos: Vector3<f64>| -> Vector3<f64> {
+                Vector3::new(
+                    (pos.x * transforms.x.scale) + transforms.x.offset,
+                    (pos.y * transforms.y.scale) + transforms.y.offset,
+                    (pos.z * transforms.z.scale) + transforms.z.offset,
+                )
+            }, false),
+            PointAttributeDataType::Vec3f32 => converter.set_custom_mapping_with_transformation(&ATTRIBUTE_LOCAL_LAS_POSITION, position_attribute.attribute_definition(), move |pos: Vector3<f32>| -> Vector3<f32> {
+                Vector3::new(
+                    ((pos.x as f64 * transforms.x.scale) + transforms.x.offset) as f32,
+                    ((pos.y as f64 * transforms.y.scale) + transforms.y.offset) as f32,
+                    ((pos.z as f64 * transforms.z.scale) + transforms.z.offset) as f32,
+                )
+            }, false),
+            other => bail!("Invalid datatype {other} for POSITION_3D attribute. Only Vec3f64 and Vec3f32 are supported!"),
+        }
     }
+
+    // Extract the bit attributes into separate attributes, if the target layout has them!
+    if raw_las_layout.has_attribute(&ATTRIBUTE_BASIC_FLAGS) {
+        if let Some(return_number_attribute) =
+            target_layout.get_attribute_by_name(RETURN_NUMBER.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                return_number_attribute.attribute_definition(),
+                |flags: u8| -> u8 { flags & 0b111 },
+                true,
+            );
+        }
+
+        if let Some(nr_returns_attribute) =
+            target_layout.get_attribute_by_name(NUMBER_OF_RETURNS.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                nr_returns_attribute.attribute_definition(),
+                |flags: u8| -> u8 { (flags >> 3) & 0b111 },
+                true,
+            );
+        }
+
+        if let Some(scan_direction_flag_attribute) =
+            target_layout.get_attribute_by_name(SCAN_DIRECTION_FLAG.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                scan_direction_flag_attribute.attribute_definition(),
+                |flags: u8| -> u8 { (flags >> 6) & 0b1 },
+                true,
+            );
+        }
+
+        if let Some(eof_attribute) = target_layout.get_attribute_by_name(EDGE_OF_FLIGHT_LINE.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_BASIC_FLAGS,
+                eof_attribute.attribute_definition(),
+                |flags: u8| -> u8 { (flags >> 7) & 0b1 },
+                true,
+            );
+        }
+    } else {
+        if let Some(return_number_attribute) =
+            target_layout.get_attribute_by_name(RETURN_NUMBER.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                return_number_attribute.attribute_definition(),
+                |flags: u16| -> u16 { flags & 0b1111 },
+                true,
+            );
+        }
+        if let Some(nr_returns_attribute) =
+            target_layout.get_attribute_by_name(NUMBER_OF_RETURNS.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                nr_returns_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 4) & 0b1111 },
+                true,
+            );
+        }
+        if let Some(classification_flags_attribute) =
+            target_layout.get_attribute_by_name(CLASSIFICATION_FLAGS.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                classification_flags_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 8) & 0b1111 },
+                true,
+            );
+        }
+        if let Some(scanner_channel_attribute) =
+            target_layout.get_attribute_by_name(SCANNER_CHANNEL.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                scanner_channel_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 12) & 0b11 },
+                true,
+            );
+        }
+        if let Some(scan_direction_flag_attribute) =
+            target_layout.get_attribute_by_name(SCAN_DIRECTION_FLAG.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                scan_direction_flag_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 14) & 0b1 },
+                true,
+            );
+        }
+        if let Some(eof_attribute) = target_layout.get_attribute_by_name(EDGE_OF_FLIGHT_LINE.name())
+        {
+            converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_EXTENDED_FLAGS,
+                eof_attribute.attribute_definition(),
+                |flags: u16| -> u16 { (flags >> 15) & 0b1 },
+                true,
+            );
+        }
+    }
+
+    Ok(converter)
 }
 
 pub(crate) trait LASReaderBase {
@@ -39,591 +172,123 @@ pub(crate) trait LASReaderBase {
     fn header(&self) -> &Header;
 }
 
-pub(crate) struct RawLASReader<T: Read + Seek> {
+pub struct RawLASReader<T: Read + Seek> {
     reader: T,
     metadata: LASMetadata,
     layout: PointLayout,
+    las_point_records_layout: PointLayout,
     current_point_index: usize,
-    point_offsets: Vector3<f64>,
-    point_scales: Vector3<f64>,
     offset_to_first_point_in_file: u64,
     size_of_point_in_file: u64,
-    //TODO Add an option to not convert the position fields into world space
 }
 
 impl<T: Read + Seek> RawLASReader<T> {
-    pub fn from_read(mut read: T) -> Result<Self> {
-        let raw_header = raw::Header::read_from(&mut read)?;
+    /// Creates a new `RawLASReader` from the given `reader`. If `point_layout_matches_memory_layout` is `true`, the
+    /// default `PointLayout` of the `RawLASReader` will exactly match the binary layout of the LAS point records.
+    /// Otherwise, a more practical `PointLayout` is used that stores positions as `Vector3<f64>` values in world-space
+    /// and stores attributes such as `RETURN_NUMBER`, `NUMBER_OF_RETURNS` etc. as separate values instead of the
+    /// packed bitfield values. See [`point_layout_from_las_point_format`] for more information
+    pub fn from_read(mut reader: T, point_layout_matches_memory_layout: bool) -> Result<Self> {
+        let raw_header = raw::Header::read_from(&mut reader)?;
         let offset_to_first_point_in_file = raw_header.offset_to_point_data as u64;
         let size_of_point_in_file = raw_header.point_data_record_length as u64;
-        let point_offsets = Vector3::new(
-            raw_header.x_offset,
-            raw_header.y_offset,
-            raw_header.z_offset,
-        );
-        let point_scales = Vector3::new(
-            raw_header.x_scale_factor,
-            raw_header.y_scale_factor,
-            raw_header.z_scale_factor,
-        );
 
-        let header = Header::from_raw(raw_header)?;
-        let metadata: LASMetadata = header.clone().into();
-        let point_layout = point_layout_from_las_point_format(header.point_format())?;
+        // Manually read the VLRs
+        reader.seek(SeekFrom::Start(raw_header.header_size as u64))?;
+        let vlrs = (0..raw_header.number_of_variable_length_records as usize)
+            .map(|_| las_rs::raw::Vlr::read_from(&mut reader, false).map(las_rs::Vlr::new))
+            .collect::<Result<Vec<_>, _>>()
+            .context("Failed to read VLRs")?;
 
-        read.seek(SeekFrom::Start(offset_to_first_point_in_file as u64))?;
+        let mut builder = Builder::new(raw_header).context("Invalid LAS header")?;
+        builder.vlrs = vlrs;
+
+        // Even after reading all VLRs, there might be leftover bytes before the start of the actual point
+        // data. These bytes have to be read and correctly stored in the LAS header, otherwise conversion
+        // of the Header to a raw::Header will be wrong, and the LASMetadata will be wrong as well
+        // Note: Took this code pretty much straight from the las::Reader, but as far as I can tell, the
+        // LAS 1.4 spec states that the `offset_to_point_data` field has to be updated by software that changes
+        // the number of VLRs...
+        let position_after_reading_vlrs = reader.stream_position()?;
+        if position_after_reading_vlrs < offset_to_first_point_in_file {
+            reader
+                .by_ref()
+                .take(offset_to_first_point_in_file - position_after_reading_vlrs)
+                .read_to_end(&mut builder.vlr_padding)?;
+        }
+
+        let header = builder.into_header().context("Invalid LAS header")?;
+
+        let metadata: LASMetadata = header
+            .clone()
+            .try_into()
+            .context("Failed to parse LAS header")?;
+        let point_layout =
+            point_layout_from_las_metadata(&metadata, point_layout_matches_memory_layout)?;
+        let matching_memory_layout = point_layout_from_las_metadata(&metadata, true)?;
+
+        reader.seek(SeekFrom::Start(offset_to_first_point_in_file))?;
 
         Ok(Self {
-            reader: read,
-            metadata: metadata,
+            reader,
+            metadata,
             layout: point_layout,
+            las_point_records_layout: matching_memory_layout,
             current_point_index: 0,
-            point_offsets,
-            point_scales,
             offset_to_first_point_in_file,
             size_of_point_in_file,
         })
     }
 
-    fn read_chunk_default_layout(
-        &mut self,
-        chunk_buffer: &mut [u8],
-        num_points_in_chunk: usize,
-    ) -> Result<()> {
-        let mut buffer_cursor = Cursor::new(chunk_buffer);
-
-        let format = Format::new(self.metadata.point_format())?;
-        let num_extra_bytes = format.extra_bytes;
-
-        // This method assumes that self.reader is currently at the starting point of the chunk to read. Since it
-        // is only ever called from within the loop in `read_into_default_layout`, this assumption is correct!
-
-        for _ in 0..num_points_in_chunk {
-            // XYZ
-            let local_x = self.reader.read_i32::<LittleEndian>()?;
-            let local_y = self.reader.read_i32::<LittleEndian>()?;
-            let local_z = self.reader.read_i32::<LittleEndian>()?;
-            let global_x = (local_x as f64 * self.point_scales.x) + self.point_offsets.x;
-            let global_y = (local_y as f64 * self.point_scales.y) + self.point_offsets.y;
-            let global_z = (local_z as f64 * self.point_scales.z) + self.point_offsets.z;
-            buffer_cursor.write_f64::<NativeEndian>(global_x)?;
-            buffer_cursor.write_f64::<NativeEndian>(global_y)?;
-            buffer_cursor.write_f64::<NativeEndian>(global_z)?;
-
-            // Intensity
-            buffer_cursor.write_i16::<NativeEndian>(self.reader.read_i16::<LittleEndian>()?)?;
-
-            // Bit attributes
-            if self.metadata.point_format() > 5 {
-                let bit_attributes_first_byte = self.reader.read_u8()?;
-                let bit_attributes_second_byte = self.reader.read_u8()?;
-
-                let return_number = bit_attributes_first_byte & 0b1111;
-                let number_of_returns = (bit_attributes_first_byte >> 4) & 0b1111;
-                let classification_flags = bit_attributes_second_byte & 0b1111;
-                let scanner_channel = (bit_attributes_second_byte >> 4) & 0b11;
-                let scan_direction_flag = (bit_attributes_second_byte >> 6) & 0b1;
-                let edge_of_flight_line = (bit_attributes_second_byte >> 7) & 0b1;
-
-                buffer_cursor.write_u8(return_number)?;
-                buffer_cursor.write_u8(number_of_returns)?;
-                buffer_cursor.write_u8(classification_flags)?;
-                buffer_cursor.write_u8(scanner_channel)?;
-                buffer_cursor.write_u8(scan_direction_flag)?;
-                buffer_cursor.write_u8(edge_of_flight_line)?;
-            } else {
-                let bit_attributes = self.reader.read_u8()?;
-                let return_number = bit_attributes & 0b111;
-                let number_of_returns = (bit_attributes >> 3) & 0b111;
-                let scan_direction_flag = (bit_attributes >> 6) & 0b1;
-                let edge_of_flight_line = (bit_attributes >> 7) & 0b1;
-
-                buffer_cursor.write_u8(return_number)?;
-                buffer_cursor.write_u8(number_of_returns)?;
-                buffer_cursor.write_u8(scan_direction_flag)?;
-                buffer_cursor.write_u8(edge_of_flight_line)?;
-            }
-
-            // Classification
-            buffer_cursor.write_u8(self.reader.read_u8()?)?;
-
-            // User data in format > 5, scan angle rank in format <= 5
-            buffer_cursor.write_u8(self.reader.read_u8()?)?;
-
-            if self.metadata.point_format() <= 5 {
-                // User data
-                buffer_cursor.write_u8(self.reader.read_u8()?)?;
-            } else {
-                // Scan angle
-                buffer_cursor.write_i16::<NativeEndian>(self.reader.read_i16::<LittleEndian>()?)?;
-            }
-
-            // Point source ID
-            buffer_cursor.write_u16::<NativeEndian>(self.reader.read_u16::<LittleEndian>()?)?;
-
-            // Format 0 is done here, the other formats are handled now
-
-            if format.has_gps_time {
-                buffer_cursor.write_f64::<NativeEndian>(self.reader.read_f64::<LittleEndian>()?)?;
-            }
-
-            if format.has_color {
-                buffer_cursor.write_u16::<NativeEndian>(self.reader.read_u16::<LittleEndian>()?)?;
-                buffer_cursor.write_u16::<NativeEndian>(self.reader.read_u16::<LittleEndian>()?)?;
-                buffer_cursor.write_u16::<NativeEndian>(self.reader.read_u16::<LittleEndian>()?)?;
-            }
-
-            if format.has_nir {
-                buffer_cursor.write_u16::<NativeEndian>(self.reader.read_u16::<LittleEndian>()?)?;
-            }
-
-            if format.has_waveform {
-                buffer_cursor.write_u8(self.reader.read_u8()?)?;
-                buffer_cursor.write_u64::<NativeEndian>(self.reader.read_u64::<LittleEndian>()?)?;
-                buffer_cursor.write_u32::<NativeEndian>(self.reader.read_u32::<LittleEndian>()?)?;
-                buffer_cursor.write_f32::<NativeEndian>(self.reader.read_f32::<LittleEndian>()?)?;
-                buffer_cursor.write_f32::<NativeEndian>(self.reader.read_f32::<LittleEndian>()?)?;
-                buffer_cursor.write_f32::<NativeEndian>(self.reader.read_f32::<LittleEndian>()?)?;
-                buffer_cursor.write_f32::<NativeEndian>(self.reader.read_f32::<LittleEndian>()?)?;
-            }
-
-            // Skip the extra bytes, reading extra bytes is not yet supported by pasture
-            if num_extra_bytes > 0 {
-                self.reader
-                    .seek(SeekFrom::Current(num_extra_bytes as i64))?;
-            }
-        }
-
-        Ok(())
+    pub fn las_metadata(&self) -> &LASMetadata {
+        &self.metadata
     }
 
-    fn read_chunk_custom_layout(
+    fn read_into_default_layout<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
-        source_data: &mut [u8],
-        chunk_buffer: &mut [u8],
-        num_points_in_chunk: usize,
-        target_layout: &PointLayout,
-    ) -> Result<()> {
-        //let mut buffer_cursor = Cursor::new(chunk_buffer);
-
-        let source_format = Format::new(self.metadata.point_format())?;
-
-        // This probably works best by introducing a type that stores all information needed for reading and writing a single
-        // attribute:
-        //   - does the source format of the LAS file have this attribute?
-        //   - does the target layout have this attribute?
-        //   - if the target layout has the attribute, we may need an attribute converter
-        //   - if the target layout has the attribute, we need the byte offset of the attribute to the start of the point record within the point layout
-        //
-        // With this information, we can build a bunch of these objects and execute the I/O operations with them, should be more readable
-
-        fn get_attribute_parser(
-            default_attribute: &PointAttributeDefinition,
-            source_layout: &PointLayout,
-            target_layout: &PointLayout,
-        ) -> Option<(usize, usize, Option<AttributeConversionFn>)> {
-            target_layout
-                .get_attribute_by_name(default_attribute.name())
-                .map_or(None, |target_attribute| {
-                    let converter = source_layout
-                        .get_attribute_by_name(default_attribute.name())
-                        .and_then(|source_attribute| {
-                            get_converter_for_attributes(
-                                &source_attribute.into(),
-                                &target_attribute.into(),
-                            )
-                        })
-                        .or_else(|| {
-                            // If the source_layout does not contain the desired attribute, we still might need a converter
-                            // because in this case a default attribute is read (e.g. Vector3<u16> for COLOR_RGB), and this
-                            // default attribute might have a different data type from the target attribute
-                            get_converter_for_attributes(
-                                default_attribute,
-                                &target_attribute.into(),
-                            )
-                        });
-                    let offset_of_attribute = target_attribute.offset() as usize;
-                    let size_of_attribute = target_attribute.size() as usize;
-                    Some((offset_of_attribute, size_of_attribute, converter))
-                })
+        point_buffer: &'b mut B,
+        count: usize,
+    ) -> Result<usize>
+    where
+        'a: 'b,
+    {
+        let num_points_to_read = usize::min(count, self.remaining_points());
+        if num_points_to_read == 0 {
+            return Ok(0);
         }
 
-        let target_position_parser =
-            get_attribute_parser(&attributes::POSITION_3D, &self.layout, target_layout);
-        let target_intensity_parser =
-            get_attribute_parser(&attributes::INTENSITY, &self.layout, target_layout);
-        let target_return_number_parser =
-            get_attribute_parser(&attributes::RETURN_NUMBER, &self.layout, target_layout);
-        let target_number_of_returns_parser =
-            get_attribute_parser(&attributes::NUMBER_OF_RETURNS, &self.layout, target_layout);
-        let target_classification_flags_parser = get_attribute_parser(
-            &attributes::CLASSIFICATION_FLAGS,
-            &self.layout,
-            target_layout,
-        );
-        let target_scanner_channel_parser =
-            get_attribute_parser(&attributes::SCANNER_CHANNEL, &self.layout, target_layout);
-        let target_scan_direction_flag_parser = get_attribute_parser(
-            &attributes::SCAN_DIRECTION_FLAG,
-            &self.layout,
-            target_layout,
-        );
-        let target_eof_parser = get_attribute_parser(
-            &attributes::EDGE_OF_FLIGHT_LINE,
-            &self.layout,
-            target_layout,
-        );
-        let target_classification_parser =
-            get_attribute_parser(&attributes::CLASSIFICATION, &self.layout, target_layout);
-        let target_scan_angle_rank_parser =
-            get_attribute_parser(&attributes::SCAN_ANGLE_RANK, &self.layout, target_layout);
-        let target_user_data_parser =
-            get_attribute_parser(&attributes::USER_DATA, &self.layout, target_layout);
-        let target_point_source_id_parser =
-            get_attribute_parser(&attributes::POINT_SOURCE_ID, &self.layout, target_layout);
-        let target_gps_time_parser =
-            get_attribute_parser(&attributes::GPS_TIME, &self.layout, target_layout);
-        let target_color_parser =
-            get_attribute_parser(&attributes::COLOR_RGB, &self.layout, target_layout);
-        let target_nir_parser = get_attribute_parser(&attributes::NIR, &self.layout, target_layout);
-        let target_wave_packet_index_parser = get_attribute_parser(
-            &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_byte_offset_parser = get_attribute_parser(
-            &attributes::WAVEFORM_DATA_OFFSET,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_packet_size_parser = get_attribute_parser(
-            &attributes::WAVEFORM_PACKET_SIZE,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_return_point_parser = get_attribute_parser(
-            &attributes::RETURN_POINT_WAVEFORM_LOCATION,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_parameters_parser = get_attribute_parser(
-            &attributes::WAVEFORM_PARAMETERS,
-            &self.layout,
-            target_layout,
-        );
-
-        let target_point_size = target_layout.size_of_point_entry() as usize;
-
-        fn run_parser<T: Read + Seek, U>(
-            decoder_fn: impl Fn(&mut T) -> Result<U>,
-            maybe_parser: Option<(usize, usize, Option<AttributeConversionFn>)>,
-            start_of_target_point_in_chunk: usize,
-            size_of_attribute: Option<usize>,
-            reader: &mut T,
-            chunk_buffer: &mut [u8],
-        ) -> Result<()> {
-            if let Some((offset, size, maybe_converter)) = maybe_parser {
-                let source_data = decoder_fn(reader)?;
-                let source_slice = unsafe { view_raw_bytes(&source_data) };
-
-                let pos_start = start_of_target_point_in_chunk + offset;
-                let pos_end = pos_start + size;
-                let target_slice = &mut chunk_buffer[pos_start..pos_end];
-
-                if let Some(converter) = maybe_converter {
-                    unsafe {
-                        converter(source_slice, target_slice);
-                    }
+        if let Some(interleaved_buffer) = point_buffer.as_interleaved_mut() {
+            let new_point_data = interleaved_buffer.get_point_range_mut(0..num_points_to_read);
+            self.reader
+                .read_exact(new_point_data)
+                .context("Failed to read point records")?;
+        } else {
+            // Read point data in chunks of ~1MiB size to prevent memory problems for very large files if we were
+            // to read all data in a single chunk
+            const CHUNK_MEM_SIZE: usize = 1 << 20;
+            let num_points_per_chunk = CHUNK_MEM_SIZE / self.size_of_point_in_file as usize;
+            let num_chunks = (num_points_to_read + num_points_per_chunk - 1) / num_points_per_chunk;
+            let mut read_buffer =
+                vec![0; num_points_per_chunk * self.size_of_point_in_file as usize];
+            for chunk_idx in 0..num_chunks {
+                let bytes_in_chunk = if chunk_idx == num_chunks - 1 {
+                    (num_points_to_read - (chunk_idx * num_points_per_chunk))
+                        * self.size_of_point_in_file as usize
                 } else {
-                    target_slice.copy_from_slice(source_slice);
+                    read_buffer.len()
+                };
+                let chunk_bytes = &mut read_buffer[..bytes_in_chunk];
+                self.reader
+                    .read_exact(chunk_bytes)
+                    .context("Failed to read chunk of points")?;
+                let first_point_in_chunk = chunk_idx * num_points_per_chunk;
+                let chunk_end = ((chunk_idx + 1) * num_points_per_chunk).min(num_points_to_read);
+                // Safe because this function (`read_into_default_layout`) is only called if the buffer has the exact
+                // binary memory layout of the LAS file
+                unsafe {
+                    point_buffer.set_point_range(first_point_in_chunk..chunk_end, chunk_bytes);
                 }
-            } else if let Some(bytes_to_skip) = size_of_attribute {
-                reader.seek(SeekFrom::Current(bytes_to_skip as i64))?;
             }
-
-            Ok(())
-        }
-
-        let point_offsets = self.point_offsets.clone();
-        let point_scales = self.point_scales.clone();
-
-        let mut source_reader = Cursor::new(source_data);
-
-        for point_index in 0..num_points_in_chunk {
-            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
-            // supported by pasture at the moment, so we skip over them
-            let start_of_source_point = point_index as u64 * self.size_of_point_in_file;
-            source_reader.seek(SeekFrom::Start(start_of_source_point))?;
-
-            let start_of_target_point_in_chunk = point_index * target_point_size;
-
-            run_parser(
-                |reader| {
-                    Self::read_next_world_space_position(reader, &point_scales, &point_offsets)
-                },
-                target_position_parser,
-                start_of_target_point_in_chunk,
-                Some(12),
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            run_parser(
-                |buf| Ok(buf.read_u16::<LittleEndian>()?),
-                target_intensity_parser,
-                start_of_target_point_in_chunk,
-                Some(2),
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            let bit_attributes =
-                Self::read_next_bit_attributes(&mut source_reader, &source_format)?;
-            run_parser(
-                |_| Ok(bit_attributes.return_number()),
-                target_return_number_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.number_of_returns()),
-                target_number_of_returns_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.classification_flags_or_default()),
-                target_classification_flags_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.scanner_channel_or_default()),
-                target_scanner_channel_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.scan_direction_flag()),
-                target_scan_direction_flag_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.edge_of_flight_line()),
-                target_eof_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            run_parser(
-                |buf| Ok(buf.read_u8()?),
-                target_classification_parser,
-                start_of_target_point_in_chunk,
-                Some(1),
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            if source_format.is_extended {
-                // Extended LAS format has user data before scan angle
-                run_parser(
-                    |buf| Ok(buf.read_u8()?),
-                    target_user_data_parser,
-                    start_of_target_point_in_chunk,
-                    Some(1),
-                    &mut source_reader,
-                    chunk_buffer,
-                )?;
-
-                run_parser(
-                    |buf| Ok(buf.read_i16::<LittleEndian>()?),
-                    target_scan_angle_rank_parser,
-                    start_of_target_point_in_chunk,
-                    Some(2),
-                    &mut source_reader,
-                    chunk_buffer,
-                )?;
-            } else {
-                // Regular formats have scan angle rank before user data
-                run_parser(
-                    |buf| Ok(buf.read_i8()?),
-                    target_scan_angle_rank_parser,
-                    start_of_target_point_in_chunk,
-                    Some(1),
-                    &mut source_reader,
-                    chunk_buffer,
-                )?;
-
-                run_parser(
-                    |buf| Ok(buf.read_u8()?),
-                    target_user_data_parser,
-                    start_of_target_point_in_chunk,
-                    Some(1),
-                    &mut source_reader,
-                    chunk_buffer,
-                )?;
-            }
-
-            run_parser(
-                |buf| Ok(buf.read_u16::<LittleEndian>()?),
-                target_point_source_id_parser,
-                start_of_target_point_in_chunk,
-                Some(2),
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            let gps_bytes_in_current_format = if source_format.has_gps_time {
-                Some(8)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_f64::<LittleEndian>()?),
-                target_gps_time_parser,
-                start_of_target_point_in_chunk,
-                gps_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            let color_bytes_in_current_format = if source_format.has_color {
-                Some(6)
-            } else {
-                None
-            };
-            run_parser(
-                |reader| Self::read_next_color_or_default(reader, &source_format),
-                target_color_parser,
-                start_of_target_point_in_chunk,
-                color_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            let nir_bytes_in_current_format = if source_format.has_nir { Some(2) } else { None };
-            run_parser(
-                |buf| Ok(buf.read_u16::<LittleEndian>()?),
-                target_nir_parser,
-                start_of_target_point_in_chunk,
-                nir_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            let wave_packet_index_bytes_in_current_format = if source_format.has_waveform {
-                Some(1)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_u8()?),
-                target_wave_packet_index_parser,
-                start_of_target_point_in_chunk,
-                wave_packet_index_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            let waveform_data_offset_bytes_in_current_format = if source_format.has_waveform {
-                Some(8)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_u64::<LittleEndian>()?),
-                target_waveform_byte_offset_parser,
-                start_of_target_point_in_chunk,
-                waveform_data_offset_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            let waveform_packet_bytes_in_current_format = if source_format.has_waveform {
-                Some(4)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_u32::<LittleEndian>()?),
-                target_waveform_packet_size_parser,
-                start_of_target_point_in_chunk,
-                waveform_packet_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-            let waveform_location_bytes_in_current_format = if source_format.has_waveform {
-                Some(4)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_f32::<LittleEndian>()?),
-                target_waveform_return_point_parser,
-                start_of_target_point_in_chunk,
-                waveform_location_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-
-            let waveform_params_bytes_in_current_format = if source_format.has_waveform {
-                Some(12)
-            } else {
-                None
-            };
-            run_parser(
-                |reader| Self::read_next_waveform_parameters(reader, &source_format),
-                target_waveform_parameters_parser,
-                start_of_target_point_in_chunk,
-                waveform_params_bytes_in_current_format,
-                &mut source_reader,
-                chunk_buffer,
-            )?;
-        }
-
-        Ok(())
-    }
-
-    fn read_into_default_layout(
-        &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
-        count: usize,
-    ) -> Result<usize> {
-        let num_points_to_read = usize::min(count, self.remaining_points());
-        if num_points_to_read == 0 {
-            return Ok(0);
-        }
-
-        // Read into chunks of a fixed size. Within each chunk, read all data into an untyped buffer
-        // then push the untyped data into 'buffer'
-        let chunk_size = 50_000;
-        let point_size = self.layout.size_of_point_entry() as usize;
-        let chunk_bytes = point_size as usize * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
-
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
-
-            self.read_chunk_default_layout(&mut points_chunk[..], points_in_chunk)?;
-
-            point_buffer.push(&InterleavedPointView::from_raw_slice(
-                &points_chunk[0..bytes_in_chunk],
-                self.layout.clone(),
-            ));
         }
 
         self.current_point_index += num_points_to_read;
@@ -631,9 +296,9 @@ impl<T: Read + Seek> RawLASReader<T> {
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout(
+    fn read_into_custom_layout<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'b mut B,
         count: usize,
     ) -> Result<usize> {
         let num_points_to_read = usize::min(count, self.remaining_points());
@@ -641,112 +306,49 @@ impl<T: Read + Seek> RawLASReader<T> {
             return Ok(0);
         }
 
-        // Read in interleaved chunks, even if the `point_buffer` is not interleaved. `push_points_interleaved` will
-        // handle the memory transpose in this case
-        let chunk_size = 50_000;
-        let point_size = point_buffer.point_layout().size_of_point_entry() as usize;
-        let chunk_bytes = point_size * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
+        const CHUNK_BYTES: usize = 1 << 20; // 1 MiB
+        let points_per_chunk =
+            CHUNK_BYTES / self.las_point_records_layout.size_of_point_entry() as usize;
+        let num_chunks = (num_points_to_read + points_per_chunk - 1) / points_per_chunk;
 
-        let las_buffer_bytes = self.size_of_point_in_file as usize * chunk_size;
-        let mut buffer: Vec<u8> = vec![0; las_buffer_bytes];
+        let size_of_chunk = if num_chunks > 1 {
+            points_per_chunk
+        } else {
+            num_points_to_read
+        };
 
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
-            let chunk_size_in_file = points_in_chunk * self.size_of_point_in_file as usize;
+        let mut convert_buffer =
+            VectorBuffer::with_capacity(size_of_chunk, self.las_point_records_layout.clone());
+        convert_buffer.resize(size_of_chunk);
 
-            self.reader.read_exact(&mut buffer[0..chunk_size_in_file])?;
+        let source_layout = self.las_point_records_layout.clone();
+        let target_layout = point_buffer.point_layout().clone();
+        let converter = get_default_las_converter(
+            &source_layout,
+            &target_layout,
+            self.metadata.raw_las_header().expect("Missing LAS header"),
+        )
+        .context("Unsupported conversion")?;
 
-            self.read_chunk_custom_layout(
-                &mut buffer[0..chunk_size_in_file],
-                &mut points_chunk[..],
-                points_in_chunk,
-                point_buffer.point_layout(),
-            )?;
+        for chunk_idx in 0..num_chunks {
+            let points_in_current_chunk = if chunk_idx == num_chunks - 1 {
+                num_points_to_read - ((num_chunks - 1) * size_of_chunk)
+            } else {
+                size_of_chunk
+            };
 
-            point_buffer.push(&InterleavedPointView::from_raw_slice(
-                &points_chunk[0..bytes_in_chunk],
-                point_buffer.point_layout().clone(),
-            ));
+            self.read_into_default_layout(&mut convert_buffer, points_in_current_chunk)?;
+            let target_buffer_first_point = chunk_idx * size_of_chunk;
+            let target_buffer_last_point = target_buffer_first_point + points_in_current_chunk;
+            converter.convert_into_range(
+                &convert_buffer,
+                0..points_in_current_chunk,
+                point_buffer,
+                target_buffer_first_point..target_buffer_last_point,
+            );
         }
-
-        self.current_point_index += num_points_to_read;
 
         Ok(num_points_to_read)
-    }
-
-    /// Read the next position, converted into world space of the current LAS file
-    fn read_next_world_space_position<U: Read>(
-        reader: &mut U,
-        point_scales: &Vector3<f64>,
-        point_offsets: &Vector3<f64>,
-    ) -> Result<Vector3<f64>> {
-        let local_x = reader.read_i32::<LittleEndian>()?;
-        let local_y = reader.read_i32::<LittleEndian>()?;
-        let local_z = reader.read_i32::<LittleEndian>()?;
-        let global_x = (local_x as f64 * point_scales.x) + point_offsets.x;
-        let global_y = (local_y as f64 * point_scales.y) + point_offsets.y;
-        let global_z = (local_z as f64 * point_scales.z) + point_offsets.z;
-        Ok(Vector3::new(global_x, global_y, global_z))
-    }
-
-    /// Read the next bit flag attributes from the current LAS file
-    fn read_next_bit_attributes<U: Read>(
-        reader: &mut U,
-        las_format: &Format,
-    ) -> Result<BitAttributes> {
-        if las_format.is_extended {
-            let low_byte = reader.read_u8()?;
-            let high_byte = reader.read_u8()?;
-
-            Ok(BitAttributes::Extended(BitAttributesExtended {
-                return_number: low_byte & 0b1111,
-                number_of_returns: (low_byte >> 4) & 0b1111,
-                classification_flags: high_byte & 0b1111,
-                scanner_channel: (high_byte >> 4) & 0b11,
-                scan_direction_flag: (high_byte >> 6) & 0b1,
-                edge_of_flight_line: (high_byte >> 7) & 0b1,
-            }))
-        } else {
-            let byte = reader.read_u8()?;
-            Ok(BitAttributes::Regular(BitAttributesRegular {
-                return_number: byte & 0b111,
-                number_of_returns: (byte >> 3) & 0b111,
-                scan_direction_flag: (byte >> 6) & 0b1,
-                edge_of_flight_line: (byte >> 7) & 0b1,
-            }))
-        }
-    }
-
-    fn read_next_color_or_default<U: Read>(
-        reader: &mut U,
-        las_format: &Format,
-    ) -> Result<Vector3<u16>> {
-        if !las_format.has_color {
-            Ok(Default::default())
-        } else {
-            let r = reader.read_u16::<LittleEndian>()?;
-            let g = reader.read_u16::<LittleEndian>()?;
-            let b = reader.read_u16::<LittleEndian>()?;
-            Ok(Vector3::new(r, g, b))
-        }
-    }
-
-    fn read_next_waveform_parameters<U: Read>(
-        reader: &mut U,
-        las_format: &Format,
-    ) -> Result<Vector3<f32>> {
-        if !las_format.has_waveform {
-            Ok(Default::default())
-        } else {
-            let px = reader.read_f32::<LittleEndian>()?;
-            let py = reader.read_f32::<LittleEndian>()?;
-            let pz = reader.read_f32::<LittleEndian>()?;
-            Ok(Vector3::new(px, py, pz))
-        }
     }
 }
 
@@ -761,22 +363,19 @@ impl<T: Read + Seek> LASReaderBase for RawLASReader<T> {
 }
 
 impl<T: Read + Seek> PointReader for RawLASReader<T> {
-    fn read(&mut self, count: usize) -> Result<Box<dyn pasture_core::containers::PointBuffer>> {
-        let num_points_to_read = usize::min(count, self.remaining_points());
-        let mut buffer =
-            InterleavedVecPointStorage::with_capacity(num_points_to_read, self.layout.clone());
-
-        self.read_into(&mut buffer, num_points_to_read)?;
-
-        Ok(Box::new(buffer))
-    }
-
-    fn read_into(
+    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'b mut B,
         count: usize,
-    ) -> Result<usize> {
-        if *point_buffer.point_layout() != self.layout {
+    ) -> Result<usize>
+    where
+        'a: 'b,
+    {
+        if point_buffer.len() < count {
+            panic!("point_buffer.len() must be >= count");
+        }
+
+        if *point_buffer.point_layout() != self.las_point_records_layout {
             self.read_into_custom_layout(point_buffer, count)
         } else {
             self.read_into_default_layout(point_buffer, count)
@@ -816,32 +415,21 @@ impl<T: Read + Seek> SeekToPoint for RawLASReader<T> {
     }
 }
 
-pub(crate) struct RawLAZReader<'a, T: Read + Seek + Send + 'a> {
+pub struct RawLAZReader<'a, T: Read + Seek + Send + 'a> {
     reader: LasZipDecompressor<'a, T>,
     metadata: LASMetadata,
     layout: PointLayout,
+    las_point_records_layout: PointLayout,
     current_point_index: usize,
-    point_offsets: Vector3<f64>,
-    point_scales: Vector3<f64>,
     size_of_point_in_file: u64,
 }
 
 impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
-    pub fn from_read(mut read: T) -> Result<Self> {
+    pub fn from_read(mut read: T, point_layout_matches_memory_layout: bool) -> Result<Self> {
         let raw_header = raw::Header::read_from(&mut read)?;
         let offset_to_first_point_in_file = raw_header.offset_to_point_data as u64;
         let size_of_point_in_file = raw_header.point_data_record_length as u64;
         let number_of_vlrs = raw_header.number_of_variable_length_records;
-        let point_offsets = Vector3::new(
-            raw_header.x_offset,
-            raw_header.y_offset,
-            raw_header.z_offset,
-        );
-        let point_scales = Vector3::new(
-            raw_header.x_scale_factor,
-            raw_header.y_scale_factor,
-            raw_header.z_scale_factor,
-        );
 
         let mut header_builder = Builder::new(raw_header)?;
         // Read VLRs
@@ -851,28 +439,36 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         }
         // TODO Read EVLRs
 
+        // Put padding bytes into header (e.g. from leftover VLRs that have been deleted but not removed from the file)
+        let position_after_reading_vlrs = read.stream_position()?;
+        if position_after_reading_vlrs < offset_to_first_point_in_file {
+            read.by_ref()
+                .take(offset_to_first_point_in_file - position_after_reading_vlrs)
+                .read_to_end(&mut header_builder.vlr_padding)?;
+        }
+
         let header = header_builder.into_header()?;
-        if header.point_format().has_waveform {
+        if header.point_format().is_extended && header.point_format().has_waveform {
             return Err(anyhow!(
-                "Compressed LAZ files with wave packet data are currently not supported!"
-            ));
-        }
-        if header.point_format().is_extended {
-            return Err(anyhow!(
-                "Compressed LAZ files with extended formats (6-10) are currently not supported!"
+                "Compressed LAZ files with extended formats 9 and 10 are currently not supported!"
             ));
         }
 
-        let metadata: LASMetadata = header.clone().into();
-        let point_layout = point_layout_from_las_point_format(header.point_format())?;
+        let metadata: LASMetadata = header
+            .clone()
+            .try_into()
+            .context("Could not parse LAS header")?;
+        let point_layout =
+            point_layout_from_las_metadata(&metadata, point_layout_matches_memory_layout)?;
+        let matching_memory_layout = point_layout_from_las_metadata(&metadata, true)?;
 
-        read.seek(SeekFrom::Start(offset_to_first_point_in_file as u64))?;
+        read.seek(SeekFrom::Start(offset_to_first_point_in_file))?;
 
-        let laszip_vlr = match header.vlrs().iter().find(|vlr| is_laszip_vlr(*vlr)) {
+        let laszip_vlr = match header.vlrs().iter().find(|vlr| is_laszip_vlr(vlr)) {
             None => Err(anyhow!(
                 "RawLAZReader::new: LAZ variable length record not found in file!"
             )),
-            Some(ref vlr) => {
+            Some(vlr) => {
                 let laz_record =
                     laz::las::laszip::LazVlr::from_buffer(&vlr.data).map_err(map_laz_err)?;
                 Ok(laz_record)
@@ -882,602 +478,62 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
 
         Ok(Self {
             reader,
-            metadata: metadata,
+            metadata,
             layout: point_layout,
+            las_point_records_layout: matching_memory_layout,
             current_point_index: 0,
-            point_offsets,
-            point_scales,
             size_of_point_in_file,
         })
     }
 
-    fn read_chunk_default_layout(
-        &mut self,
-        chunk_buffer: &mut [u8],
-        decompression_buffer: &mut [u8],
-        num_points_in_chunk: usize,
-    ) -> Result<()> {
-        let bytes_in_chunk = num_points_in_chunk * self.size_of_point_in_file as usize;
-        let las_format = Format::new(self.metadata.point_format())?;
-
-        self.reader
-            .decompress_many(&mut decompression_buffer[0..bytes_in_chunk])?;
-        let mut decompression_chunk_cursor = Cursor::new(decompression_buffer);
-        let mut target_chunk_cursor = Cursor::new(chunk_buffer);
-
-        // Convert the decompressed points - which have XYZ as u32 - into the target layout
-        for point_index in 0..num_points_in_chunk {
-            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
-            // supported by pasture at the moment, so we skip over them
-            let start_of_point_in_decompressed_data =
-                point_index as u64 * self.size_of_point_in_file;
-            decompression_chunk_cursor
-                .seek(SeekFrom::Start(start_of_point_in_decompressed_data))?;
-
-            let local_x = decompression_chunk_cursor.read_i32::<LittleEndian>()?;
-            let local_y = decompression_chunk_cursor.read_i32::<LittleEndian>()?;
-            let local_z = decompression_chunk_cursor.read_i32::<LittleEndian>()?;
-            let global_x = (local_x as f64 * self.point_scales.x) + self.point_offsets.x;
-            let global_y = (local_y as f64 * self.point_scales.y) + self.point_offsets.y;
-            let global_z = (local_z as f64 * self.point_scales.z) + self.point_offsets.z;
-            target_chunk_cursor.write_f64::<NativeEndian>(global_x)?;
-            target_chunk_cursor.write_f64::<NativeEndian>(global_y)?;
-            target_chunk_cursor.write_f64::<NativeEndian>(global_z)?;
-
-            // Intensity
-            target_chunk_cursor.write_i16::<NativeEndian>(
-                decompression_chunk_cursor.read_i16::<LittleEndian>()?,
-            )?;
-
-            // Bit attributes
-            if las_format.is_extended {
-                let bit_attributes_first_byte = decompression_chunk_cursor.read_u8()?;
-                let bit_attributes_second_byte = decompression_chunk_cursor.read_u8()?;
-
-                let return_number = bit_attributes_first_byte & 0b1111;
-                let number_of_returns = (bit_attributes_first_byte >> 4) & 0b1111;
-                let classification_flags = bit_attributes_second_byte & 0b1111;
-                let scanner_channel = (bit_attributes_second_byte >> 4) & 0b11;
-                let scan_direction_flag = (bit_attributes_second_byte >> 6) & 0b1;
-                let edge_of_flight_line = (bit_attributes_second_byte >> 7) & 0b1;
-
-                target_chunk_cursor.write_u8(return_number)?;
-                target_chunk_cursor.write_u8(number_of_returns)?;
-                target_chunk_cursor.write_u8(classification_flags)?;
-                target_chunk_cursor.write_u8(scanner_channel)?;
-                target_chunk_cursor.write_u8(scan_direction_flag)?;
-                target_chunk_cursor.write_u8(edge_of_flight_line)?;
-            } else {
-                let bit_attributes = decompression_chunk_cursor.read_u8()?;
-                let return_number = bit_attributes & 0b111;
-                let number_of_returns = (bit_attributes >> 3) & 0b111;
-                let scan_direction_flag = (bit_attributes >> 6) & 0b1;
-                let edge_of_flight_line = (bit_attributes >> 7) & 0b1;
-
-                target_chunk_cursor.write_u8(return_number)?;
-                target_chunk_cursor.write_u8(number_of_returns)?;
-                target_chunk_cursor.write_u8(scan_direction_flag)?;
-                target_chunk_cursor.write_u8(edge_of_flight_line)?;
-            }
-
-            // Classification
-            target_chunk_cursor.write_u8(decompression_chunk_cursor.read_u8()?)?;
-
-            // User data in format > 5, scan angle rank in format <= 5
-            target_chunk_cursor.write_u8(decompression_chunk_cursor.read_u8()?)?;
-
-            if self.metadata.point_format() <= 5 {
-                // User data
-                target_chunk_cursor.write_u8(decompression_chunk_cursor.read_u8()?)?;
-            } else {
-                // Scan angle
-                target_chunk_cursor.write_i16::<NativeEndian>(
-                    decompression_chunk_cursor.read_i16::<LittleEndian>()?,
-                )?;
-            }
-
-            // Point source ID
-            target_chunk_cursor.write_u16::<NativeEndian>(
-                decompression_chunk_cursor.read_u16::<LittleEndian>()?,
-            )?;
-
-            // Format 0 is done here, the other formats are handled now
-
-            if las_format.has_gps_time {
-                target_chunk_cursor.write_f64::<NativeEndian>(
-                    decompression_chunk_cursor.read_f64::<LittleEndian>()?,
-                )?;
-            }
-
-            if las_format.has_color {
-                target_chunk_cursor.write_u16::<NativeEndian>(
-                    decompression_chunk_cursor.read_u16::<LittleEndian>()?,
-                )?;
-                target_chunk_cursor.write_u16::<NativeEndian>(
-                    decompression_chunk_cursor.read_u16::<LittleEndian>()?,
-                )?;
-                target_chunk_cursor.write_u16::<NativeEndian>(
-                    decompression_chunk_cursor.read_u16::<LittleEndian>()?,
-                )?;
-            }
-
-            if las_format.has_nir {
-                target_chunk_cursor.write_u16::<NativeEndian>(
-                    decompression_chunk_cursor.read_u16::<LittleEndian>()?,
-                )?;
-            }
-
-            if las_format.has_waveform {
-                target_chunk_cursor.write_u8(decompression_chunk_cursor.read_u8()?)?;
-                target_chunk_cursor.write_u64::<NativeEndian>(
-                    decompression_chunk_cursor.read_u64::<LittleEndian>()?,
-                )?;
-                target_chunk_cursor.write_u32::<NativeEndian>(
-                    decompression_chunk_cursor.read_u32::<LittleEndian>()?,
-                )?;
-                target_chunk_cursor.write_f32::<NativeEndian>(
-                    decompression_chunk_cursor.read_f32::<LittleEndian>()?,
-                )?;
-                target_chunk_cursor.write_f32::<NativeEndian>(
-                    decompression_chunk_cursor.read_f32::<LittleEndian>()?,
-                )?;
-                target_chunk_cursor.write_f32::<NativeEndian>(
-                    decompression_chunk_cursor.read_f32::<LittleEndian>()?,
-                )?;
-                target_chunk_cursor.write_f32::<NativeEndian>(
-                    decompression_chunk_cursor.read_f32::<LittleEndian>()?,
-                )?;
-            }
-        }
-
-        Ok(())
+    pub fn las_metadata(&self) -> &LASMetadata {
+        &self.metadata
     }
 
-    fn read_chunk_custom_layout(
+    fn read_into_default_layout<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
-        chunk_buffer: &mut [u8],
-        decompression_buffer: &mut [u8],
-        num_points_in_chunk: usize,
-        target_layout: &PointLayout,
-    ) -> Result<()> {
-        // HACK Not happy with how large this function is... But there are so many special
-        // cases, I don't know how to clean it up at the moment. Maybe revise in future?
-        let source_format = Format::new(self.metadata.point_format())?;
-
-        fn get_attribute_parser(
-            default_attribute: &PointAttributeDefinition,
-            source_layout: &PointLayout,
-            target_layout: &PointLayout,
-        ) -> Option<(usize, usize, Option<AttributeConversionFn>)> {
-            target_layout
-                .get_attribute_by_name(default_attribute.name())
-                .map_or(None, |target_attribute| {
-                    let converter = source_layout
-                        .get_attribute_by_name(default_attribute.name())
-                        .and_then(|source_attribute| {
-                            get_converter_for_attributes(
-                                &source_attribute.into(),
-                                &target_attribute.into(),
-                            )
-                        })
-                        .or_else(|| {
-                            // If the source_layout does not contain the desired attribute, we still might need a converter
-                            // because in this case a default attribute is read (e.g. Vector3<u16> for COLOR_RGB), and this
-                            // default attribute might have a different data type from the target attribute
-                            get_converter_for_attributes(
-                                default_attribute,
-                                &target_attribute.into(),
-                            )
-                        });
-                    let offset_of_attribute = target_attribute.offset() as usize;
-                    let size_of_attribute = target_attribute.size() as usize;
-                    Some((offset_of_attribute, size_of_attribute, converter))
-                })
+        point_buffer: &'c mut B,
+        count: usize,
+    ) -> Result<usize>
+    where
+        'b: 'c,
+    {
+        let num_points_to_read = usize::min(count, self.remaining_points());
+        if num_points_to_read == 0 {
+            return Ok(0);
         }
 
-        let target_position_parser =
-            get_attribute_parser(&attributes::POSITION_3D, &self.layout, target_layout);
-        let target_intensity_parser =
-            get_attribute_parser(&attributes::INTENSITY, &self.layout, target_layout);
-        let target_return_number_parser =
-            get_attribute_parser(&attributes::RETURN_NUMBER, &self.layout, target_layout);
-        let target_number_of_returns_parser =
-            get_attribute_parser(&attributes::NUMBER_OF_RETURNS, &self.layout, target_layout);
-        let target_classification_flags_parser = get_attribute_parser(
-            &attributes::CLASSIFICATION_FLAGS,
-            &self.layout,
-            target_layout,
-        );
-        let target_scanner_channel_parser =
-            get_attribute_parser(&attributes::SCANNER_CHANNEL, &self.layout, target_layout);
-        let target_scan_direction_flag_parser = get_attribute_parser(
-            &attributes::SCAN_DIRECTION_FLAG,
-            &self.layout,
-            target_layout,
-        );
-        let target_eof_parser = get_attribute_parser(
-            &attributes::EDGE_OF_FLIGHT_LINE,
-            &self.layout,
-            target_layout,
-        );
-        let target_classification_parser =
-            get_attribute_parser(&attributes::CLASSIFICATION, &self.layout, target_layout);
-        let target_scan_angle_rank_parser =
-            get_attribute_parser(&attributes::SCAN_ANGLE_RANK, &self.layout, target_layout);
-        let target_user_data_parser =
-            get_attribute_parser(&attributes::USER_DATA, &self.layout, target_layout);
-        let target_point_source_id_parser =
-            get_attribute_parser(&attributes::POINT_SOURCE_ID, &self.layout, target_layout);
-        let target_gps_time_parser =
-            get_attribute_parser(&attributes::GPS_TIME, &self.layout, target_layout);
-        let target_color_parser =
-            get_attribute_parser(&attributes::COLOR_RGB, &self.layout, target_layout);
-        let target_nir_parser = get_attribute_parser(&attributes::NIR, &self.layout, target_layout);
-        let target_wave_packet_index_parser = get_attribute_parser(
-            &attributes::WAVE_PACKET_DESCRIPTOR_INDEX,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_byte_offset_parser = get_attribute_parser(
-            &attributes::WAVEFORM_DATA_OFFSET,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_packet_size_parser = get_attribute_parser(
-            &attributes::WAVEFORM_PACKET_SIZE,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_return_point_parser = get_attribute_parser(
-            &attributes::RETURN_POINT_WAVEFORM_LOCATION,
-            &self.layout,
-            target_layout,
-        );
-        let target_waveform_parameters_parser = get_attribute_parser(
-            &attributes::WAVEFORM_PARAMETERS,
-            &self.layout,
-            target_layout,
-        );
-
-        let target_point_size = target_layout.size_of_point_entry() as usize;
-
-        self.reader.decompress_many(
-            &mut decompression_buffer
-                [0..(num_points_in_chunk * self.size_of_point_in_file as usize)],
-        )?;
-        let mut decompressed_data = Cursor::new(decompression_buffer);
-
-        fn run_parser<T>(
-            decoder_fn: impl Fn(&mut Cursor<&mut [u8]>) -> Result<T>,
-            maybe_parser: Option<(usize, usize, Option<AttributeConversionFn>)>,
-            start_of_target_point_in_chunk: usize,
-            size_of_attribute: Option<usize>,
-            decompressed_data: &mut Cursor<&mut [u8]>,
-            chunk_buffer: &mut [u8],
-        ) -> Result<()> {
-            if let Some((offset, size, maybe_converter)) = maybe_parser {
-                let source_data = decoder_fn(decompressed_data)?;
-                let source_slice = unsafe { view_raw_bytes(&source_data) };
-
-                let pos_start = start_of_target_point_in_chunk + offset;
-                let pos_end = pos_start + size;
-                let target_slice = &mut chunk_buffer[pos_start..pos_end];
-
-                if let Some(converter) = maybe_converter {
-                    unsafe {
-                        converter(source_slice, target_slice);
-                    }
+        if let Some(interleaved_buffer) = point_buffer.as_interleaved_mut() {
+            let new_point_data = interleaved_buffer.get_point_range_mut(0..num_points_to_read);
+            self.reader
+                .decompress_many(new_point_data)
+                .context("Failed to read point records")?;
+        } else {
+            // Read point data in chunks of ~1MiB size to prevent memory problems for very large files if we were
+            // to read all data in a single chunk
+            const CHUNK_MEM_SIZE: usize = 1 << 20;
+            let num_points_per_chunk = CHUNK_MEM_SIZE / self.size_of_point_in_file as usize;
+            let num_chunks = (num_points_to_read + num_points_per_chunk - 1) / num_points_per_chunk;
+            let mut read_buffer =
+                vec![0; num_points_per_chunk * self.size_of_point_in_file as usize];
+            for chunk_idx in 0..num_chunks {
+                let bytes_in_chunk = if chunk_idx == num_chunks - 1 {
+                    (num_points_to_read - (chunk_idx * num_points_per_chunk))
+                        * self.size_of_point_in_file as usize
                 } else {
-                    target_slice.copy_from_slice(source_slice);
+                    read_buffer.len()
+                };
+                let chunk_bytes = &mut read_buffer[..bytes_in_chunk];
+                self.reader
+                    .decompress_many(chunk_bytes)
+                    .context("Failed to read chunk of points")?;
+                let first_point_in_chunk = chunk_idx * num_points_per_chunk;
+                let chunk_end = ((chunk_idx + 1) * num_points_per_chunk).min(num_points_to_read);
+                // Safe because this function (`read_into_default_layout`) is only called if the buffer has the exact
+                // binary memory layout of the LAS file
+                unsafe {
+                    point_buffer.set_point_range(first_point_in_chunk..chunk_end, chunk_bytes);
                 }
-            } else if let Some(bytes_to_skip) = size_of_attribute {
-                decompressed_data.seek(SeekFrom::Current(bytes_to_skip as i64))?;
-            }
-
-            Ok(())
-        }
-
-        for point_index in 0..num_points_in_chunk {
-            // Point size might be larger than what the format indicates due to extra bytes. Extra bytes are not
-            // supported by pasture at the moment, so we skip over them
-            let start_of_point_in_decompressed_data =
-                point_index as u64 * self.size_of_point_in_file;
-            decompressed_data.seek(SeekFrom::Start(start_of_point_in_decompressed_data))?;
-
-            let start_of_target_point_in_chunk = point_index * target_point_size;
-
-            run_parser(
-                |buf| self.read_next_world_space_position(buf),
-                target_position_parser,
-                start_of_target_point_in_chunk,
-                Some(12),
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            run_parser(
-                |buf| Ok(buf.read_u16::<LittleEndian>()?),
-                target_intensity_parser,
-                start_of_target_point_in_chunk,
-                Some(2),
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            let bit_attributes =
-                self.read_next_bit_attributes(&mut decompressed_data, &source_format)?;
-            run_parser(
-                |_| Ok(bit_attributes.return_number()),
-                target_return_number_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.number_of_returns()),
-                target_number_of_returns_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.classification_flags_or_default()),
-                target_classification_flags_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.scanner_channel_or_default()),
-                target_scanner_channel_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.scan_direction_flag()),
-                target_scan_direction_flag_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            run_parser(
-                |_| Ok(bit_attributes.edge_of_flight_line()),
-                target_eof_parser,
-                start_of_target_point_in_chunk,
-                None,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            run_parser(
-                |buf| Ok(buf.read_u8()?),
-                target_classification_parser,
-                start_of_target_point_in_chunk,
-                Some(1),
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            if source_format.is_extended {
-                // Extended LAS format has user data before scan angle
-                run_parser(
-                    |buf| Ok(buf.read_u8()?),
-                    target_user_data_parser,
-                    start_of_target_point_in_chunk,
-                    Some(1),
-                    &mut decompressed_data,
-                    chunk_buffer,
-                )?;
-
-                run_parser(
-                    |buf| Ok(buf.read_i16::<LittleEndian>()?),
-                    target_scan_angle_rank_parser,
-                    start_of_target_point_in_chunk,
-                    Some(2),
-                    &mut decompressed_data,
-                    chunk_buffer,
-                )?;
-            } else {
-                // Regular formats have scan angle rank before user data
-                run_parser(
-                    |buf| Ok(buf.read_i8()?),
-                    target_scan_angle_rank_parser,
-                    start_of_target_point_in_chunk,
-                    Some(1),
-                    &mut decompressed_data,
-                    chunk_buffer,
-                )?;
-
-                run_parser(
-                    |buf| Ok(buf.read_u8()?),
-                    target_user_data_parser,
-                    start_of_target_point_in_chunk,
-                    Some(1),
-                    &mut decompressed_data,
-                    chunk_buffer,
-                )?;
-            }
-
-            run_parser(
-                |buf| Ok(buf.read_u16::<LittleEndian>()?),
-                target_point_source_id_parser,
-                start_of_target_point_in_chunk,
-                Some(2),
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            let gps_bytes_in_current_format = if source_format.has_gps_time {
-                Some(8)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_f64::<LittleEndian>()?),
-                target_gps_time_parser,
-                start_of_target_point_in_chunk,
-                gps_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            let color_bytes_in_current_format = if source_format.has_color {
-                Some(6)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Self::read_next_colors_or_default(buf, &source_format),
-                target_color_parser,
-                start_of_target_point_in_chunk,
-                color_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            let nir_bytes_in_current_format = if source_format.has_nir { Some(2) } else { None };
-            run_parser(
-                |buf| Ok(buf.read_u16::<LittleEndian>()?),
-                target_nir_parser,
-                start_of_target_point_in_chunk,
-                nir_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            let wave_packet_index_bytes_in_current_format = if source_format.has_waveform {
-                Some(1)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_u8()?),
-                target_wave_packet_index_parser,
-                start_of_target_point_in_chunk,
-                wave_packet_index_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            let waveform_data_offset_bytes_in_current_format = if source_format.has_waveform {
-                Some(8)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_u64::<LittleEndian>()?),
-                target_waveform_byte_offset_parser,
-                start_of_target_point_in_chunk,
-                waveform_data_offset_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            let waveform_packet_bytes_in_current_format = if source_format.has_waveform {
-                Some(4)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_u32::<LittleEndian>()?),
-                target_waveform_packet_size_parser,
-                start_of_target_point_in_chunk,
-                waveform_packet_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-            let waveform_location_bytes_in_current_format = if source_format.has_waveform {
-                Some(4)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Ok(buf.read_f32::<LittleEndian>()?),
-                target_waveform_return_point_parser,
-                start_of_target_point_in_chunk,
-                waveform_location_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-
-            let waveform_params_bytes_in_current_format = if source_format.has_waveform {
-                Some(12)
-            } else {
-                None
-            };
-            run_parser(
-                |buf| Self::read_next_waveform_parameters_or_default(buf, &source_format),
-                target_waveform_parameters_parser,
-                start_of_target_point_in_chunk,
-                waveform_params_bytes_in_current_format,
-                &mut decompressed_data,
-                chunk_buffer,
-            )?;
-        }
-
-        Ok(())
-    }
-
-    fn read_into_default_layout(
-        &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
-        count: usize,
-    ) -> Result<usize> {
-        let num_points_to_read = usize::min(count, self.remaining_points());
-        if num_points_to_read == 0 {
-            return Ok(0);
-        }
-
-        // Read into chunks of a fixed size. Within each chunk, read all data into an untyped buffer
-        // then push the untyped data into 'buffer'
-        let chunk_size = 50_000;
-        let point_size = self.layout.size_of_point_entry() as usize;
-        let chunk_bytes = point_size as usize * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-
-        let decompression_chunk_size = self.size_of_point_in_file as usize * chunk_size;
-        let mut decompression_chunk: Vec<u8> = vec![0; decompression_chunk_size];
-
-        // If the buffer is interleaved, we can directly read into the memory of the buffer and save one memcpy per chunk
-        if point_buffer.as_interleaved_mut().is_some() {
-            let first_new_point_index = point_buffer.len();
-            point_buffer.resize(num_points_to_read);
-
-            let interleaved_buffer = point_buffer.as_interleaved_mut().unwrap();
-
-            for chunk_index in 0..num_chunks {
-                let points_in_chunk =
-                    std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-                    let first_point_index = first_new_point_index + chunk_index * chunk_size;
-                    let end_of_chunk_index = first_point_index + points_in_chunk;
-
-                self.read_chunk_default_layout(
-                    interleaved_buffer.get_raw_points_mut(first_point_index..end_of_chunk_index)
-                    , &mut decompression_chunk, points_in_chunk)?;
-            }
-
-        } else {
-            let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
-
-            for chunk_index in 0..num_chunks {
-                let points_in_chunk =
-                    std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-                let bytes_in_chunk = points_in_chunk * point_size;
-    
-                self.read_chunk_default_layout(
-                    &mut points_chunk[..],
-                    &mut decompression_chunk[..],
-                    points_in_chunk,
-                )?;
-    
-                point_buffer.push(&InterleavedPointView::from_raw_slice(
-                    &points_chunk[0..bytes_in_chunk],
-                    self.layout.clone(),
-                ));
             }
         }
 
@@ -1486,115 +542,34 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout(
+    fn read_into_custom_layout<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'c mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'b: 'c,
+    {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
         }
 
-        // Read in interleaved chunks, even if the `point_buffer` is not interleaved. `push_points_interleaved` will
-        // handle the memory transpose in this case
-        let chunk_size = 50_000;
-        let point_size = point_buffer.point_layout().size_of_point_entry() as usize;
-        let chunk_bytes = point_size * chunk_size;
-        let num_chunks = (num_points_to_read + chunk_size - 1) / chunk_size;
-        let mut points_chunk: Vec<u8> = vec![0; chunk_bytes];
+        let mut convert_buffer =
+            VectorBuffer::with_capacity(num_points_to_read, self.las_point_records_layout.clone());
+        convert_buffer.resize(num_points_to_read);
+        self.read_into_default_layout(&mut convert_buffer, num_points_to_read)?;
 
-        let decompression_chunk_size = self.size_of_point_in_file as usize * chunk_size;
-        let mut decompression_chunk: Vec<u8> = vec![0; decompression_chunk_size];
-
-        for chunk_index in 0..num_chunks {
-            let points_in_chunk =
-                std::cmp::min(chunk_size, num_points_to_read - (chunk_index * chunk_size));
-            let bytes_in_chunk = points_in_chunk * point_size;
-
-            self.read_chunk_custom_layout(
-                &mut points_chunk[..],
-                &mut decompression_chunk[..],
-                points_in_chunk,
-                point_buffer.point_layout(),
-            )?;
-
-            point_buffer.push(&InterleavedPointView::from_raw_slice(
-                &points_chunk[0..bytes_in_chunk],
-                point_buffer.point_layout().clone(),
-            ));
-        }
-
-        self.current_point_index += num_points_to_read;
+        let target_layout = point_buffer.point_layout().clone();
+        let converter = get_default_las_converter(
+            &self.las_point_records_layout,
+            &target_layout,
+            self.metadata.raw_las_header().expect("Missing LAS header"),
+        )
+        .context("Unsupported conversion")?;
+        converter.convert_into(&convert_buffer, point_buffer);
 
         Ok(num_points_to_read)
-    }
-
-    fn read_next_world_space_position(
-        &self,
-        decompressed_data: &mut Cursor<&mut [u8]>,
-    ) -> Result<Vector3<f64>> {
-        let local_x = decompressed_data.read_i32::<LittleEndian>()?;
-        let local_y = decompressed_data.read_i32::<LittleEndian>()?;
-        let local_z = decompressed_data.read_i32::<LittleEndian>()?;
-        let global_x = (local_x as f64 * self.point_scales.x) + self.point_offsets.x;
-        let global_y = (local_y as f64 * self.point_scales.y) + self.point_offsets.y;
-        let global_z = (local_z as f64 * self.point_scales.z) + self.point_offsets.z;
-        Ok(Vector3::new(global_x, global_y, global_z))
-    }
-
-    fn read_next_bit_attributes(
-        &self,
-        decompressed_data: &mut Cursor<&mut [u8]>,
-        las_format: &Format,
-    ) -> Result<BitAttributes> {
-        if las_format.is_extended {
-            let low_byte = decompressed_data.read_u8()?;
-            let high_byte = decompressed_data.read_u8()?;
-
-            Ok(BitAttributes::Extended(BitAttributesExtended {
-                return_number: low_byte & 0b1111,
-                number_of_returns: (low_byte >> 4) & 0b1111,
-                classification_flags: high_byte & 0b1111,
-                scanner_channel: (high_byte >> 4) & 0b11,
-                scan_direction_flag: (high_byte >> 6) & 0b1,
-                edge_of_flight_line: (high_byte >> 7) & 0b1,
-            }))
-        } else {
-            let byte = decompressed_data.read_u8()?;
-            Ok(BitAttributes::Regular(BitAttributesRegular {
-                return_number: byte & 0b111,
-                number_of_returns: (byte >> 3) & 0b111,
-                scan_direction_flag: (byte >> 6) & 0b1,
-                edge_of_flight_line: (byte >> 7) & 0b1,
-            }))
-        }
-    }
-
-    fn read_next_colors_or_default(
-        decompressed_data: &mut Cursor<&mut [u8]>,
-        las_format: &Format,
-    ) -> Result<Vector3<u16>> {
-        if !las_format.has_color {
-            return Ok(Default::default());
-        }
-        let r = decompressed_data.read_u16::<LittleEndian>()?;
-        let g = decompressed_data.read_u16::<LittleEndian>()?;
-        let b = decompressed_data.read_u16::<LittleEndian>()?;
-        Ok(Vector3::new(r, g, b))
-    }
-
-    fn read_next_waveform_parameters_or_default(
-        decompressed_data: &mut Cursor<&mut [u8]>,
-        las_format: &Format,
-    ) -> Result<Vector3<f32>> {
-        if !las_format.has_waveform {
-            return Ok(Default::default());
-        }
-        let px = decompressed_data.read_f32::<LittleEndian>()?;
-        let py = decompressed_data.read_f32::<LittleEndian>()?;
-        let pz = decompressed_data.read_f32::<LittleEndian>()?;
-        Ok(Vector3::new(px, py, pz))
     }
 }
 
@@ -1609,22 +584,19 @@ impl<'a, T: Read + Seek + Send + 'a> LASReaderBase for RawLAZReader<'a, T> {
 }
 
 impl<'a, T: Read + Seek + Send + 'a> PointReader for RawLAZReader<'a, T> {
-    fn read(&mut self, count: usize) -> Result<Box<dyn PointBuffer>> {
-        let num_points_to_read = usize::min(count, self.remaining_points());
-        let mut buffer =
-            InterleavedVecPointStorage::with_capacity(num_points_to_read, self.layout.clone());
-
-        self.read_into(&mut buffer, num_points_to_read)?;
-
-        Ok(Box::new(buffer))
-    }
-
-    fn read_into(
+    fn read_into<'b, 'c, B: BorrowedMutBuffer<'b>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'c mut B,
         count: usize,
-    ) -> Result<usize> {
-        if *point_buffer.point_layout() != self.layout {
+    ) -> Result<usize>
+    where
+        'b: 'c,
+    {
+        if point_buffer.len() < count {
+            panic!("point_buffer.len() must be >= count");
+        }
+
+        if *point_buffer.point_layout() != self.las_point_records_layout {
             self.read_into_custom_layout(point_buffer, count)
         } else {
             self.read_into_default_layout(point_buffer, count)
@@ -1667,9 +639,12 @@ mod tests {
     use std::{fs::File, io::BufReader};
 
     use las_rs::point::Format;
-    use pasture_core::containers::PointBufferExt;
+    use pasture_core::containers::BorrowedBuffer;
+    use pasture_core::layout::attributes;
     use pasture_core::layout::PointAttributeDataType;
+    use pasture_core::nalgebra::Vector3;
 
+    use crate::las::get_test_las_path_with_extra_bytes;
     use crate::las::{
         compare_to_reference_data, compare_to_reference_data_range, get_test_las_path,
         get_test_laz_path, test_data_bounds, test_data_classifications, test_data_colors,
@@ -1696,7 +671,7 @@ mod tests {
         ($name:ident, $format:expr, $reader:ident, $get_test_file:ident) => {
             mod $name {
                 use super::*;
-                use pasture_core::containers::PerAttributeVecPointStorage;
+                use pasture_core::containers::*;
                 use std::path::PathBuf;
 
                 fn get_test_file_path() -> PathBuf {
@@ -1706,7 +681,7 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_metadata() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
 
                     assert_eq!(reader.remaining_points(), test_data_point_count());
                     assert_eq!(reader.point_count()?, test_data_point_count());
@@ -1714,7 +689,7 @@ mod tests {
 
                     let layout = reader.get_default_point_layout();
                     let expected_layout =
-                        point_layout_from_las_point_format(&Format::new($format)?)?;
+                        point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     assert_eq!(expected_layout, *layout);
 
                     let bounds = reader.get_metadata().bounds();
@@ -1727,13 +702,14 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
+                    let format = Format::new($format)?;
 
-                    let points = reader.read(10)?;
+                    let points = reader.read::<VectorBuffer>(10)?;
                     let expected_layout =
-                        point_layout_from_las_point_format(&Format::new($format)?)?;
+                        point_layout_from_las_metadata(reader.las_metadata(), false)?;
                     assert_eq!(*points.point_layout(), expected_layout);
-                    compare_to_reference_data(points.as_ref(), ($format));
+                    compare_to_reference_data(&points, format);
 
                     assert_eq!(10, reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());
@@ -1744,13 +720,15 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read_into_interleaved() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
+                    let format = Format::new($format)?;
 
-                    let layout = point_layout_from_las_point_format(&Format::new($format)?)?;
-                    let mut buffer = InterleavedVecPointStorage::new(layout);
+                    let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
+                    buffer.resize(10);
 
                     reader.read_into(&mut buffer, 10)?;
-                    compare_to_reference_data(&buffer, $format);
+                    compare_to_reference_data(&buffer, format);
 
                     assert_eq!(10, reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());
@@ -1759,17 +737,75 @@ mod tests {
                 }
 
                 #[test]
-                fn test_raw_las_reader_read_into_perattribute() -> Result<()> {
+                fn test_raw_las_reader_read_into_interleaved_in_multiple_chunks() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
+                    let format = Format::new($format)?;
 
-                    let layout = point_layout_from_las_point_format(&Format::new($format)?)?;
-                    let mut buffer = PerAttributeVecPointStorage::new(layout);
+                    let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
+
+                    const POINTS_PER_CHUNK: usize = 5;
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
+                    buffer.resize(POINTS_PER_CHUNK);
+
+                    const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
+                    for chunk in 0..NUM_CHUNKS {
+                        reader.read_into(&mut buffer, POINTS_PER_CHUNK)?;
+                        compare_to_reference_data_range(
+                            &buffer,
+                            format,
+                            (chunk * POINTS_PER_CHUNK)..((chunk + 1) * POINTS_PER_CHUNK),
+                        );
+                    }
+
+                    assert_eq!(test_data_point_count(), reader.point_index()?);
+                    assert_eq!(0, reader.remaining_points());
+
+                    Ok(())
+                }
+
+                #[test]
+                fn test_raw_las_reader_read_into_columnar() -> Result<()> {
+                    let read = BufReader::new(File::open(get_test_file_path())?);
+                    let mut reader = $reader::from_read(read, false)?;
+                    let format = Format::new($format)?;
+
+                    let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
+                    let mut buffer = HashMapBuffer::new_from_layout(layout);
+                    buffer.resize(10);
 
                     reader.read_into(&mut buffer, 10)?;
-                    compare_to_reference_data(&buffer, $format);
+                    compare_to_reference_data(&buffer, format);
 
                     assert_eq!(10, reader.point_index()?);
+                    assert_eq!(0, reader.remaining_points());
+
+                    Ok(())
+                }
+
+                #[test]
+                fn test_raw_las_reader_read_into_columnar_in_multiple_chunks() -> Result<()> {
+                    let read = BufReader::new(File::open(get_test_file_path())?);
+                    let mut reader = $reader::from_read(read, false)?;
+                    let format = Format::new($format)?;
+
+                    let layout = point_layout_from_las_metadata(reader.las_metadata(), false)?;
+
+                    const POINTS_PER_CHUNK: usize = 5;
+                    let mut buffer = HashMapBuffer::new_from_layout(layout);
+                    buffer.resize(POINTS_PER_CHUNK);
+
+                    const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
+                    for chunk in 0..NUM_CHUNKS {
+                        reader.read_into(&mut buffer, POINTS_PER_CHUNK)?;
+                        compare_to_reference_data_range(
+                            &buffer,
+                            format,
+                            (chunk * POINTS_PER_CHUNK)..((chunk + 1) * POINTS_PER_CHUNK),
+                        );
+                    }
+
+                    assert_eq!(test_data_point_count(), reader.point_index()?);
                     assert_eq!(0, reader.remaining_points());
 
                     Ok(())
@@ -1778,7 +814,7 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_read_into_different_layout_interleaved() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
 
                     let format = Format::new($format)?;
                     let layout = PointLayout::from_attributes(&[
@@ -1790,15 +826,16 @@ mod tests {
                         attributes::POINT_SOURCE_ID,
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
-                    let mut buffer = InterleavedVecPointStorage::new(layout);
-
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
+                    buffer.resize(10);
                     reader.read_into(&mut buffer, 10)?;
 
                     let positions = buffer
-                        .iter_attribute::<Vector3<f32>>(
+                        .view_attribute::<Vector3<f32>>(
                             &attributes::POSITION_3D
                                 .with_custom_datatype(PointAttributeDataType::Vec3f32),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_positions = test_data_positions()
                         .into_iter()
@@ -1807,10 +844,11 @@ mod tests {
                     assert_eq!(expected_positions, positions, "Positions do not match");
 
                     let classifications = buffer
-                        .iter_attribute::<u32>(
+                        .view_attribute::<u32>(
                             &attributes::CLASSIFICATION
                                 .with_custom_datatype(PointAttributeDataType::U32),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_classifications = test_data_classifications()
                         .into_iter()
@@ -1822,17 +860,16 @@ mod tests {
                     );
 
                     let colors = buffer
-                        .iter_attribute::<Vector3<u8>>(
+                        .view_attribute::<Vector3<u8>>(
                             &attributes::COLOR_RGB
                                 .with_custom_datatype(PointAttributeDataType::Vec3u8),
                         )
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_colors = if format.has_color {
                         test_data_colors()
                             .iter()
-                            .map(|c| {
-                                Vector3::new((c.x >> 8) as u8, (c.y >> 8) as u8, (c.z >> 8) as u8)
-                            })
+                            .map(|c| Vector3::new(c.x as u8, c.y as u8, c.z as u8))
                             .collect::<Vec<_>>()
                     } else {
                         (0..10)
@@ -1842,7 +879,8 @@ mod tests {
                     assert_eq!(expected_colors, colors, "Colors do not match");
 
                     let point_source_ids = buffer
-                        .iter_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .view_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_point_source_ids = test_data_point_source_ids();
                     assert_eq!(
@@ -1851,7 +889,115 @@ mod tests {
                     );
 
                     let waveform_params = buffer
-                        .iter_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .view_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    let expected_waveform_params = if format.has_waveform {
+                        test_data_wavepacket_parameters()
+                    } else {
+                        (0..10)
+                            .map(|_| -> Vector3<f32> { Default::default() })
+                            .collect::<Vec<_>>()
+                    };
+                    assert_eq!(
+                        expected_waveform_params, waveform_params,
+                        "Wavepacket parameters do not match"
+                    );
+
+                    assert_eq!(10, reader.point_index()?);
+                    assert_eq!(0, reader.remaining_points());
+
+                    Ok(())
+                }
+
+                #[test]
+                fn test_raw_las_reader_read_into_different_layout_interleaved_in_multiple_chunks(
+                ) -> Result<()> {
+                    let read = BufReader::new(File::open(get_test_file_path())?);
+                    let mut reader = $reader::from_read(read, false)?;
+
+                    let format = Format::new($format)?;
+                    let layout = PointLayout::from_attributes(&[
+                        attributes::POSITION_3D
+                            .with_custom_datatype(PointAttributeDataType::Vec3f32),
+                        attributes::CLASSIFICATION
+                            .with_custom_datatype(PointAttributeDataType::U32),
+                        attributes::COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        attributes::POINT_SOURCE_ID,
+                        attributes::WAVEFORM_PARAMETERS,
+                    ]);
+                    let mut buffer = VectorBuffer::new_from_layout(layout);
+                    buffer.resize(test_data_point_count());
+
+                    const POINTS_PER_CHUNK: usize = 5;
+                    const NUM_CHUNKS: usize = test_data_point_count() / POINTS_PER_CHUNK;
+                    for chunk_index in 0..NUM_CHUNKS {
+                        let chunk_range = (chunk_index * POINTS_PER_CHUNK)
+                            ..((chunk_index + 1) * POINTS_PER_CHUNK);
+                        reader.read_into(&mut buffer.slice_mut(chunk_range), POINTS_PER_CHUNK)?;
+                    }
+
+                    let positions = buffer
+                        .view_attribute::<Vector3<f32>>(
+                            &attributes::POSITION_3D
+                                .with_custom_datatype(PointAttributeDataType::Vec3f32),
+                        )
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    let expected_positions = test_data_positions()
+                        .into_iter()
+                        .map(|p| Vector3::new(p.x as f32, p.y as f32, p.z as f32))
+                        .collect::<Vec<_>>();
+                    assert_eq!(expected_positions, positions, "Positions do not match");
+
+                    let classifications = buffer
+                        .view_attribute::<u32>(
+                            &attributes::CLASSIFICATION
+                                .with_custom_datatype(PointAttributeDataType::U32),
+                        )
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    let expected_classifications = test_data_classifications()
+                        .into_iter()
+                        .map(|c| c as u32)
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        expected_classifications, classifications,
+                        "Classifications do not match"
+                    );
+
+                    let colors = buffer
+                        .view_attribute::<Vector3<u8>>(
+                            &attributes::COLOR_RGB
+                                .with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        )
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    let expected_colors = if format.has_color {
+                        test_data_colors()
+                            .iter()
+                            .map(|c| Vector3::new(c.x as u8, c.y as u8, c.z as u8))
+                            .collect::<Vec<_>>()
+                    } else {
+                        (0..10)
+                            .map(|_| -> Vector3<u8> { Default::default() })
+                            .collect::<Vec<_>>()
+                    };
+                    assert_eq!(expected_colors, colors, "Colors do not match");
+
+                    let point_source_ids = buffer
+                        .view_attribute::<u16>(&attributes::POINT_SOURCE_ID)
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    let expected_point_source_ids = test_data_point_source_ids();
+                    assert_eq!(
+                        expected_point_source_ids, point_source_ids,
+                        "Point source IDs do not match"
+                    );
+
+                    let waveform_params = buffer
+                        .view_attribute::<Vector3<f32>>(&attributes::WAVEFORM_PARAMETERS)
+                        .into_iter()
                         .collect::<Vec<_>>();
                     let expected_waveform_params = if format.has_waveform {
                         test_data_wavepacket_parameters()
@@ -1874,16 +1020,17 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_seek() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
+                    let format = Format::new($format)?;
 
                     let seek_index: usize = 5;
                     let new_pos = reader.seek_point(SeekFrom::Current(seek_index as i64))?;
                     assert_eq!(seek_index, new_pos);
 
-                    let points = reader.read((10 - seek_index) as usize)?;
+                    let points = reader.read::<VectorBuffer>((10 - seek_index) as usize)?;
                     assert_eq!(10 - seek_index, points.len());
 
-                    compare_to_reference_data_range(points.as_ref(), $format, seek_index..10);
+                    compare_to_reference_data_range(&points, format, seek_index..10);
 
                     Ok(())
                 }
@@ -1891,14 +1038,34 @@ mod tests {
                 #[test]
                 fn test_raw_las_reader_seek_out_of_bounds() -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
-                    let mut reader = $reader::from_read(read)?;
+                    let mut reader = $reader::from_read(read, false)?;
 
                     let seek_index: usize = 23;
                     let new_pos = reader.seek_point(SeekFrom::Current(seek_index as i64))?;
                     assert_eq!(10, new_pos);
 
-                    let points = reader.read(10)?;
+                    let points = reader.read::<VectorBuffer>(10)?;
                     assert_eq!(0, points.len());
+
+                    Ok(())
+                }
+
+                #[test]
+                fn test_raw_las_reader_read_with_extra_bytes() -> Result<()> {
+                    let read =
+                        BufReader::new(File::open(get_test_las_path_with_extra_bytes($format))?);
+                    let mut reader = RawLASReader::from_read(read, false)?;
+                    let mut format = Format::new($format)?;
+                    format.extra_bytes = 4;
+
+                    let points = reader.read::<VectorBuffer>(10)?;
+                    let expected_layout =
+                        point_layout_from_las_metadata(reader.las_metadata(), false)?;
+                    assert_eq!(*points.point_layout(), expected_layout);
+                    compare_to_reference_data(&points, format);
+
+                    assert_eq!(10, reader.point_index()?);
+                    assert_eq!(0, reader.remaining_points());
 
                     Ok(())
                 }
@@ -1922,18 +1089,15 @@ mod tests {
     test_read_with_format!(laz_format_1, 1, RawLAZReader, get_test_laz_path);
     test_read_with_format!(laz_format_2, 2, RawLAZReader, get_test_laz_path);
     test_read_with_format!(laz_format_3, 3, RawLAZReader, get_test_laz_path);
-    // Formats 4,5,9,10 have wave packet data, which is currently unsupported by laz-rs
-    // Format 6,7,8 seem to be unsupported by LASzip and give weird results with laz-rs (e.g. seek does not work correctly)
-    // test_read_with_format!(laz_format_4, 4, RawLAZReader);
-    // test_read_with_format!(laz_format_5, 5, RawLAZReader);
+    test_read_with_format!(laz_format_4, 4, RawLAZReader, get_test_laz_path);
+    test_read_with_format!(laz_format_5, 5, RawLAZReader, get_test_laz_path);
+
+    // There is currently a bug in `laz-rs` when seeking into files with point record format 6 or higher, so they are
+    // still unsupported in pasture. See this issue here: https://github.com/laz-rs/laz-rs/issues/46
+
     // test_read_with_format!(laz_format_6, 6, RawLAZReader, get_test_laz_path);
     // test_read_with_format!(laz_format_7, 7, RawLAZReader, get_test_laz_path);
     // test_read_with_format!(laz_format_8, 8, RawLAZReader, get_test_laz_path);
-    // test_read_with_format!(laz_format_9, 9, RawLAZReader);
-    // test_read_with_format!(laz_format_10, 10, RawLAZReader);
 
-    //######### TODO ###########
-    // We have tests now for various formats and various conversions. We should extend them for a wider range, maybe even
-    // fuzz-test (though this is more effort to setup...)
-    // Also include comparisons for the additional attributes in the '_read_into_different_attribute_...' tests
+    // Formats 9 and 10 seem to parse waveform data differently when using laz-rs, so they are unsupported for now
 }

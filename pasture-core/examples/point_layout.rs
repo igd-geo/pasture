@@ -1,11 +1,10 @@
-use pasture_core::containers::OwningPointBuffer;
-use pasture_core::nalgebra::Vector3;
-use pasture_core::{
-    containers::InterleavedVecPointStorage,
-    layout::{
-        attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
-    },
+use std::borrow::Cow;
+
+use pasture_core::containers::{BorrowedMutBuffer, MakeBufferFromLayout, VectorBuffer};
+use pasture_core::layout::{
+    attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
 };
+use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;
 
 fn main() {
@@ -80,7 +79,7 @@ fn main() {
         // as well as custom attribute names:
         let custom_layout = PointLayout::from_attributes(&[
             attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
-            PointAttributeDefinition::custom("Custom", PointAttributeDataType::U64),
+            PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::U64),
         ]);
 
         // We can ask the layout if it contains an attribute just by its name, ignoring the datatype:
@@ -93,8 +92,8 @@ fn main() {
         // This prevents using generics, as they are compile-time, so instead pasture uses the `PointLayout` type to figure out the memory layout
         // of points at runtime. To that end, you will rarely create `PointLayout`s manually. Instead, pasture provides a `derive` macro to create
         // a `PointLayout` for a specific type:
-        #[derive(PointType)]
-        #[repr(C)]
+        #[derive(Copy, Clone, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
+        #[repr(C, packed)]
         struct CustomPointType {
             #[pasture(BUILTIN_POSITION_3D)]
             pub position: Vector3<f64>,
@@ -111,11 +110,11 @@ fn main() {
         );
 
         //With this, we can create a `PointBuffer` that stores `CustomPointType`s
-        let mut buffer = InterleavedVecPointStorage::new(layout);
-        buffer.push_point(CustomPointType {
+        let mut buffer = VectorBuffer::new_from_layout(layout);
+        buffer.view_mut().push_point(CustomPointType {
             position: Vector3::new(1.0, 2.0, 3.0),
             intensity: 42,
-            custom_attribute: 3.14,
+            custom_attribute: std::f32::consts::PI,
         });
     }
 }

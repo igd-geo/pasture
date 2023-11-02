@@ -8,14 +8,11 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
-    containers::{
-        PerAttributePointBufferMut, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable,
-        PointBufferWriteableExt, OwningPointBuffer,
-    },
+    containers::BorrowedMutBuffer,
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
         conversion::get_converter_for_attributes,
-        FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout,
+        FieldAlignment, PointAttributeDataType, PointLayout,
     },
     meta::Metadata,
     nalgebra::{clamp, Vector3},
@@ -51,17 +48,12 @@ pub struct PntsReader<R: BufRead + Seek> {
 }
 
 impl<R: BufRead + Seek> PntsReader<R> {
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<PntsReader<BufReader<File>>> {
-        let reader = BufReader::new(File::open(path)?);
-        PntsReader::<BufReader<File>>::from_read(reader)
-    }
-
     pub fn from_read(mut read: R) -> Result<PntsReader<R>> {
         // PNTS is little-endian, this is the default of bincode
         let header: PntsHeader = bincode::deserialize_from(&mut read)
             .context("Could not deserialize PNTS header from reader")?;
         header.verify_magic()?;
-        let position_after_header = read.seek(SeekFrom::Current(0))? as usize;
+        let position_after_header = read.stream_position()? as usize;
         assert_eq!(position_after_header, PntsHeader::BYTE_LENGTH);
 
         // The 3D Tiles spec is ambiguous when it comes to the exact values in the header. It says that 'featureTableJSONByteLength'
@@ -87,9 +79,9 @@ impl<R: BufRead + Seek> PntsReader<R> {
 
         // TODO Log all parameters that could not be parsed. This requires logging support for pasture
 
-        let feature_table_binary_offset = read.seek(SeekFrom::Current(0))?;
+        let feature_table_binary_offset = read.stream_position()?;
         // Convert offsets in binary body to offsets within whole file
-        for (_, offset) in &mut attribute_offsets {
+        for offset in attribute_offsets.values_mut() {
             *offset += feature_table_binary_offset;
         }
 
@@ -202,7 +194,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let rtc_center = header
             .get("RTC_CENTER")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec3f64(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec3f64(array),
                 _ => Err(anyhow!("RTC_CENTER value was no array entry")),
             })
             .transpose()?;
@@ -210,7 +202,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let quantized_volume_offset = header
             .get("QUANTIZED_VOLUME_OFFSET")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec3f32(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec3f32(array),
                 _ => Err(anyhow!("QUANTIZED_VOLUME_OFFSET value was no array entry")),
             })
             .transpose()?;
@@ -218,7 +210,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let quantized_volume_scale = header
             .get("QUANTIZED_VOLUME_SCALE")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec3f32(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec3f32(array),
                 _ => Err(anyhow!("QUANTIZED_VOLUME_SCALE value was no array entry")),
             })
             .transpose()?;
@@ -226,7 +218,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         let constant_rgba = header
             .get("CONSTANT_RGBA")
             .map(|entry| match entry {
-                FeatureTableValue::Array(array) => json_arr_to_vec4u8(&array),
+                FeatureTableValue::Array(array) => json_arr_to_vec4u8(array),
                 _ => Err(anyhow!("CONSTANT_RGBA value was no array entry")),
             })
             .transpose()?;
@@ -252,7 +244,13 @@ impl<R: BufRead + Seek> PntsReader<R> {
         ))
     }
 
-    fn apply_rtc_center_offset(&self, point_buffer: &mut dyn PointBufferWriteable) {
+    fn apply_rtc_center_offset<'a, 'b, B: BorrowedMutBuffer<'a>>(
+        &self,
+        point_buffer: &'b mut B,
+    ) -> Result<()>
+    where
+        'a: 'b,
+    {
         let maybe_position = point_buffer
             .point_layout()
             .get_attribute_by_name(POSITION_3D.name());
@@ -260,69 +258,47 @@ impl<R: BufRead + Seek> PntsReader<R> {
             (self.metadata.rtc_center(), maybe_position)
         {
             // The default datatype for positions in the PNTS format is Vec3f32, so we try to apply the offset
-            // first on this datatype. If the datatype does not match, we just use Vec3f64, no matter the underlying
-            // datatype. `transform_attribute` handles any potential conversion
-            if position_attribute.datatype() == PointAttributeDataType::Vec3f32 {
-                point_buffer.transform_attribute(
-                    POSITION_3D.name(),
-                    |_, position: &mut Vector3<f32>| {
-                        *position = Vector3::new(
+            // first on this datatype. If the datatype does not match, we can only use Vec3f64, other types are
+            // not supported at the moment
+            let position_attribute = position_attribute.clone();
+            match position_attribute.datatype() {
+                PointAttributeDataType::Vec3f32 => point_buffer.transform_attribute(
+                    position_attribute.attribute_definition(),
+                    |_, position: Vector3<f32>| -> Vector3<f32> {
+                        Vector3::new(
                             (position.x as f64 + rtc_center.x) as f32,
                             (position.y as f64 + rtc_center.y) as f32,
                             (position.z as f64 + rtc_center.z) as f32,
-                        );
+                        )
                     },
-                );
-            } else {
-                point_buffer.transform_attribute(
-                    POSITION_3D.name(),
-                    |_, position: &mut Vector3<f64>| {
-                        *position += rtc_center;
-                    },
-                );
+                ),
+                PointAttributeDataType::Vec3f64 => point_buffer.transform_attribute(
+                    position_attribute.attribute_definition(),
+                    |_, position: Vector3<f64>| -> Vector3<f64> { position + rtc_center },
+                ),
+                other => bail!("Unsupported datatype {other} for POSITION_3D attribute"),
             }
         }
+        Ok(())
+    }
+}
+
+impl PntsReader<BufReader<File>> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<PntsReader<BufReader<File>>> {
+        let reader = BufReader::new(File::open(path)?);
+        PntsReader::<BufReader<File>>::from_read(reader)
     }
 }
 
 impl<R: BufRead + Seek> PointReader for PntsReader<R> {
-    fn read(&mut self, count: usize) -> Result<Box<dyn PointBuffer>> {
-        let remaining_points = self.metadata.points_length() - self.current_point_index;
-        let num_to_read = usize::min(remaining_points, count);
-        if num_to_read == 0 {
-            bail!("No points remaining in PNTS file")
-        }
-
-        let mut buffer = PerAttributeVecPointStorage::new(self.layout.clone());
-        buffer.resize(num_to_read);
-        for attribute in self.layout.attributes() {
-            let attribute_stride = attribute.size();
-            let offset_to_first_point_of_attribute =
-                *self.attribute_offsets.get(attribute.name()).unwrap();
-            let offset_to_current_point_of_attribute = offset_to_first_point_of_attribute
-                + (self.current_point_index as u64 * attribute_stride);
-
-            self.reader
-                .seek(SeekFrom::Start(offset_to_current_point_of_attribute))?;
-            let target_buffer =
-                buffer.get_raw_attribute_range_mut(0..num_to_read, &attribute.into());
-            self.reader.read_exact(target_buffer)?;
-        }
-
-        self.current_point_index += num_to_read;
-
-        if let PntsReadPositionsMode::Absolute = self.read_positions_mode {
-            self.apply_rtc_center_offset(&mut buffer);
-        }
-
-        Ok(Box::new(buffer))
-    }
-
-    fn read_into(
+    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
         &mut self,
-        point_buffer: &mut dyn PointBufferWriteable,
+        point_buffer: &'b mut B,
         count: usize,
-    ) -> Result<usize> {
+    ) -> Result<usize>
+    where
+        'a: 'b,
+    {
         let remaining_points = self.metadata.points_length() - self.current_point_index;
         let num_to_read = usize::min(remaining_points, count);
         if num_to_read == 0 {
@@ -330,7 +306,6 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
         }
 
         let target_layout = point_buffer.point_layout().clone();
-        point_buffer.resize(num_to_read);
         for attribute in self.layout.attributes() {
             // Try to read this attribute only if it exists in the target buffer's PointLayout
             if let Some(target_attribute) = target_layout.get_attribute_by_name(attribute.name()) {
@@ -344,33 +319,37 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
                     .seek(SeekFrom::Start(offset_to_current_point_of_attribute))?;
 
                 // Maybe we have to convert the datatype?
-                let converter =
-                    get_converter_for_attributes(&attribute.into(), &target_attribute.into());
+                let converter = get_converter_for_attributes(
+                    attribute.attribute_definition(),
+                    target_attribute.attribute_definition(),
+                );
                 if let Some(conversion_fn) = converter {
                     let mut src_buf: Vec<u8> = vec![0; attribute.size() as usize];
                     let mut dst_buf: Vec<u8> = vec![0; target_attribute.size() as usize];
-                    let target_attribute_def: PointAttributeDefinition = target_attribute.into();
+                    let target_attribute_def = target_attribute.attribute_definition();
                     for point_index in 0..num_to_read {
                         self.reader.read_exact(src_buf.as_mut_slice())?;
                         unsafe {
                             conversion_fn(src_buf.as_slice(), dst_buf.as_mut_slice());
+                            point_buffer.set_attribute(
+                                target_attribute_def,
+                                point_index,
+                                dst_buf.as_slice(),
+                            );
                         }
-                        point_buffer.set_raw_attribute(
-                            point_index,
-                            &target_attribute_def,
-                            dst_buf.as_slice(),
-                        );
                     }
                 } else {
                     let mut buf: Vec<u8> = vec![0; attribute.size() as usize];
-                    let target_attribute_def: PointAttributeDefinition = target_attribute.into();
+                    let target_attribute_def = target_attribute.attribute_definition();
                     for point_index in 0..num_to_read {
                         self.reader.read_exact(buf.as_mut_slice())?;
-                        point_buffer.set_raw_attribute(
-                            point_index,
-                            &target_attribute_def,
-                            buf.as_slice(),
-                        );
+                        unsafe {
+                            point_buffer.set_attribute(
+                                target_attribute_def,
+                                point_index,
+                                buf.as_slice(),
+                            );
+                        }
                     }
                 }
             }
@@ -379,7 +358,8 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
         self.current_point_index += num_to_read;
 
         if let PntsReadPositionsMode::Absolute = self.read_positions_mode {
-            self.apply_rtc_center_offset(point_buffer);
+            self.apply_rtc_center_offset(point_buffer)
+                .context("Failed to apply RTC_CENTER offset")?;
         }
 
         Ok(num_to_read)
@@ -420,11 +400,16 @@ mod tests {
     use crate::{base::PointWriter, tiles3d::PntsWriter};
 
     use super::*;
-    use pasture_core::{containers::PointBufferExt, layout::PointType};
+    use pasture_core::{
+        containers::{BorrowedBuffer, HashMapBuffer, VectorBuffer},
+        layout::PointType,
+    };
     use pasture_derive::PointType;
 
     #[repr(C, packed)]
-    #[derive(Copy, Clone, PartialEq, PointType, Debug)]
+    #[derive(
+        Copy, Clone, PartialEq, PointType, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+    )]
     struct TestPoint(#[pasture(BUILTIN_POSITION_3D)] Vector3<f32>);
 
     #[test]
@@ -441,7 +426,7 @@ mod tests {
         let mut cursor = Cursor::new(Vec::<u8>::new());
 
         {
-            let points: PerAttributeVecPointStorage = test_points.clone().into();
+            let points = test_points.iter().copied().collect::<HashMapBuffer>();
             let mut writer = PntsWriter::from_write_and_layout(&mut cursor, TestPoint::layout());
             writer.set_rtc_center(Vector3::new(10.0, 10.0, 10.0));
             writer
@@ -455,10 +440,10 @@ mod tests {
         {
             let mut reader = PntsReader::from_read(&mut cursor).expect("Could not open PntsReader");
             let points = reader
-                .read(reader.get_metadata().number_of_points().unwrap())
+                .read::<VectorBuffer>(reader.get_metadata().number_of_points().unwrap())
                 .expect("Could not read points in PNTS format");
 
-            let actual_points = points.iter_point::<TestPoint>().collect::<Vec<_>>();
+            let actual_points = points.view::<TestPoint>().into_iter().collect::<Vec<_>>();
             assert_eq!(test_points_global, actual_points);
         }
 
@@ -468,10 +453,10 @@ mod tests {
             let mut reader = PntsReader::from_read(&mut cursor).expect("Could not open PntsReader");
             reader.set_read_positions_mode(PntsReadPositionsMode::RelativeToCenter);
             let points = reader
-                .read(reader.get_metadata().number_of_points().unwrap())
+                .read::<VectorBuffer>(reader.get_metadata().number_of_points().unwrap())
                 .expect("Could not read points in PNTS format");
 
-            let actual_points = points.iter_point::<TestPoint>().collect::<Vec<_>>();
+            let actual_points = points.view::<TestPoint>().into_iter().collect::<Vec<_>>();
             assert_eq!(test_points, actual_points);
         }
     }

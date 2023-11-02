@@ -1,13 +1,11 @@
 use kd_tree::{self, KdPoint};
 use pasture_algorithms::normal_estimation::compute_normals;
-use pasture_core::containers::OwningPointBuffer;
+use pasture_core::containers::VectorBuffer;
 use pasture_core::nalgebra::Vector3;
-use pasture_core::{containers::InterleavedVecPointStorage, layout::PointType};
 use pasture_derive::PointType;
-use typenum;
 
-#[repr(C)]
-#[derive(PointType, Debug, Clone, Copy)]
+#[repr(C, packed)]
+#[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 struct SimplePoint {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -18,7 +16,8 @@ impl KdPoint for SimplePoint {
     type Scalar = f64;
     type Dim = typenum::U3;
     fn at(&self, k: usize) -> f64 {
-        return self.position[k];
+        let position = self.position;
+        position[k]
     }
 }
 fn main() {
@@ -41,11 +40,9 @@ fn main() {
         },
     ];
 
-    let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+    let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-    interleaved.push_points(points.as_slice());
-
-    let solution_vec = compute_normals::<InterleavedVecPointStorage, SimplePoint>(&interleaved, 4);
+    let solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 4);
     for solution in solution_vec {
         println!(
             "Normals: n_x: {}, n_y: {}, n_z: {}, curvature: {}",

@@ -1,9 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_core::{
     containers::{
-        InterleavedPointBuffer, InterleavedPointBufferExt, InterleavedVecPointStorage,
-        PerAttributePointBuffer, PerAttributePointBufferExt, PerAttributeVecPointStorage,
-        PointBuffer, PointBufferExt, OwningPointBuffer,
+        BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, HashMapBuffer, InterleavedBuffer,
+        VectorBuffer,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,
@@ -13,8 +12,8 @@ use pasture_core::{
 use pasture_derive::PointType;
 use rand::{distributions::Uniform, thread_rng, Rng};
 
-#[derive(PointType, Default)]
-#[repr(C)]
+#[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
+#[repr(C, packed)]
 struct CustomPointTypeSmall {
     #[pasture(BUILTIN_POSITION_3D)]
     pub position: Vector3<f64>,
@@ -22,8 +21,8 @@ struct CustomPointTypeSmall {
     pub classification: u8,
 }
 
-#[derive(PointType, Default)]
-#[repr(C)]
+#[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
+#[repr(C, packed)]
 struct CustomPointTypeBig {
     #[pasture(BUILTIN_GPS_TIME)]
     pub gps_time: f64,
@@ -48,119 +47,107 @@ fn random_custom_point_small<R: Rng + ?Sized>(rng: &mut R) -> CustomPointTypeSma
     }
 }
 
-fn get_dummy_points_custom_format_small_interleaved() -> InterleavedVecPointStorage {
+fn get_dummy_points_custom_format_small_interleaved() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000;
-    let mut buffer =
-        InterleavedVecPointStorage::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
+    let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
     let mut rng = thread_rng();
     for _ in 0..NUM_POINTS {
-        buffer.push_point(random_custom_point_small(&mut rng));
+        buffer
+            .view_mut()
+            .push_point(random_custom_point_small(&mut rng));
     }
     buffer
 }
 
-fn get_dummy_points_custom_format_small_perattribute() -> PerAttributeVecPointStorage {
+fn get_dummy_points_custom_format_small_perattribute() -> HashMapBuffer {
     const NUM_POINTS: usize = 1_000;
-    let mut buffer =
-        PerAttributeVecPointStorage::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
+    let mut buffer = HashMapBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
     let mut rng = thread_rng();
     for _ in 0..NUM_POINTS {
-        buffer.push_point(random_custom_point_small(&mut rng));
+        buffer
+            .view_mut()
+            .push_point(random_custom_point_small(&mut rng));
     }
     buffer
 }
 
-fn points_iterator_performance_opaque_buffer<T: PointType + Default>(
-    buffer: &dyn PointBuffer,
-) -> T {
-    let mut ret = Default::default();
-    for point in buffer.iter_point::<T>() {
-        ret = point;
+fn points_iterator_performance_opaque_buffer<'a, T: PointType + Default, B: BorrowedBuffer<'a>>(
+    buffer: &'a B,
+) {
+    for point in buffer.view::<T>().into_iter() {
+        criterion::black_box(point);
     }
-    ret
 }
 
 fn points_iterator_performance_interleaved_buffer<
+    'a,
     T: PointType + Default,
-    B: InterleavedPointBuffer,
+    B: InterleavedBuffer<'a>,
 >(
-    buffer: &B,
-) -> T {
-    let mut ret = Default::default();
-    for point in buffer.iter_point::<T>() {
-        ret = point;
+    buffer: &'a B,
+) {
+    for point in buffer.view::<T>().iter() {
+        criterion::black_box(point);
     }
-    ret
 }
 
 fn points_iterator_performance_per_attribute_buffer<
+    'a,
     T: PointType + Default,
-    B: PerAttributePointBuffer,
+    B: ColumnarBuffer<'a>,
 >(
-    buffer: &B,
-) -> T {
-    let mut ret = Default::default();
-    for point in buffer.iter_point::<T>() {
-        ret = point;
+    buffer: &'a B,
+) {
+    for point in buffer.view::<T>() {
+        criterion::black_box(point);
     }
-    ret
 }
 
-fn points_ref_iterator_performance_small_type(buffer: &dyn InterleavedPointBuffer) -> Vector3<f64> {
-    let mut position = Vector3::new(0.0, 0.0, 0.0);
-    for point in buffer.iter_point_ref::<CustomPointTypeSmall>() {
-        position = point.position.clone();
+fn points_ref_iterator_performance_small_type<'a>(buffer: &'a impl InterleavedBuffer<'a>) {
+    for point in buffer.view::<CustomPointTypeSmall>().iter() {
+        criterion::black_box(point.position);
     }
-    position
 }
 
-fn attribute_iterator_performance_opaque_buffer<T: PrimitiveType + Default>(
-    buffer: &dyn PointBuffer,
+fn attribute_iterator_performance_opaque_buffer<'a, T: PrimitiveType + Default>(
+    buffer: &'a impl BorrowedBuffer<'a>,
     attribute: &PointAttributeDefinition,
-) -> T {
-    let mut ret: T = Default::default();
-    for val in buffer.iter_attribute::<T>(attribute) {
-        ret = val;
+) {
+    for val in buffer.view_attribute::<T>(attribute) {
+        criterion::black_box(val);
     }
-    ret
 }
 
 fn attribute_iterator_performance_interleaved_buffer<
+    'a,
     T: PrimitiveType + Default,
-    B: InterleavedPointBuffer,
+    B: InterleavedBuffer<'a>,
 >(
-    buffer: &B,
+    buffer: &'a B,
     attribute: &PointAttributeDefinition,
-) -> T {
-    let mut ret: T = Default::default();
-    for val in buffer.iter_attribute::<T>(attribute) {
-        ret = val;
+) {
+    for val in buffer.view_attribute::<T>(attribute) {
+        criterion::black_box(val);
     }
-    ret
 }
 
 fn attribute_iterator_performance_perattribute_buffer<
+    'a,
     T: PrimitiveType + Default,
-    B: PerAttributePointBuffer,
+    B: ColumnarBuffer<'a>,
 >(
-    buffer: &B,
+    buffer: &'a B,
     attribute: &PointAttributeDefinition,
-) -> T {
-    let mut ret: T = Default::default();
-    for val in buffer.iter_attribute::<T>(attribute) {
-        ret = val;
+) {
+    for val in buffer.view_attribute::<T>(attribute).iter() {
+        criterion::black_box(val);
     }
-    ret
 }
 
-fn attribute_ref_iterator_performance_small_type(
-    buffer: &dyn PerAttributePointBuffer,
-) -> Vector3<f64> {
-    let mut ret = Vector3::new(0.0, 0.0, 0.0);
-    for position in buffer.iter_attribute_ref::<Vector3<f64>>(&POSITION_3D) {
-        ret = position.clone();
+fn attribute_ref_iterator_performance_small_type<'a>(buffer: &'a impl ColumnarBuffer<'a>) {
+    for position in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D).iter() {
+        criterion::black_box(position);
     }
-    ret
 }
 
 fn bench(c: &mut Criterion) {
@@ -171,7 +158,7 @@ fn bench(c: &mut Criterion) {
         "points_iterator_interleaved_opaque_buffer_small_type",
         |b| {
             b.iter(|| {
-                points_iterator_performance_opaque_buffer::<CustomPointTypeSmall>(
+                points_iterator_performance_opaque_buffer::<CustomPointTypeSmall, _>(
                     &dummy_points_small_interleaved,
                 )
             })
@@ -181,22 +168,26 @@ fn bench(c: &mut Criterion) {
         "points_iterator_perattribute_opaque_buffer_small_type",
         |b| {
             b.iter(|| {
-                points_iterator_performance_opaque_buffer::<CustomPointTypeSmall>(
+                points_iterator_performance_opaque_buffer::<CustomPointTypeSmall, _>(
                     &dummy_points_small_perattribute,
                 )
             })
         },
     );
     c.bench_function("points_iterator_interleaved_typed_buffer_small_type", |b| {
-        b.iter(|| -> CustomPointTypeSmall {
-            points_iterator_performance_interleaved_buffer(&dummy_points_small_interleaved)
+        b.iter(|| {
+            points_iterator_performance_interleaved_buffer::<CustomPointTypeSmall, _>(
+                &dummy_points_small_interleaved,
+            )
         })
     });
     c.bench_function(
         "points_iterator_perattribute_typed_buffer_small_type",
         |b| {
-            b.iter(|| -> CustomPointTypeSmall {
-                points_iterator_performance_per_attribute_buffer(&dummy_points_small_perattribute)
+            b.iter(|| {
+                points_iterator_performance_per_attribute_buffer::<CustomPointTypeSmall, _>(
+                    &dummy_points_small_perattribute,
+                )
             })
         },
     );
@@ -221,25 +212,23 @@ fn bench(c: &mut Criterion) {
         })
     });
     c.bench_function("attribute_iterator_interleaved_typed_buffer", |b| {
-        b.iter(|| -> Vector3<f64> {
-            attribute_iterator_performance_interleaved_buffer(
+        b.iter(|| {
+            attribute_iterator_performance_interleaved_buffer::<Vector3<f64>, _>(
                 &dummy_points_small_interleaved,
                 &POSITION_3D,
             )
         })
     });
     c.bench_function("attribute_iterator_perattribute_typed_buffer", |b| {
-        b.iter(|| -> Vector3<f64> {
-            attribute_iterator_performance_perattribute_buffer(
+        b.iter(|| {
+            attribute_iterator_performance_perattribute_buffer::<Vector3<f64>, _>(
                 &dummy_points_small_perattribute,
                 &POSITION_3D,
             )
         })
     });
     c.bench_function("attribute_ref_iterator_small_type", |b| {
-        b.iter(|| -> Vector3<f64> {
-            attribute_ref_iterator_performance_small_type(&dummy_points_small_perattribute)
-        })
+        b.iter(|| attribute_ref_iterator_performance_small_type(&dummy_points_small_perattribute))
     });
 }
 

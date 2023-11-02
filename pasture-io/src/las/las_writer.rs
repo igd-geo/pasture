@@ -1,8 +1,9 @@
+#![allow(clippy::upper_case_acronyms)]
 use std::{fs::File, io::BufWriter, io::Seek, io::Write, path::Path};
 
 use anyhow::{Context, Result};
 use las_rs::Builder;
-use pasture_core::{containers::PointBuffer, layout::PointLayout};
+use pasture_core::{containers::BorrowedBuffer, layout::PointLayout};
 
 use crate::{base::PointWriter, las::las_point_format_from_point_layout};
 
@@ -32,6 +33,7 @@ impl<T: Write + Seek + Send + 'static> LASWriter<T> {
         point_layout: &PointLayout,
         is_compressed: bool,
     ) -> Result<Self> {
+        // TODO Support writing extra bytes, for now they will be ignored
         let point_format = las_point_format_from_point_layout(point_layout);
         let mut header_builder = Builder::from((1, 4));
         header_builder.point_format = point_format;
@@ -100,7 +102,7 @@ impl LASWriter<BufWriter<File>> {
 }
 
 impl<T: Write + Seek + Send + 'static> PointWriter for LASWriter<T> {
-    fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
         match &mut self.writer {
             WriterVariant::LAS(writer) => writer.write(points),
             WriterVariant::LAZ(writer) => writer.write(points),
@@ -128,7 +130,8 @@ mod tests {
 
     use las::{point::Format, Builder};
     use pasture_core::{
-        containers::InterleavedVecPointStorage, containers::{PointBufferExt, OwningPointBuffer}, layout::PointType,
+        containers::{MakeBufferFromLayout, OwningBuffer, VectorBuffer},
+        layout::PointType,
         nalgebra::Vector3,
     };
     use scopeguard::defer;
@@ -145,7 +148,7 @@ mod tests {
     use super::*;
 
     #[repr(C, packed)]
-    #[derive(Debug, Clone, Copy, PointType)]
+    #[derive(Debug, Clone, Copy, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     struct TestPoint {
         #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
@@ -170,26 +173,26 @@ mod tests {
         vec![
             LasPointFormat0 {
                 classification: 1,
-                edge_of_flight_line: false,
+                edge_of_flight_line: 0,
                 intensity: 1,
                 number_of_returns: 1,
                 point_source_id: 1,
                 position: Vector3::new(1.0, 1.0, 1.0),
                 return_number: 1,
                 scan_angle_rank: 1,
-                scan_direction_flag: false,
+                scan_direction_flag: 0,
                 user_data: 1,
             },
             LasPointFormat0 {
                 classification: 2,
-                edge_of_flight_line: true,
+                edge_of_flight_line: 1,
                 intensity: 2,
                 number_of_returns: 2,
                 point_source_id: 2,
                 position: Vector3::new(2.0, 2.0, 2.0),
                 return_number: 2,
                 scan_angle_rank: 2,
-                scan_direction_flag: true,
+                scan_direction_flag: 1,
                 user_data: 2,
             },
         ]
@@ -199,27 +202,27 @@ mod tests {
         vec![
             LasPointFormat1 {
                 classification: 1,
-                edge_of_flight_line: false,
+                edge_of_flight_line: 0,
                 intensity: 1,
                 number_of_returns: 1,
                 point_source_id: 1,
                 position: Vector3::new(1.0, 1.0, 1.0),
                 return_number: 1,
                 scan_angle_rank: 1,
-                scan_direction_flag: false,
+                scan_direction_flag: 0,
                 user_data: 1,
                 gps_time: 1234.0,
             },
             LasPointFormat1 {
                 classification: 2,
-                edge_of_flight_line: true,
+                edge_of_flight_line: 1,
                 intensity: 2,
                 number_of_returns: 2,
                 point_source_id: 2,
                 position: Vector3::new(2.0, 2.0, 2.0),
                 return_number: 2,
                 scan_angle_rank: 2,
-                scan_direction_flag: true,
+                scan_direction_flag: 1,
                 user_data: 2,
                 gps_time: 5678.0,
             },
@@ -230,27 +233,27 @@ mod tests {
         vec![
             LasPointFormat2 {
                 classification: 1,
-                edge_of_flight_line: false,
+                edge_of_flight_line: 0,
                 intensity: 1,
                 number_of_returns: 1,
                 point_source_id: 1,
                 position: Vector3::new(1.0, 1.0, 1.0),
                 return_number: 1,
                 scan_angle_rank: 1,
-                scan_direction_flag: false,
+                scan_direction_flag: 0,
                 user_data: 1,
                 color_rgb: Vector3::new(128, 129, 130),
             },
             LasPointFormat2 {
                 classification: 2,
-                edge_of_flight_line: true,
+                edge_of_flight_line: 1,
                 intensity: 2,
                 number_of_returns: 2,
                 point_source_id: 2,
                 position: Vector3::new(2.0, 2.0, 2.0),
                 return_number: 2,
                 scan_angle_rank: 2,
-                scan_direction_flag: true,
+                scan_direction_flag: 1,
                 user_data: 2,
                 color_rgb: Vector3::new(1024, 1025, 1026),
             },
@@ -261,28 +264,28 @@ mod tests {
         vec![
             LasPointFormat3 {
                 classification: 1,
-                edge_of_flight_line: false,
+                edge_of_flight_line: 0,
                 intensity: 1,
                 number_of_returns: 1,
                 point_source_id: 1,
                 position: Vector3::new(1.0, 1.0, 1.0),
                 return_number: 1,
                 scan_angle_rank: 1,
-                scan_direction_flag: false,
+                scan_direction_flag: 0,
                 user_data: 1,
                 color_rgb: Vector3::new(128, 129, 130),
                 gps_time: 1234.0,
             },
             LasPointFormat3 {
                 classification: 2,
-                edge_of_flight_line: true,
+                edge_of_flight_line: 1,
                 intensity: 2,
                 number_of_returns: 2,
                 point_source_id: 2,
                 position: Vector3::new(2.0, 2.0, 2.0),
                 return_number: 2,
                 scan_angle_rank: 2,
-                scan_direction_flag: true,
+                scan_direction_flag: 1,
                 user_data: 2,
                 color_rgb: Vector3::new(1024, 1025, 1026),
                 gps_time: 5678.0,
@@ -294,14 +297,14 @@ mod tests {
         vec![
             LasPointFormat4 {
                 classification: 1,
-                edge_of_flight_line: false,
+                edge_of_flight_line: 0,
                 intensity: 1,
                 number_of_returns: 1,
                 point_source_id: 1,
                 position: Vector3::new(1.0, 1.0, 1.0),
                 return_number: 1,
                 scan_angle_rank: 1,
-                scan_direction_flag: false,
+                scan_direction_flag: 0,
                 user_data: 1,
                 gps_time: 1234.0,
                 byte_offset_to_waveform_data: 10,
@@ -312,14 +315,14 @@ mod tests {
             },
             LasPointFormat4 {
                 classification: 2,
-                edge_of_flight_line: true,
+                edge_of_flight_line: 1,
                 intensity: 2,
                 number_of_returns: 2,
                 point_source_id: 2,
                 position: Vector3::new(2.0, 2.0, 2.0),
                 return_number: 2,
                 scan_angle_rank: 2,
-                scan_direction_flag: true,
+                scan_direction_flag: 1,
                 user_data: 2,
                 gps_time: 5678.0,
                 byte_offset_to_waveform_data: 11,
@@ -335,14 +338,14 @@ mod tests {
         vec![
             LasPointFormat5 {
                 classification: 1,
-                edge_of_flight_line: false,
+                edge_of_flight_line: 0,
                 intensity: 1,
                 number_of_returns: 1,
                 point_source_id: 1,
                 position: Vector3::new(1.0, 1.0, 1.0),
                 return_number: 1,
                 scan_angle_rank: 1,
-                scan_direction_flag: false,
+                scan_direction_flag: 0,
                 user_data: 1,
                 gps_time: 1234.0,
                 color_rgb: Vector3::new(128, 129, 130),
@@ -354,14 +357,14 @@ mod tests {
             },
             LasPointFormat5 {
                 classification: 2,
-                edge_of_flight_line: true,
+                edge_of_flight_line: 1,
                 intensity: 2,
                 number_of_returns: 2,
                 point_source_id: 2,
                 position: Vector3::new(2.0, 2.0, 2.0),
                 return_number: 2,
                 scan_angle_rank: 2,
-                scan_direction_flag: true,
+                scan_direction_flag: 1,
                 user_data: 2,
                 gps_time: 5678.0,
                 color_rgb: Vector3::new(1024, 1025, 1026),
@@ -374,16 +377,8 @@ mod tests {
         ]
     }
 
-    fn prepare_point_buffer<T: PointType + Clone>(test_points: &[T]) -> InterleavedVecPointStorage {
-        let layout = T::layout();
-        let mut source_point_buffer =
-            InterleavedVecPointStorage::with_capacity(test_points.len(), layout);
-
-        for point in test_points.iter().cloned() {
-            source_point_buffer.push_point(point);
-        }
-
-        source_point_buffer
+    fn prepare_point_buffer<T: PointType + Clone + Copy>(test_points: &[T]) -> VectorBuffer {
+        test_points.iter().copied().collect()
     }
 
     #[test]
@@ -413,9 +408,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat0> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat0> = read_points_buffer.view().into_iter().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -450,9 +448,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat0> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat0> = read_points_buffer.view().into_iter().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -465,7 +466,7 @@ mod tests {
                     "Classification of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.edge_of_flight_line,
+                    0, read.edge_of_flight_line,
                     "Edge of flight line of read point was not false!"
                 );
                 assert_eq!(
@@ -491,7 +492,7 @@ mod tests {
                     "Scan angle rank of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.scan_direction_flag,
+                    0, read.scan_direction_flag,
                     "Scan direction flag of read point was not false!"
                 );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
@@ -528,9 +529,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat1> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat1> = read_points_buffer.view().into_iter().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -565,9 +569,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat1> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat1> = read_points_buffer.view().into_iter().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -580,7 +587,7 @@ mod tests {
                     "Classification of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.edge_of_flight_line,
+                    0, read.edge_of_flight_line,
                     "Edge of flight line of read point was not false!"
                 );
                 assert_eq!(
@@ -606,7 +613,7 @@ mod tests {
                     "Scan angle rank of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.scan_direction_flag,
+                    0, read.scan_direction_flag,
                     "Scan direction flag of read point was not false!"
                 );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
@@ -648,9 +655,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat2> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat2> = read_points_buffer.view().into_iter().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -685,9 +695,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat2> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat2> = read_points_buffer.view().into_iter().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -705,7 +718,7 @@ mod tests {
                     "Classification of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.edge_of_flight_line,
+                    0, read.edge_of_flight_line,
                     "Edge of flight line of read point was not false!"
                 );
                 assert_eq!(
@@ -731,7 +744,7 @@ mod tests {
                     "Scan angle rank of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.scan_direction_flag,
+                    0, read.scan_direction_flag,
                     "Scan direction flag of read point was not false!"
                 );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
@@ -768,9 +781,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat3> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat3> = read_points_buffer.view().into_iter().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -805,9 +821,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat3> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat3> = read_points_buffer.view().into_iter().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -825,7 +844,7 @@ mod tests {
                     "Classification of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.edge_of_flight_line,
+                    0, read.edge_of_flight_line,
                     "Edge of flight line of read point was not false!"
                 );
                 assert_eq!(
@@ -851,7 +870,7 @@ mod tests {
                     "Scan angle rank of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.scan_direction_flag,
+                    0, read.scan_direction_flag,
                     "Scan direction flag of read point was not false!"
                 );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
@@ -893,9 +912,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat4> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat4> = read_points_buffer.view().into_iter().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -930,9 +952,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat4> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat4> = read_points_buffer.view().into_iter().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -945,7 +970,7 @@ mod tests {
                     "Classification of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.edge_of_flight_line,
+                    0, read.edge_of_flight_line,
                     "Edge of flight line of read point was not false!"
                 );
                 assert_eq!(
@@ -971,7 +996,7 @@ mod tests {
                     "Scan angle rank of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.scan_direction_flag,
+                    0, read.scan_direction_flag,
                     "Scan direction flag of read point was not false!"
                 );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
@@ -1032,9 +1057,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat5> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat5> = read_points_buffer.view().into_iter().collect();
 
             assert_eq!(read_points, source_points);
         }
@@ -1069,9 +1097,12 @@ mod tests {
         }
 
         {
-            let mut reader = LASReader::from_path(&test_file_path)?;
-            let read_points_buffer = reader.read(source_points.len())?;
-            let read_points: Vec<LasPointFormat5> = read_points_buffer.iter_point().collect();
+            let mut reader = LASReader::from_path(&test_file_path, false)?;
+            let mut read_points_buffer =
+                VectorBuffer::new_from_layout(reader.get_default_point_layout().clone());
+            read_points_buffer.resize(source_points.len());
+            reader.read_into(&mut read_points_buffer, source_points.len())?;
+            let read_points: Vec<LasPointFormat5> = read_points_buffer.view().into_iter().collect();
 
             for (source, read) in source_points.iter().zip(read_points.iter()) {
                 assert_eq!(
@@ -1089,7 +1120,7 @@ mod tests {
                     "Classification of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.edge_of_flight_line,
+                    0, read.edge_of_flight_line,
                     "Edge of flight line of read point was not false!"
                 );
                 assert_eq!(
@@ -1115,7 +1146,7 @@ mod tests {
                     "Scan angle rank of read point was not zero!"
                 );
                 assert_eq!(
-                    false, read.scan_direction_flag,
+                    0, read.scan_direction_flag,
                     "Scan direction flag of read point was not false!"
                 );
                 assert_eq!(0, read.user_data, "User data of read point was not zero!");
@@ -1178,7 +1209,7 @@ mod tests {
         // Assert that some bytes have been written. We could assert the exact number, but that might depend on implementation details
         // like padding that we don't really care about
         let vec = cursor.into_inner();
-        assert!(vec.len() > 0);
+        assert!(!vec.is_empty());
 
         Ok(())
     }
@@ -1207,7 +1238,7 @@ mod tests {
         // Assert that some bytes have been written. We could assert the exact number, but that might depend on implementation details
         // like padding that we don't really care about
         let vec = cursor.into_inner();
-        assert!(vec.len() > 0);
+        assert!(!vec.is_empty());
 
         Ok(())
     }

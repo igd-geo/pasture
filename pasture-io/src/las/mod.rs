@@ -28,7 +28,7 @@ mod read_helpers;
 pub(crate) use self::read_helpers::*;
 
 mod write_helpers;
-pub(crate) use self::write_helpers::*;
+pub use self::write_helpers::*;
 
 mod las_err;
 pub(crate) use self::las_err::*;

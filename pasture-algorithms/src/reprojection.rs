@@ -1,11 +1,10 @@
 use std::ffi::CString;
 
 use anyhow::Result;
-use pasture_core::containers::{PointBufferWriteable, PointBufferWriteableExt};
+use pasture_core::containers::BorrowedMutBuffer;
 use pasture_core::math::AABB;
 use pasture_core::nalgebra::{Point3, Vector3};
 
-use pasture_core::containers::{PointBuffer, PointBufferExt};
 use pasture_core::layout::attributes::POSITION_3D;
 /// Wrapper around the proj types from the proj_sys crate. Supports transformations (the Rust proj bindings don't support this)
 pub struct Projection {
@@ -88,8 +87,8 @@ impl Drop for Projection {
 /// # use pasture_core::nalgebra::Vector3;
 /// # use pasture_derive::PointType;
 
-/// #[repr(C)]
-/// #[derive(PointType, Debug, Clone, Copy)]
+/// #[repr(C, packed)]
+/// #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///     pub position: Vector3<f64>,
@@ -117,54 +116,32 @@ impl Drop for Projection {
 ///         },
 ///     ];
 
-///     let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+///     let mut interleaved = points.into_iter().collect::<VectorBuffer>();
 
-///     interleaved.push_points(points.as_slice());
-///     let points = vec![
-///         SimplePoint {
-///             position: Vector3::new(1.0, 22.0, 0.0),
-///             intensity: 42,
-///         },
-///         SimplePoint {
-///             position: Vector3::new(12.0, 23.0, 0.0),
-///             intensity: 84,
-///         },
-///         SimplePoint {
-///             position: Vector3::new(10.0, 8.0, 2.0),
-///             intensity: 84,
-///         },
-///         SimplePoint {
-///             position: Vector3::new(10.0, 0.0, 1.0),
-///             intensity: 84,
-///         },
-///     ];
-
-///     let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
-
-///     interleaved.push_points(points.as_slice());
-
-///     reproject_point_cloud_within::<InterleavedVecPointStorage>(
+///     reproject_point_cloud_within(
 ///         &mut interleaved,
 ///         "EPSG:4326",
 ///         "EPSG:3309",
 ///     );
 
-///     for point in interleaved.iter_point::<SimplePoint>() {
+///     for point in interleaved.view::<SimplePoint>() {
 ///         println!("{:?}", point);
 ///     }
 /// }
 /// ```
-pub fn reproject_point_cloud_within<T: PointBuffer + PointBufferWriteable>(
-    point_cloud: &mut T,
+pub fn reproject_point_cloud_within<'a, T: BorrowedMutBuffer<'a>>(
+    point_cloud: &'a mut T,
     source_crs: &str,
     target_crs: &str,
 ) {
     let proj = Projection::new(source_crs, target_crs).unwrap();
 
-    for index in 0..point_cloud.len() {
-        let point = point_cloud.get_attribute(&POSITION_3D, index);
+    let num_points = point_cloud.len();
+    let mut positions_view = point_cloud.view_attribute_mut(&POSITION_3D);
+    for index in 0..num_points {
+        let point = positions_view.at(index);
         let reproj = proj.transform(point);
-        point_cloud.set_attribute(&POSITION_3D, index, reproj);
+        positions_view.set_at(index, reproj);
     }
 }
 
@@ -185,16 +162,14 @@ pub fn reproject_point_cloud_within<T: PointBuffer + PointBufferWriteable>(
 /// # use pasture_core::layout::PointType;
 /// # use pasture_core::nalgebra::Vector3;
 /// # use pasture_derive::PointType;
-
-/// #[repr(C)]
-/// #[derive(PointType, Debug, Clone, Copy)]
+/// #[repr(C, packed)]
+/// #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///     pub position: Vector3<f64>,
 ///     #[pasture(BUILTIN_INTENSITY)]
 ///     pub intensity: u16,
 /// }
-
 /// fn main() {
 ///     let points = vec![
 ///         SimplePoint {
@@ -214,50 +189,23 @@ pub fn reproject_point_cloud_within<T: PointBuffer + PointBufferWriteable>(
 ///             intensity: 84,
 ///         },
 ///     ];
-
-///     let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
-
-///     interleaved.push_points(points.as_slice());
-///     let points = vec![
-///         SimplePoint {
-///             position: Vector3::new(1.0, 22.0, 0.0),
-///             intensity: 42,
-///         },
-///         SimplePoint {
-///             position: Vector3::new(12.0, 23.0, 0.0),
-///             intensity: 84,
-///         },
-///         SimplePoint {
-///             position: Vector3::new(10.0, 8.0, 2.0),
-///             intensity: 84,
-///         },
-///         SimplePoint {
-///             position: Vector3::new(10.0, 0.0, 1.0),
-///             intensity: 84,
-///         },
-///     ];
-
-///     let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
-
-///     interleaved.push_points(points.as_slice());
-
-///     let mut attribute = PerAttributeVecPointStorage::with_capacity(interleaved.len(), SimplePoint::layout());
-
+///     let mut interleaved = points.into_iter().collect::<VectorBuffer>();
+///     let mut attribute = HashMapBuffer::with_capacity(interleaved.len(), SimplePoint::layout());
 ///     attribute.resize(interleaved.len());
-
 ///     reproject_point_cloud_between(&mut interleaved, &mut attribute, "EPSG:4326", "EPSG:3309");
-
-///     for point in attribute.iter_point::<SimplePoint>() {
+///     for point in attribute.view::<SimplePoint>() {
 ///         println!("{:?}", point);
 ///     }
 /// }
 /// ```
 pub fn reproject_point_cloud_between<
-    T1: PointBuffer + PointBufferWriteable,
-    T2: PointBuffer + PointBufferWriteable,
+    'a,
+    'b,
+    T1: BorrowedMutBuffer<'a>,
+    T2: BorrowedMutBuffer<'b>,
 >(
-    source_point_cloud: &mut T1,
-    target_point_cloud: &mut T2,
+    source_point_cloud: &'a mut T1,
+    target_point_cloud: &'b mut T2,
     source_crs: &str,
     target_crs: &str,
 ) {
@@ -267,12 +215,14 @@ pub fn reproject_point_cloud_between<
 
     let proj = Projection::new(source_crs, target_crs).unwrap();
 
+    let mut target_positions = target_point_cloud.view_attribute_mut(&POSITION_3D);
     for (index, point) in source_point_cloud
-        .iter_attribute::<Vector3<f64>>(&POSITION_3D)
+        .view_attribute::<Vector3<f64>>(&POSITION_3D)
+        .into_iter()
         .enumerate()
     {
         let reproj = proj.transform(point);
-        target_point_cloud.set_attribute(&POSITION_3D, index, reproj);
+        target_positions.set_at(index, reproj);
     }
 }
 
@@ -280,7 +230,7 @@ pub fn reproject_point_cloud_between<
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use pasture_core::{
-        containers::{InterleavedVecPointStorage, PerAttributeVecPointStorage, OwningPointBuffer},
+        containers::{BorrowedBuffer, HashMapBuffer, OwningBuffer, VectorBuffer},
         layout::PointType,
         nalgebra::Vector3,
     };
@@ -288,8 +238,8 @@ mod tests {
 
     use super::*;
 
-    #[repr(C)]
-    #[derive(PointType, Debug, Clone, Copy)]
+    #[repr(C, packed)]
+    #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     pub struct SimplePoint {
         #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
@@ -318,9 +268,7 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
-
-        interleaved.push_points(points.as_slice());
+        let mut interleaved = points.into_iter().collect::<VectorBuffer>();
 
         reproject_point_cloud_within(&mut interleaved, "EPSG:4326", "EPSG:3309");
 
@@ -332,7 +280,8 @@ mod tests {
         ];
 
         for (index, coord) in interleaved
-            .iter_attribute::<Vector3<f64>>(&POSITION_3D)
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
+            .into_iter()
             .enumerate()
         {
             assert_approx_eq!(coord[0], results[index][0], 0.0001);
@@ -361,12 +310,9 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+        let mut interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        interleaved.push_points(points.as_slice());
-
-        let mut attribute =
-            PerAttributeVecPointStorage::with_capacity(interleaved.len(), SimplePoint::layout());
+        let mut attribute = HashMapBuffer::with_capacity(interleaved.len(), SimplePoint::layout());
 
         attribute.resize(interleaved.len());
 
@@ -380,7 +326,8 @@ mod tests {
         ];
 
         for (index, coord) in attribute
-            .iter_attribute::<Vector3<f64>>(&POSITION_3D)
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
+            .into_iter()
             .enumerate()
         {
             assert_approx_eq!(coord[0], results[index][0], 0.0001);
@@ -410,11 +357,9 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+        let mut interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        interleaved.push_points(points.as_slice());
-
-        let mut attribute = PerAttributeVecPointStorage::with_capacity(2, SimplePoint::layout());
+        let mut attribute = HashMapBuffer::with_capacity(2, SimplePoint::layout());
 
         attribute.resize(2);
 

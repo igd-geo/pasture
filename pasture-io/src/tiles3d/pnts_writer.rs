@@ -1,13 +1,15 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     convert::TryInto,
-    io::{Cursor, Seek, SeekFrom, Write},
+    io::{Cursor, Seek, Write},
 };
 
 use anyhow::{Context, Result};
 use pasture_core::{
     containers::{
-        PerAttributePointBuffer, PerAttributeVecPointStorage, PointBuffer, PointBufferWriteable, OwningPointBuffer,
+        BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, HashMapBuffer, MakeBufferFromLayout,
+        OwningBuffer,
     },
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
@@ -66,8 +68,8 @@ pub struct PntsWriter<W: Write + Seek> {
     writer: W,
     expected_layout: PointLayout,
     default_layout: PointLayout,
-    cached_points: PerAttributeVecPointStorage,
-    attribute_converters: HashMap<&'static str, Option<AttributeConversionFn>>,
+    cached_points: HashMapBuffer,
+    attribute_converters: HashMap<String, Option<AttributeConversionFn>>,
     rtc_center: Option<Vector3<f64>>,
     requires_flush: bool,
 }
@@ -80,7 +82,7 @@ impl<W: Write + Seek> PntsWriter<W> {
         // The PntsWriter can accept any kind of point buffer, but it will silently discard attributes that are not
         // supported by 3D Tiles. All supported attributes that are also in `point_layout` are described by `cache_layout`
         let (cache_layout, attribute_converters) = Self::make_compatible_layout(&point_layout);
-        let cache = PerAttributeVecPointStorage::new(cache_layout.clone());
+        let cache = HashMapBuffer::new_from_layout(cache_layout.clone());
         Self {
             writer,
             expected_layout: point_layout,
@@ -105,23 +107,20 @@ impl<W: Write + Seek> PntsWriter<W> {
     /// type as per the [3D Tiles standard](https://github.com/CesiumGS/3d-tiles/blob/master/specification/TileFormats/PointCloud/README.md#semantics)
     fn make_compatible_layout(
         point_layout: &PointLayout,
-    ) -> (
-        PointLayout,
-        HashMap<&'static str, Option<AttributeConversionFn>>,
-    ) {
+    ) -> (PointLayout, HashMap<String, Option<AttributeConversionFn>>) {
         let mut compatible_layout = PointLayout::default();
-        let mut conversion_fns: HashMap<&'static str, Option<AttributeConversionFn>> =
-            HashMap::new();
+        let mut conversion_fns: HashMap<String, Option<AttributeConversionFn>> = HashMap::new();
         // TODO Support for other attributes:
         // * Quantized positions
         // * RGB565 colors
         // * Normal oct encoded
         // * Batch ID (and batch table with custom attributes)
 
-        let supported_attributes: HashMap<&'static str, PointAttributeDataType> = vec![
+        let color_rgba = COLOR_RGBA;
+        let supported_attributes: HashMap<&str, PointAttributeDataType> = vec![
             (POSITION_3D.name(), PointAttributeDataType::Vec3f32),
             (COLOR_RGB.name(), PointAttributeDataType::Vec3u8),
-            (COLOR_RGBA.name(), PointAttributeDataType::Vec4u8),
+            (color_rgba.name(), PointAttributeDataType::Vec4u8),
             (NORMAL.name(), PointAttributeDataType::Vec3f32),
         ]
         .drain(..)
@@ -130,18 +129,24 @@ impl<W: Write + Seek> PntsWriter<W> {
         for src_attribute in point_layout.attributes() {
             if let Some(dst_attribute_datatype) = supported_attributes.get(&src_attribute.name()) {
                 compatible_layout.add_attribute(
-                    PointAttributeDefinition::custom(src_attribute.name(), *dst_attribute_datatype),
+                    PointAttributeDefinition::custom(
+                        Cow::Owned(src_attribute.name().to_owned()),
+                        *dst_attribute_datatype,
+                    ),
                     FieldAlignment::Default,
                 );
                 let dst_attribute = compatible_layout
                     .get_attribute_by_name(src_attribute.name())
                     .unwrap();
                 if src_attribute.datatype() == dst_attribute.datatype() {
-                    conversion_fns.insert(src_attribute.name(), None);
+                    conversion_fns.insert(src_attribute.name().to_owned(), None);
                 } else {
                     conversion_fns.insert(
-                        src_attribute.name(),
-                        get_converter_for_attributes(&src_attribute.into(), &dst_attribute.into()),
+                        src_attribute.name().to_owned(),
+                        get_converter_for_attributes(
+                            src_attribute.attribute_definition(),
+                            dst_attribute.attribute_definition(),
+                        ),
                     );
                 }
             }
@@ -240,8 +245,9 @@ impl<W: Write + Seek> PntsWriter<W> {
             .attributes()
             .enumerate()
             .map(|(idx, attribute)| -> (String, FeatureTableValue) {
-                let semantic_name = pnts_semantics_name_from_point_attribute(&attribute.into())
-                    .expect("Invalid point semantic");
+                let semantic_name =
+                    pnts_semantics_name_from_point_attribute(attribute.attribute_definition())
+                        .expect("Invalid point semantic");
                 (
                     semantic_name,
                     FeatureTableValue::DataReference(FeatureTableDataReference {
@@ -297,7 +303,7 @@ impl<W: Write + Seek> PntsWriter<W> {
         for attribute in self.default_layout.attributes() {
             let attribute_data = self
                 .cached_points
-                .get_raw_attribute_range_ref(0..num_points, &attribute.into());
+                .get_attribute_range_ref(attribute.attribute_definition(), 0..num_points);
             self.writer
                 .write_all(attribute_data)
                 .context("Error while writing attribute data")?;
@@ -314,11 +320,12 @@ impl<W: Write + Seek> PntsWriter<W> {
         }
 
         // Write padding bytes to ensure we are at an 8-byte boundary!
-        let current_write_position = self.writer.seek(SeekFrom::Current(0))?;
+        let current_write_position = self.writer.stream_position()?;
         let next_8_byte_boundary = current_write_position.align_to(8);
         let num_padding_bytes = next_8_byte_boundary - current_write_position;
         if num_padding_bytes > 0 {
-            self.writer.write(&vec![0; num_padding_bytes as usize])?;
+            self.writer
+                .write_all(&vec![0; num_padding_bytes as usize])?;
         }
 
         Ok(())
@@ -326,13 +333,13 @@ impl<W: Write + Seek> PntsWriter<W> {
 }
 
 impl<W: Write + Seek> PointWriter for PntsWriter<W> {
-    fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
+    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
         if points.point_layout() != &self.expected_layout {
             panic!("PointLayout of buffer does not match the PointLayout that this PntsReader was constructed with! Make sure that you only pass PointBuffers with the same layout as the one you used to create this PntsWriter!");
         }
 
         if points.point_layout() == self.cached_points.point_layout() {
-            self.cached_points.push(points);
+            self.cached_points.append(points);
         } else {
             // Have to convert data
             // TODO Depending on the memory layout of `points`, there might be faster ways to push the data than
@@ -343,7 +350,7 @@ impl<W: Write + Seek> PointWriter for PntsWriter<W> {
                 .resize(self.cached_points.len() + points.len());
             for (attribute_name, maybe_converter) in self.attribute_converters.iter() {
                 if let Some(attr) = points.point_layout().get_attribute_by_name(attribute_name) {
-                    let attribute_def: PointAttributeDefinition = attr.into();
+                    let attribute_def = attr.attribute_definition();
                     let mut buf = vec![0; attribute_def.size() as usize];
                     let dst_attribute = self
                         .cached_points
@@ -352,25 +359,27 @@ impl<W: Write + Seek> PointWriter for PntsWriter<W> {
                         .unwrap()
                         .clone();
                     let dst_attribute_size = dst_attribute.size() as usize;
-                    let dst_attribute_def: PointAttributeDefinition = dst_attribute.into();
+                    let dst_attribute_def = dst_attribute.attribute_definition();
                     let mut converted_buf = vec![0; dst_attribute_size];
                     for point_index in 0..points.len() {
-                        points.get_raw_attribute(point_index, &attribute_def, buf.as_mut_slice());
+                        points.get_attribute(attribute_def, point_index, buf.as_mut_slice());
                         if let Some(conversion_fn) = maybe_converter {
                             unsafe {
                                 conversion_fn(buf.as_slice(), converted_buf.as_mut_slice());
+                                self.cached_points.set_attribute(
+                                    dst_attribute_def,
+                                    base_point_index + point_index,
+                                    converted_buf.as_slice(),
+                                );
                             }
-                            self.cached_points.set_raw_attribute(
-                                base_point_index + point_index,
-                                &dst_attribute_def,
-                                converted_buf.as_slice(),
-                            );
                         } else {
-                            self.cached_points.set_raw_attribute(
-                                base_point_index + point_index,
-                                &dst_attribute_def,
-                                buf.as_slice(),
-                            )
+                            unsafe {
+                                self.cached_points.set_attribute(
+                                    dst_attribute_def,
+                                    base_point_index + point_index,
+                                    buf.as_slice(),
+                                )
+                            }
                         }
                     }
                 }
@@ -405,13 +414,15 @@ mod tests {
 
     use super::*;
     use pasture_core::{
-        containers::PointBufferExt,
+        containers::VectorBuffer,
         layout::PointType,
         nalgebra::{Vector3, Vector4},
     };
     use pasture_derive::PointType;
 
-    #[derive(Debug, PointType, Copy, Clone, PartialEq)]
+    #[derive(
+        Debug, PointType, Copy, Clone, PartialEq, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+    )]
     #[repr(C, packed)]
     struct PntsDefaultPoint {
         #[pasture(BUILTIN_POSITION_3D)]
@@ -424,7 +435,9 @@ mod tests {
         normal: Vector3<f32>,
     }
 
-    #[derive(Debug, PointType, Copy, Clone, PartialEq)]
+    #[derive(
+        Debug, PointType, Copy, Clone, PartialEq, bytemuck::AnyBitPattern, bytemuck::NoUninit,
+    )]
     #[repr(C, packed)]
     struct PntsCustomLayout {
         #[pasture(BUILTIN_POSITION_3D)]
@@ -453,8 +466,7 @@ mod tests {
                 normal: Vector3::new(0.2, 0.4, 0.6),
             },
         ];
-        let mut test_point_buffer = PerAttributeVecPointStorage::new(PntsDefaultPoint::layout());
-        test_point_buffer.push_points(test_data.as_slice());
+        let test_point_buffer = test_data.iter().copied().collect::<HashMapBuffer>();
 
         {
             let mut writer =
@@ -472,7 +484,7 @@ mod tests {
             let mut reader =
                 PntsReader::from_read(&mut cursor).context("Error while creating PntsReader")?;
             let read_points = reader
-                .read(test_point_buffer.len())
+                .read::<HashMapBuffer>(test_point_buffer.len())
                 .context("Error while reading points from PntsReader")?;
 
             // Note: The default PointLayout of a PntsReader might have attributes in another order than the
@@ -481,9 +493,9 @@ mod tests {
             assert_eq!(read_points.point_layout(), test_point_buffer.point_layout());
             assert_eq!(read_points.len(), test_point_buffer.len());
 
-            for point_idx in 0..test_point_buffer.len() {
-                let expected_point = test_data[point_idx];
-                let actual_point = read_points.get_point::<PntsDefaultPoint>(point_idx);
+            for (point_idx, point) in test_data.iter().enumerate().take(test_point_buffer.len()) {
+                let expected_point = *point;
+                let actual_point = read_points.view::<PntsDefaultPoint>().at(point_idx);
                 assert_eq!(expected_point, actual_point);
             }
         }
@@ -498,17 +510,16 @@ mod tests {
         let test_data = vec![
             PntsCustomLayout {
                 position: Vector3::new(1.0, 2.0, 3.0),
-                color: Vector3::new(1 << 8, 2 << 8, 3 << 8),
+                color: Vector3::new(0x1111, 0x2222, 0x3333),
                 intensity: 10_000,
             },
             PntsCustomLayout {
                 position: Vector3::new(2.0, 4.0, 6.0),
-                color: Vector3::new(2 << 8, 4 << 8, 6 << 8),
+                color: Vector3::new(0x2222, 0x4444, 0x6666),
                 intensity: 20_000,
             },
         ];
-        let mut test_point_buffer = PerAttributeVecPointStorage::new(PntsCustomLayout::layout());
-        test_point_buffer.push_points(test_data.as_slice());
+        let test_point_buffer = test_data.iter().copied().collect::<VectorBuffer>();
 
         {
             let mut writer =
@@ -526,7 +537,7 @@ mod tests {
             let mut reader =
                 PntsReader::from_read(&mut cursor).context("Error while creating PntsReader")?;
             let read_points = reader
-                .read(test_point_buffer.len())
+                .read::<HashMapBuffer>(test_point_buffer.len())
                 .context("Error while reading points from PntsReader")?;
 
             let read_points_layout = PointLayout::from_attributes_packed(
@@ -543,37 +554,41 @@ mod tests {
             let expected_pos_1: Vector3<f32> = Vector3::new(1.0, 2.0, 3.0);
             let expected_pos_2: Vector3<f32> = Vector3::new(2.0, 4.0, 6.0);
 
-            let expected_color_1: Vector3<u8> = Vector3::new(1, 2, 3);
-            let expected_color_2: Vector3<u8> = Vector3::new(2, 4, 6);
+            let expected_color_1: Vector3<u8> = Vector3::new(0x11, 0x22, 0x33);
+            let expected_color_2: Vector3<u8> = Vector3::new(0x22, 0x44, 0x66);
 
             assert_eq!(
                 expected_pos_1,
-                read_points.get_attribute::<Vector3<f32>>(
-                    &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
-                    0
-                )
+                read_points
+                    .view_attribute::<Vector3<f32>>(
+                        &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                    )
+                    .at(0)
             );
             assert_eq!(
                 expected_pos_2,
-                read_points.get_attribute::<Vector3<f32>>(
-                    &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
-                    1
-                )
+                read_points
+                    .view_attribute::<Vector3<f32>>(
+                        &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                    )
+                    .at(1)
             );
 
             assert_eq!(
                 expected_color_1,
-                read_points.get_attribute::<Vector3<u8>>(
-                    &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
-                    0
-                )
+                read_points
+                    .view_attribute::<Vector3<u8>>(
+                        &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                    )
+                    .at(0)
             );
             assert_eq!(
                 expected_color_2,
-                read_points.get_attribute::<Vector3<u8>>(
-                    &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
-                    1
-                )
+                read_points
+                    .view_attribute::<Vector3<u8>>(
+                        &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                    )
+                    .at(1)
             );
         }
 

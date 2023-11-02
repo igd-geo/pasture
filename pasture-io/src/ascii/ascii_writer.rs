@@ -1,20 +1,22 @@
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{
+    fs::File,
+    io::{BufWriter, Seek, Write},
+    path::Path,
+};
 
 use anyhow::Result;
-use pasture_core::{containers::PointBuffer, layout::PointLayout};
+use pasture_core::{containers::BorrowedBuffer, layout::PointLayout};
 
 use crate::base::PointWriter;
 
-use super::{AsciiFormat, PointWriterFormatting, RawAsciiWriter};
-
-
+use super::{AsciiFormat, RawAsciiWriter};
 
 /// `PointWriterFormatting` implementation for Ascii files
-pub struct AsciiWriter {
-    raw_writer: Box<dyn PointWriterFormatting>,
+pub struct AsciiWriter<T: Write + Seek> {
+    raw_writer: RawAsciiWriter<T>,
 }
 
-impl AsciiWriter {
+impl AsciiWriter<BufWriter<File>> {
     /// Creates a new `AsciiWriter` by opening the file at the given `path`.
     /// The `format` string slice coordinates the interpretation of each column.
     /// This functions just wraps a `BufWriter` around a `File` and uses [`AsciiWriter::from_write`].
@@ -41,6 +43,9 @@ impl AsciiWriter {
         let file = BufWriter::new(File::create(path)?);
         Self::from_write(file, format)
     }
+}
+
+impl<T: Write + Seek> AsciiWriter<T> {
     /// Creates a new `AsciiWriter` from the given `write`.
     /// The `format` string slice coordinates the interpretation of each column.
     /// The following literals can be interpreted from `AsciiWriter`:
@@ -82,19 +87,15 @@ impl AsciiWriter {
     /// If the given `Write` cannot write, an error is returned.
     ///
     /// If `format` contains unrecoginzed literals, an error is returned.
-    pub fn from_write<T: std::io::Write + std::io::Seek + 'static>(write: T, format: &str) -> Result<Self> {
-        let raw_writer: Box<dyn PointWriterFormatting> =
-            Box::new(RawAsciiWriter::from_write(write, format)?);
-        Ok(Self{
-            raw_writer
+    pub fn from_write(write: T, format: &str) -> Result<Self> {
+        Ok(Self {
+            raw_writer: RawAsciiWriter::from_write(write, format)?,
         })
     }
-
-
 }
 
-impl PointWriter for AsciiWriter {
-    fn write(&mut self, points: &dyn PointBuffer) -> Result<()> {
+impl<T: Write + Seek> PointWriter for AsciiWriter<T> {
+    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
         self.raw_writer.write(points)
     }
 
@@ -107,8 +108,7 @@ impl PointWriter for AsciiWriter {
     }
 }
 
-
-impl AsciiFormat for AsciiWriter {
+impl<T: Write + Seek> AsciiFormat for AsciiWriter<T> {
     fn set_delimiter(&mut self, delimiter: &str) {
         self.raw_writer.set_delimiter(delimiter);
     }
@@ -117,4 +117,3 @@ impl AsciiFormat for AsciiWriter {
         self.raw_writer.set_precision(precision);
     }
 }
-

@@ -1,232 +1,209 @@
-pub mod iterators {
+use std::marker::PhantomData;
 
-    //! Contains `Iterator` implementations through which the untyped contents of `PointBuffer` structures
-    //! can be accessed in a safe and strongly-typed manner.
+use crate::layout::PointType;
 
-    use crate::{
-        containers::{InterleavedPointBuffer, InterleavedPointBufferMut, PointBuffer},
-        layout::PointType,
-    };
+use super::point_buffer::{BorrowedBuffer, InterleavedBuffer, InterleavedBufferMut};
 
-    use std::marker::PhantomData;
-    use std::mem::MaybeUninit;
+/// Iterator over strongly typed points by value
+pub struct PointIteratorByValue<'a, 'b, T: PointType, B: BorrowedBuffer<'a>>
+where
+    'a: 'b,
+{
+    buffer: &'b B,
+    current_index: usize,
+    _phantom: PhantomData<&'a T>,
+}
 
-    /// Iterator over an arbitrary `PointBuffer` that yields strongly typed points by value
-    pub struct PointIteratorByValue<'a, T: PointType, B: PointBuffer + ?Sized> {
-        buffer: &'a B,
-        current_index: usize,
-        unused: PhantomData<T>,
-    }
-
-    impl<'a, T: PointType, B: PointBuffer + ?Sized> PointIteratorByValue<'a, T, B> {
-        /// Creates a new `DefaultPointIterator` over all points in the given `PointBuffer`
-        pub fn new(buffer: &'a B) -> Self {
-            if *buffer.point_layout() != T::layout() {
-                panic!("PointLayout of type T does not match PointLayout of buffer (buffer layout: {}, T layout: {})", buffer.point_layout(), T::layout());
-            }
-            Self {
-                buffer,
-                current_index: 0,
-                unused: Default::default(),
-            }
+impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> From<&'b B>
+    for PointIteratorByValue<'a, 'b, T, B>
+{
+    fn from(value: &'b B) -> Self {
+        Self {
+            buffer: value,
+            current_index: 0,
+            _phantom: Default::default(),
         }
     }
+}
 
-    impl<'a, T: PointType, B: PointBuffer + ?Sized> Iterator for PointIteratorByValue<'a, T, B> {
-        type Item = T;
+impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> Iterator for PointIteratorByValue<'a, 'b, T, B> {
+    type Item = T;
 
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.buffer.len() {
-                return None;
-            }
-
-            // Create an uninitialized T which is filled by the call to `buffer.get_raw_point`
-            let mut point = MaybeUninit::<T>::uninit();
-            unsafe {
-                let point_byte_slice = std::slice::from_raw_parts_mut(
-                    point.as_mut_ptr() as *mut u8,
-                    std::mem::size_of::<T>(),
-                );
-                self.buffer
-                    .get_raw_point(self.current_index, point_byte_slice);
-            }
-
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index == self.buffer.len() {
+            None
+        } else {
+            let mut point = T::zeroed();
+            let point_bytes = bytemuck::bytes_of_mut(&mut point);
+            self.buffer.get_point(self.current_index, point_bytes);
             self.current_index += 1;
-
-            unsafe { Some(point.assume_init()) }
+            Some(point)
         }
     }
 
-    /// Iterator over an interleaved `PointBuffer` that yields strongly typed points by reference
-    pub struct PointIteratorByRef<'a, T: PointType + 'a> {
-        point_data: &'a [T],
-        current_index: usize,
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
     }
+}
 
-    impl<'a, T: PointType + 'a> PointIteratorByRef<'a, T> {
-        /// Creates a new `InterleavedPointIterator` over all points in the given `PointBuffer`
-        pub fn new<B: InterleavedPointBuffer + ?Sized>(buffer: &'a B) -> Self {
-            if *buffer.point_layout() != T::layout() {
-                panic!("PointLayout of type T does not match PointLayout of buffer (buffer layout: {}, T layout: {})", buffer.point_layout(), T::layout());
-            }
-            let buffer_len = buffer.len();
-            let point_data = unsafe {
-                std::slice::from_raw_parts(
-                    buffer.get_raw_points_ref(0..buffer_len).as_ptr() as *const T,
-                    buffer_len,
-                )
-            };
-            Self {
-                point_data,
-                current_index: 0,
-            }
+/// Iterator over strongly typed points by immutable borrow
+pub struct PointIteratorByRef<'a, T: PointType> {
+    point_data: &'a [T],
+    current_index: usize,
+}
+
+impl<'a, 'b, T: PointType, B: InterleavedBuffer<'b>> From<&'a B> for PointIteratorByRef<'a, T>
+where
+    'b: 'a,
+{
+    fn from(value: &'a B) -> Self {
+        let points_memory = value.get_point_range_ref(0..value.len());
+        Self {
+            point_data: bytemuck::cast_slice(points_memory),
+            current_index: 0,
         }
     }
+}
 
-    impl<'a, T: PointType + 'a> Iterator for PointIteratorByRef<'a, T> {
-        type Item = &'a T;
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.point_data.len() {
-                return None;
-            }
+impl<'a, T: PointType> Iterator for PointIteratorByRef<'a, T> {
+    type Item = &'a T;
 
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index == self.point_data.len() {
+            None
+        } else {
             let point = &self.point_data[self.current_index];
             self.current_index += 1;
             Some(point)
         }
     }
 
-    /// Iterator over a `PointBuffer` that yields strongly typed points by mutable reference
-    pub struct PointIteratorByMut<'a, T: PointType + 'a> {
-        point_data: &'a mut [T],
-        current_index: usize,
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
     }
+}
 
-    impl<'a, T: PointType + 'a> PointIteratorByMut<'a, T> {
-        /// Creates a new `PointIteratorByMut` that iterates over the points in the given buffer
-        pub fn new<B: InterleavedPointBufferMut + ?Sized>(buffer: &'a mut B) -> Self {
-            if *buffer.point_layout() != T::layout() {
-                panic!("PointLayout of type T does not match PointLayout of buffer (buffer layout: {}, T layout: {})", buffer.point_layout(), T::layout());
-            }
-            let buffer_len = buffer.len();
-            let point_data = unsafe {
-                std::slice::from_raw_parts_mut(
-                    buffer.get_raw_points_mut(0..buffer_len).as_mut_ptr() as *mut T,
-                    buffer_len,
-                )
-            };
-            Self {
-                point_data,
-                current_index: 0,
-            }
+/// Iterator over strongly typed points by mutable borrow
+pub struct PointIteratorByMut<'a, T: PointType> {
+    point_data: &'a mut [T],
+    current_index: usize,
+    _phantom: PhantomData<T>,
+}
+
+impl<'a, 'b, T: PointType, B: InterleavedBufferMut<'b>> From<&'a mut B>
+    for PointIteratorByMut<'a, T>
+where
+    'b: 'a,
+{
+    fn from(value: &'a mut B) -> Self {
+        let memory_for_all_points = value.get_point_range_mut(0..value.len());
+        Self {
+            point_data: bytemuck::cast_slice_mut(memory_for_all_points),
+            current_index: 0,
+            _phantom: Default::default(),
         }
     }
+}
 
-    impl<'a, T: PointType + 'a> Iterator for PointIteratorByMut<'a, T> {
-        type Item = &'a mut T;
+impl<'a, T: PointType> Iterator for PointIteratorByMut<'a, T> {
+    type Item = &'a mut T;
 
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.current_index == self.point_data.len() {
-                return None;
-            }
-
-            // Seems like an iterator returning mutable references only works with unsafe code :(
-
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index == self.point_data.len() {
+            None
+        } else {
             unsafe {
-                let ptr = self
-                    .point_data
-                    .as_mut_ptr()
-                    .offset(self.current_index as isize);
+                let memory = self.point_data.as_mut_ptr().add(self.current_index);
                 self.current_index += 1;
-                Some(&mut *ptr)
+                Some(&mut *memory)
             }
         }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.current_index += n;
+        self.next()
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use rand::{thread_rng, Rng};
 
-    use crate::containers::{
-        InterleavedPointBufferExt, InterleavedPointBufferMutExt, InterleavedVecPointStorage,
-        PerAttributeVecPointStorage, PointBufferExt,
+    use crate::{
+        containers::{BorrowedMutBuffer, VectorBuffer},
+        test_utils::{CustomPointTypeSmall, DefaultPointDistribution},
     };
-    use pasture_derive::PointType;
 
-    // We need this, otherwise we can't use the derive(PointType) macro from within pasture_core because the macro
-    // doesn't recognize the name 'pasture_core' :/
-    use crate as pasture_core;
-
-    #[derive(Debug, Copy, Clone, PartialEq, PointType)]
-    #[repr(C)]
-    struct TestPointType {
-        #[pasture(BUILTIN_INTENSITY)]
-        pub intensity: u16,
-        #[pasture(BUILTIN_GPS_TIME)]
-        pub gps_time: f64,
-    }
+    use super::*;
 
     #[test]
-    fn test_points_iterator_from_interleaved() {
-        let reference_points = vec![
-            TestPointType {
-                intensity: 42,
-                gps_time: 0.123,
-            },
-            TestPointType {
-                intensity: 43,
-                gps_time: 0.456,
-            },
-        ];
-        let mut storage = InterleavedVecPointStorage::from(reference_points.as_slice());
+    #[allow(clippy::iter_nth_zero)]
+    fn point_iterator_nth() {
+        const COUNT: usize = 16;
+        let mut points = thread_rng()
+            .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
+            .take(COUNT)
+            .collect::<VectorBuffer>();
+        let mut points_clone = points.clone();
 
+        let points_view = points.view::<CustomPointTypeSmall>();
         {
-            let points_by_mut_view = storage.iter_point_mut::<TestPointType>();
-            points_by_mut_view.for_each(|point| {
-                point.intensity *= 2;
-                point.gps_time += 1.0;
-            });
+            let mut points_iter = points_view.clone().into_iter();
+            assert_eq!(points_iter.nth(0), Some(points_view.at(0)));
         }
-
-        let modified_points = vec![
-            TestPointType {
-                intensity: 84,
-                gps_time: 1.123,
-            },
-            TestPointType {
-                intensity: 86,
-                gps_time: 1.456,
-            },
-        ];
-
         {
-            let points_by_val_collected = storage.iter_point::<TestPointType>().collect::<Vec<_>>();
-            assert_eq!(modified_points, points_by_val_collected);
+            let mut points_iter = points_view.clone().into_iter();
+            assert_eq!(points_iter.nth(6), Some(points_view.at(6)));
+        }
+        {
+            let mut points_iter = points_view.clone().into_iter();
+            assert_eq!(points_iter.nth(COUNT), None);
+        }
+        {
+            let mut points_iter = points_view.clone().into_iter();
+            points_iter.nth(0);
+            assert_eq!(points_iter.nth(0), Some(points_view.at(1)));
         }
 
         {
-            let points_by_ref_view = storage.iter_point_ref::<TestPointType>();
-            let points_by_ref_collected = points_by_ref_view.map(|r| *r).collect::<Vec<_>>();
-            assert_eq!(modified_points, points_by_ref_collected);
+            let mut points_iter = points_view.iter();
+            assert_eq!(points_iter.nth(0), Some(points_view.at_ref(0)));
         }
-    }
+        {
+            let mut points_iter = points_view.iter();
+            assert_eq!(points_iter.nth(6), Some(points_view.at_ref(6)));
+        }
+        {
+            let mut points_iter = points_view.iter();
+            assert_eq!(points_iter.nth(COUNT), None);
+        }
+        {
+            let mut points_iter = points_view.iter();
+            points_iter.nth(0);
+            assert_eq!(points_iter.nth(0), Some(points_view.at_ref(1)));
+        }
 
-    #[test]
-    fn test_points_iterator_from_per_attribute() {
-        let reference_points = vec![
-            TestPointType {
-                intensity: 42,
-                gps_time: 0.123,
-            },
-            TestPointType {
-                intensity: 43,
-                gps_time: 0.456,
-            },
-        ];
-        let storage = PerAttributeVecPointStorage::from(reference_points.as_slice());
-
-        let collected_points = storage.iter_point::<TestPointType>().collect::<Vec<_>>();
-
-        assert_eq!(reference_points, collected_points);
+        let mut points_view_mut = points.view_mut::<CustomPointTypeSmall>();
+        let mut cloned_points_view_mut = points_clone.view_mut::<CustomPointTypeSmall>();
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            assert_eq!(points_iter.nth(0), Some(cloned_points_view_mut.at_mut(0)));
+        }
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            assert_eq!(points_iter.nth(6), Some(cloned_points_view_mut.at_mut(6)));
+        }
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            assert_eq!(points_iter.nth(COUNT), None);
+        }
+        {
+            let mut points_iter = points_view_mut.iter_mut();
+            points_iter.nth(0);
+            assert_eq!(points_iter.nth(0), Some(cloned_points_view_mut.at_mut(1)));
+        }
     }
 }

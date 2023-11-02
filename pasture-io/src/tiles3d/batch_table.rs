@@ -65,9 +65,9 @@ impl TryFrom<&Value> for BatchTableEntry {
     }
 }
 
-impl Into<Value> for BatchTableEntry {
-    fn into(self) -> Value {
-        match self {
+impl From<BatchTableEntry> for Value {
+    fn from(val: BatchTableEntry) -> Self {
+        match val {
             BatchTableEntry::ArrayData(array) => Value::Array(array),
             BatchTableEntry::DataReference(data_reference) => serde_json::to_value(data_reference)
                 .expect("Could not convert BatchTableEntry to JSON Value"),
@@ -75,9 +75,9 @@ impl Into<Value> for BatchTableEntry {
     }
 }
 
-impl Into<Value> for &BatchTableEntry {
-    fn into(self) -> Value {
-        match self {
+impl From<&BatchTableEntry> for Value {
+    fn from(val: &BatchTableEntry) -> Self {
+        match val {
             BatchTableEntry::ArrayData(array) => Value::Array(array.clone()),
             BatchTableEntry::DataReference(data_reference) => serde_json::to_value(data_reference)
                 .expect("Could not convert BatchTableEntry to JSON Value"),
@@ -110,13 +110,13 @@ pub fn deser_batch_table_header<R: BufRead + Seek>(
         .as_object()
         .ok_or(anyhow!("BatchTable JSON header was no JSON object"))?;
     // Convert JSON object to `BatchTableHeader`
-    Ok(batch_table_json_obj
+    batch_table_json_obj
         .iter()
         .map(|(k, v)| -> Result<(String, BatchTableEntry)> {
             let batch_table_entry: BatchTableEntry = v.try_into()?;
             Ok((k.clone(), batch_table_entry))
         })
-        .collect::<Result<HashMap<_, _>, _>>()?)
+        .collect::<Result<HashMap<_, _>, _>>()
 }
 
 /// Serializes the given `BatchTableHeader` to the given `writer`. If successful, the `writer` will be at the appropriate
@@ -167,7 +167,7 @@ mod tests {
         ser_batch_table_header(&mut writer, &expected_header, 0)?;
 
         // Make sure that the header is written with padding bytes so that we are at an 8-byte boundary
-        let header_size = writer.seek(SeekFrom::Current(0))? as usize;
+        let header_size = writer.stream_position()? as usize;
         assert_eq!(header_size % 8, 0);
 
         let mut cursor = writer.into_inner()?;

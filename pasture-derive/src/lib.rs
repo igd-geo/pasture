@@ -24,11 +24,11 @@ enum PasturePrimitiveType {
     I64,
     F32,
     F64,
-    Bool,
     Vec3u8,
     Vec3u16,
     Vec3f32,
     Vec3f64,
+    Vec3i32,
     Vec4u8,
 }
 
@@ -45,11 +45,11 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::I64 => 8,
             PasturePrimitiveType::F32 => 4,
             PasturePrimitiveType::F64 => 8,
-            PasturePrimitiveType::Bool => 1,
             PasturePrimitiveType::Vec3u8 => 1,
             PasturePrimitiveType::Vec3u16 => 2,
             PasturePrimitiveType::Vec3f32 => 4,
             PasturePrimitiveType::Vec3f64 => 8,
+            PasturePrimitiveType::Vec3i32 => 4,
             &PasturePrimitiveType::Vec4u8 => 1,
         }
     }
@@ -66,11 +66,11 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::I64 => 8,
             PasturePrimitiveType::F32 => 4,
             PasturePrimitiveType::F64 => 8,
-            PasturePrimitiveType::Bool => 1,
             PasturePrimitiveType::Vec3u8 => 3,
             PasturePrimitiveType::Vec3u16 => 6,
             PasturePrimitiveType::Vec3f32 => 12,
             PasturePrimitiveType::Vec3f64 => 24,
+            PasturePrimitiveType::Vec3i32 => 12,
             &PasturePrimitiveType::Vec4u8 => 4,
         }
     }
@@ -87,9 +87,6 @@ impl PasturePrimitiveType {
             PasturePrimitiveType::I64 => quote! {pasture_core::layout::PointAttributeDataType::I64},
             PasturePrimitiveType::F32 => quote! {pasture_core::layout::PointAttributeDataType::F32},
             PasturePrimitiveType::F64 => quote! {pasture_core::layout::PointAttributeDataType::F64},
-            PasturePrimitiveType::Bool => {
-                quote! {pasture_core::layout::PointAttributeDataType::Bool}
-            }
             PasturePrimitiveType::Vec3u8 => {
                 quote! {pasture_core::layout::PointAttributeDataType::Vec3u8}
             }
@@ -101,6 +98,9 @@ impl PasturePrimitiveType {
             }
             PasturePrimitiveType::Vec3f64 => {
                 quote! {pasture_core::layout::PointAttributeDataType::Vec3f64}
+            }
+            PasturePrimitiveType::Vec3i32 => {
+                quote! {pasture_core::layout::PointAttributeDataType::Vec3i32}
             }
             PasturePrimitiveType::Vec4u8 => {
                 quote! {pasture_core::layout::PointAttributeDataType::Vec4u8}
@@ -122,7 +122,6 @@ fn get_primitive_type_for_ident_type(ident: &Ident) -> Result<PasturePrimitiveTy
         "i64" => Ok(PasturePrimitiveType::I64),
         "f32" => Ok(PasturePrimitiveType::F32),
         "f64" => Ok(PasturePrimitiveType::F64),
-        "bool" => Ok(PasturePrimitiveType::Bool),
         _ => Err(Error::new_spanned(
             ident,
             format!("Type {} is no valid Pasture primitive type!", type_name),
@@ -173,9 +172,10 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
                     "u16" => Ok(PasturePrimitiveType::Vec3u16),
                     "f32" => Ok(PasturePrimitiveType::Vec3f32),
                     "f64" => Ok(PasturePrimitiveType::Vec3f64),
+                    "i32" => Ok(PasturePrimitiveType::Vec3i32),
                     _ => Err(Error::new_spanned(
                         ident,
-                        format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic argument(s) u8, u16, f32 or f64", type_name),
+                        format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic argument(s) u8, u16, i32, f32 or f64", type_name),
                     ))
                 },
                 "Vector4" => match type_name.as_str() {
@@ -185,7 +185,7 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
                         format!("Vector4<{}> is no valid Pasture primitive type. Vector4 is supported, but only for generic argument(s) u8", type_name),
                     ))
                 },
-                _ => Err(Error::new_spanned(ident, format!("Invalid type"))),
+                _ => Err(Error::new_spanned(ident, "Invalid type")),
             }
         }
         None => Err(Error::new_spanned(&type_path.path, "Invalid type")),
@@ -273,12 +273,10 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
                         "BUILTIN_POINT_ID" => Ok("PointID".into()),
                         "BUILTIN_NORMAL" => Ok("Normal".into()),
                         // TODO Other attributes
-                        _ => {
-                            return Err(Error::new_spanned(
-                                ident,
-                                format!("Unrecognized attribute name {}", ident_as_str),
-                            ))
-                        }
+                        _ => Err(Error::new_spanned(
+                            ident,
+                            format!("Unrecognized attribute name {}", ident_as_str),
+                        )),
                     }
                 }
                 syn::Meta::NameValue(name_value) => name_value
@@ -323,10 +321,7 @@ fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescr
                     primitive_type,
                 })
             }
-            ref bad => Err(Error::new_spanned(
-                bad,
-                format!("Invalid type in PointType struct"),
-            )),
+            ref bad => Err(Error::new_spanned(bad, "Invalid type in PointType struct")),
         })
         .collect::<Result<Vec<FieldLayoutDescription>>>()
 }
@@ -343,7 +338,7 @@ fn field_parameters(data: &Data, ident: &Ident) -> Result<Vec<FieldLayoutDescrip
         Data::Struct(struct_data) => get_field_layout_descriptions(&struct_data.fields),
         _ => Err(Error::new_spanned(
             ident,
-            format!("#[derive(PointType)] is only valid for structs"),
+            "#[derive(PointType)] is only valid for structs",
         )),
     }
 }
@@ -359,7 +354,7 @@ fn calculate_offsets_and_alignment(
         _ => {
             return Err(Error::new_spanned(
                 ident,
-                format!("#[derive(PointType)] is only valid for structs"),
+                "#[derive(PointType)] is only valid for structs",
             ))
         }
     };
@@ -440,10 +435,6 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
         return Error::new_spanned(input, "derive(PointType) is not valid for generic types")
             .to_compile_error()
             .into();
-        // let err = quote_spanned! {
-        //     input.generics.span() => compile_error!("derive(PointType) is not valid for generic types!")
-        // };
-        // return proc_macro::TokenStream::from(err);
     }
 
     let name = &input.ident;
@@ -466,7 +457,7 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
         let attribute_name = &field.attribute_name;
         let primitive_type = &field.primitive_type.as_token_stream();
         quote! {
-            pasture_core::layout::PointAttributeDefinition::custom(#attribute_name, #primitive_type).at_offset_in_type(#offset)
+            pasture_core::layout::PointAttributeDefinition::custom(std::borrow::Cow::Borrowed(#attribute_name), #primitive_type).at_offset_in_type(#offset)
         }
     });
 

@@ -5,7 +5,8 @@ use pasture_derive::PointType;
 /// This is a custom `PointType` that illustrates usage of the `#[derive(PointType)]` attribute.
 /// Any that that wants to implement `PointType` must fulfill the following requirements:
 ///
-/// - It must be at least one of `#[repr(C)]` and `#[repr(packed)]`
+/// - It must fulfill the requirements of [`bytemuck::AnyBitPattern`](https://docs.rs/bytemuck/latest/bytemuck/trait.AnyBitPattern.html) and [`bytemuck::NoUninit`](https://docs.rs/bytemuck/latest/bytemuck/trait.NoUninit.html), which generally means that the type will be `#[repr(C)]` and potentially `#[repr(packed)]` to prevent any padding bytes. It also means that the type only supports primitive types and does not support types that have invalid bit patterns (such as `bool` or enums)
+/// - Consequently, the type must implement both `Clone` and `Copy`
 /// - All its members may only be [Pasture primitive types](pasture_core::layout::PointAttributeDataType)
 /// - Each member must contain an attribute `#[pasture(X)]`, where `X` is either one of the builtin attributes explained below, or `attribute = "name"` for a custom attribute named `name`
 /// - No two members may share the same attribute name
@@ -39,8 +40,8 @@ use pasture_derive::PointType;
 /// # Custom attributes
 ///
 /// To associate a member of a custom `PointType` with a point attribute with custom `name`, use the `#[pasture(attribute = "name")]` attribute
-#[derive(PointType)]
-#[repr(C)]
+#[derive(PointType, Clone, Copy, bytemuck::NoUninit, bytemuck::AnyBitPattern)]
+#[repr(C, packed)]
 struct CustomPointType {
     #[pasture(BUILTIN_INTENSITY)]
     pub intensity: u16,

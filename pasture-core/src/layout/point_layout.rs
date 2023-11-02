@@ -1,4 +1,4 @@
-use std::{alloc::Layout, fmt::Display};
+use std::{alloc::Layout, borrow::Cow, fmt::Display, iter::FromIterator, ops::Range};
 
 use itertools::Itertools;
 use nalgebra::{Vector3, Vector4};
@@ -30,6 +30,16 @@ mod private {
 }
 
 /// Possible data types for individual point attributes
+///
+/// # Why no `bool` anymore?
+///
+/// Previous versions of pasture allowed `bool` as a `PointAttributeDataType`. This introduced undefined behavior (UB)
+/// into pasture since (contrary to C) there are only two valid bit patterns for `bool` in Rust (`0x0` and `0x1`). Hence,
+/// casting from a byte slice to a type containing `bool` values will result in UB unless we guarantee that the bytes
+/// are a valid bit pattern. In theory, these checks could be implemented, but they would have to be implemented everywhere
+/// where we deal with raw point bytes. Since pasture switched to the `bytemuck` crate for all byte casting, and `bytemuck`
+/// simply disallows slice-to-T casts for types that are not valid for any bit pattern, is was deemed that this is not worth
+/// the effort. If you need `bool`-like behavior, you can always use an `u8` type and check for `value != 0`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PointAttributeDataType {
     /// An unsigned 8-bit integer value, corresponding to Rusts `u8` type
@@ -52,26 +62,35 @@ pub enum PointAttributeDataType {
     F32,
     /// A double-precision floating point value, corresponding to Rusts `f64` type
     F64,
-    /// A boolean value, corresponding to Rusts `bool` type
-    Bool,
     /// A 3-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector3<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3u8,
     /// A 3-component vector storing unsigned 16-bit integer values. Corresponding to the `Vector3<u16>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3u16,
     /// A 3-component vector storing single-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3f32,
+    /// A 3-component vector storing singed 32-bit integer values. Corresponding to the `Vector3<i32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    Vec3i32,
     /// A 3-component vector storing double-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec3f64,
     /// A 4-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector4<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
     Vec4u8,
-    //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
-    //TODO Instead of representing each VecN<T> type as a separate literal, might it be possible to do: Vec3(PointAttributeDataType)?
-    //Not in that way of course, because of recursive datastructures, but something like that?
+    /// A raw byte array of a given size determined at runtime. This corresponds to the Rust type `[u8; N]`
+    ByteArray(u64),
+    /// A custom data type. This makes pasture extensible to types that it does not know. To use a custom type `T` with
+    /// pasture, implement the `PrimitiveType` trait for this type and have it return `PointAttributeDataType::Custom`
+    /// with the correct size and alignment
+    Custom {
+        size: u64,
+        min_alignment: u64,
+        name: &'static str,
+    }, //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
+       //TODO Instead of representing each VecN<T> type as a separate literal, might it be possible to do: Vec3(PointAttributeDataType)?
+       //Not in that way of course, because of recursive datastructures, but something like that?
 }
 
 impl PointAttributeDataType {
     /// Size of the associated `PointAttributeDataType`
-    pub fn size(&self) -> u64 {
+    pub const fn size(&self) -> u64 {
         match self {
             PointAttributeDataType::U8 => 1,
             PointAttributeDataType::I8 => 1,
@@ -83,12 +102,18 @@ impl PointAttributeDataType {
             PointAttributeDataType::I64 => 8,
             PointAttributeDataType::F32 => 4,
             PointAttributeDataType::F64 => 8,
-            PointAttributeDataType::Bool => 1,
             PointAttributeDataType::Vec3u8 => 3,
             PointAttributeDataType::Vec3u16 => 6,
+            PointAttributeDataType::Vec3i32 => 12,
             PointAttributeDataType::Vec3f32 => 12,
             PointAttributeDataType::Vec3f64 => 24,
             PointAttributeDataType::Vec4u8 => 4,
+            PointAttributeDataType::ByteArray(length) => *length,
+            PointAttributeDataType::Custom {
+                size,
+                min_alignment: _,
+                name: _,
+            } => *size,
         }
     }
 
@@ -105,12 +130,18 @@ impl PointAttributeDataType {
             PointAttributeDataType::I64 => std::mem::align_of::<i64>(),
             PointAttributeDataType::F32 => std::mem::align_of::<f32>(),
             PointAttributeDataType::F64 => std::mem::align_of::<f64>(),
-            PointAttributeDataType::Bool => std::mem::align_of::<bool>(),
             PointAttributeDataType::Vec3u8 => std::mem::align_of::<Vector3<u8>>(),
             PointAttributeDataType::Vec3u16 => std::mem::align_of::<Vector3<u16>>(),
+            PointAttributeDataType::Vec3i32 => std::mem::align_of::<Vector3<i32>>(),
             PointAttributeDataType::Vec3f32 => std::mem::align_of::<Vector3<f32>>(),
             PointAttributeDataType::Vec3f64 => std::mem::align_of::<Vector3<f64>>(),
             PointAttributeDataType::Vec4u8 => std::mem::align_of::<Vector4<u8>>(),
+            PointAttributeDataType::ByteArray(_) => 1,
+            PointAttributeDataType::Custom {
+                size: _,
+                min_alignment,
+                name: _,
+            } => *min_alignment as usize,
         };
         align as u64
     }
@@ -129,19 +160,25 @@ impl Display for PointAttributeDataType {
             PointAttributeDataType::I64 => write!(f, "I64"),
             PointAttributeDataType::F32 => write!(f, "F32"),
             PointAttributeDataType::F64 => write!(f, "F64"),
-            PointAttributeDataType::Bool => write!(f, "Bool"),
             PointAttributeDataType::Vec3u8 => write!(f, "Vec3<u8>"),
             PointAttributeDataType::Vec3u16 => write!(f, "Vec3<u16>"),
+            PointAttributeDataType::Vec3i32 => write!(f, "Vec3<i32>"),
             PointAttributeDataType::Vec3f32 => write!(f, "Vec3<f32>"),
             PointAttributeDataType::Vec3f64 => write!(f, "Vec3<f64>"),
-            &PointAttributeDataType::Vec4u8 => write!(f, "Vec4<u8>"),
+            PointAttributeDataType::Vec4u8 => write!(f, "Vec4<u8>"),
+            PointAttributeDataType::ByteArray(length) => write!(f, "ByteArray[{length}]"),
+            PointAttributeDataType::Custom {
+                size: _,
+                min_alignment: _,
+                name,
+            } => write!(f, "{name}"),
         }
     }
 }
 
 /// Marker trait for all types that can be used as primitive types within a `PointAttributeDefinition`. It provides a mapping
 /// between Rust types and the `PointAttributeDataType` enum.
-pub trait PrimitiveType: Copy + private::Sealed {
+pub trait PrimitiveType: Copy + bytemuck::Pod {
     /// Returns the corresponding `PointAttributeDataType` for the implementing type
     fn data_type() -> PointAttributeDataType;
 }
@@ -196,11 +233,6 @@ impl PrimitiveType for f64 {
         PointAttributeDataType::F64
     }
 }
-impl PrimitiveType for bool {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Bool
-    }
-}
 impl PrimitiveType for Vector3<u8> {
     fn data_type() -> PointAttributeDataType {
         PointAttributeDataType::Vec3u8
@@ -209,6 +241,11 @@ impl PrimitiveType for Vector3<u8> {
 impl PrimitiveType for Vector3<u16> {
     fn data_type() -> PointAttributeDataType {
         PointAttributeDataType::Vec3u16
+    }
+}
+impl PrimitiveType for Vector3<i32> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3i32
     }
 }
 impl PrimitiveType for Vector3<f32> {
@@ -242,7 +279,7 @@ const_assert!(std::mem::size_of::<Vector4<u8>>() == 4);
 /// attributes (e.g. POSITION_3D, INTENSITY, GPS_TIME etc.) and custom attributes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointAttributeDefinition {
-    name: &'static str,
+    name: Cow<'static, str>,
     datatype: PointAttributeDataType,
 }
 
@@ -250,38 +287,43 @@ impl PointAttributeDefinition {
     /// Creates a new custom PointAttributeDefinition with the given name and data type
     /// ```
     /// # use pasture_core::layout::*;
-    /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
+    /// # use std::borrow::Cow;
+    /// let custom_attribute = PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::F32);
     /// # assert_eq!(custom_attribute.name(), "Custom");
     /// # assert_eq!(custom_attribute.datatype(), PointAttributeDataType::F32);
     /// ```
-    pub const fn custom(name: &'static str, datatype: PointAttributeDataType) -> Self {
+    pub const fn custom(name: Cow<'static, str>, datatype: PointAttributeDataType) -> Self {
         Self { name, datatype }
     }
 
     /// Returns the name of this PointAttributeDefinition
     /// ```
     /// # use pasture_core::layout::*;
-    /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
+    /// # use std::borrow::Cow;
+    /// let custom_attribute = PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::F32);
     /// let name = custom_attribute.name();
     /// # assert_eq!(name, "Custom");
     /// ```
-    pub fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Returns the datatype of this PointAttributeDefinition
     /// ```
     /// # use pasture_core::layout::*;
-    /// let custom_attribute = PointAttributeDefinition::custom("Custom", PointAttributeDataType::F32);
+    /// # use std::borrow::Cow;
+    /// let custom_attribute = PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::F32);
     /// let datatype = custom_attribute.datatype();
     /// # assert_eq!(datatype, PointAttributeDataType::F32);
     /// ```
-    pub fn datatype(&self) -> PointAttributeDataType {
+    #[inline]
+    pub const fn datatype(&self) -> PointAttributeDataType {
         self.datatype
     }
 
     /// Returns the size in bytes of this attribute
-    pub fn size(&self) -> u64 {
+    #[inline]
+    pub const fn size(&self) -> u64 {
         self.datatype.size()
     }
 
@@ -292,9 +334,9 @@ impl PointAttributeDefinition {
     /// # assert_eq!(custom_position_attribute.name(), attributes::POSITION_3D.name());
     /// # assert_eq!(custom_position_attribute.datatype(), PointAttributeDataType::Vec3f32);
     /// ```
-    pub const fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
+    pub fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
         Self {
-            name: self.name,
+            name: self.name.clone(),
             datatype: new_datatype,
         }
     }
@@ -311,9 +353,9 @@ impl PointAttributeDefinition {
     /// ```
     pub fn at_offset_in_type(&self, offset: u64) -> PointAttributeMember {
         PointAttributeMember {
-            datatype: self.datatype,
-            name: self.name,
+            attribute_definition: self.clone(),
             offset,
+            size: self.size(),
         }
     }
 }
@@ -324,31 +366,13 @@ impl Display for PointAttributeDefinition {
     }
 }
 
-impl From<PointAttributeMember> for PointAttributeDefinition {
-    fn from(attribute: PointAttributeMember) -> Self {
-        Self {
-            datatype: attribute.datatype,
-            name: attribute.name,
-        }
-    }
-}
-
-impl From<&PointAttributeMember> for PointAttributeDefinition {
-    fn from(attribute: &PointAttributeMember) -> Self {
-        Self {
-            datatype: attribute.datatype,
-            name: attribute.name,
-        }
-    }
-}
-
 /// A point attribute within a `PointType` structure. This is similar to a `PointAttributeDefinition`, but includes the
 /// offset of the member within the structure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointAttributeMember {
-    name: &'static str,
-    datatype: PointAttributeDataType,
+    attribute_definition: PointAttributeDefinition,
     offset: u64,
+    size: u64,
 }
 
 impl PointAttributeMember {
@@ -362,9 +386,12 @@ impl PointAttributeMember {
     /// ```
     pub fn custom(name: &'static str, datatype: PointAttributeDataType, offset: u64) -> Self {
         Self {
-            name,
-            datatype,
+            attribute_definition: PointAttributeDefinition {
+                name: Cow::Borrowed(name),
+                datatype,
+            },
             offset,
+            size: datatype.size(),
         }
     }
 
@@ -375,8 +402,8 @@ impl PointAttributeMember {
     /// let name = custom_attribute.name();
     /// # assert_eq!(name, "Custom");
     /// ```
-    pub fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        self.attribute_definition.name()
     }
 
     /// Returns the datatype of the associated `PointAttributeMember`
@@ -386,8 +413,9 @@ impl PointAttributeMember {
     /// let datatype = custom_attribute.datatype();
     /// # assert_eq!(datatype, PointAttributeDataType::F32);
     /// ```
-    pub fn datatype(&self) -> PointAttributeDataType {
-        self.datatype
+    #[inline]
+    pub const fn datatype(&self) -> PointAttributeDataType {
+        self.attribute_definition.datatype()
     }
 
     /// Returns the byte offset of the associated `PointAttributeMember`
@@ -397,30 +425,27 @@ impl PointAttributeMember {
     /// let offset = custom_attribute.offset();
     /// # assert_eq!(offset, 8);
     /// ```
-    pub fn offset(&self) -> u64 {
+    #[inline]
+    pub const fn offset(&self) -> u64 {
         self.offset
     }
 
+    /// Returns the underlying `PointAttributeDefinition` for the associated `PointAttributeMember`
+    pub fn attribute_definition(&self) -> &PointAttributeDefinition {
+        &self.attribute_definition
+    }
+
     /// Returns the size in bytes of the associated `PointAttributeMember`
-    pub fn size(&self) -> u64 {
-        match self.datatype {
-            PointAttributeDataType::Bool => 1,
-            PointAttributeDataType::F32 => 4,
-            PointAttributeDataType::F64 => 8,
-            PointAttributeDataType::I8 => 1,
-            PointAttributeDataType::I16 => 2,
-            PointAttributeDataType::I32 => 4,
-            PointAttributeDataType::I64 => 8,
-            PointAttributeDataType::U8 => 1,
-            PointAttributeDataType::U16 => 2,
-            PointAttributeDataType::U32 => 4,
-            PointAttributeDataType::U64 => 8,
-            PointAttributeDataType::Vec3f32 => 3 * 4,
-            PointAttributeDataType::Vec3f64 => 3 * 8,
-            PointAttributeDataType::Vec3u16 => 3 * 2,
-            PointAttributeDataType::Vec3u8 => 3,
-            PointAttributeDataType::Vec4u8 => 4,
-        }
+    #[inline]
+    pub const fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// Returns the byte range within the `PointType` for this attribute
+    pub fn byte_range_within_point(&self) -> Range<usize> {
+        let start = self.offset as usize;
+        let end = start + self.size() as usize;
+        start..end
     }
 }
 
@@ -429,110 +454,114 @@ impl Display for PointAttributeMember {
         write!(
             f,
             "[{};{} @ offset {}]",
-            self.name, self.datatype, self.offset
+            self.name(),
+            self.datatype(),
+            self.offset
         )
     }
 }
 
-impl PartialEq for PointAttributeMember {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.datatype == other.datatype
-    }
-}
+// impl PartialEq for PointAttributeMember {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.name == other.name && self.datatype == other.datatype
+//     }
+// }
 
-impl Eq for PointAttributeMember {}
+// impl Eq for PointAttributeMember {}
 
 /// Module containing default attribute definitions
 pub mod attributes {
+    use std::borrow::Cow;
+
     use super::{PointAttributeDataType, PointAttributeDefinition};
 
     /// Attribute definition for a 3D position. Default datatype is Vec3f64
     pub const POSITION_3D: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Position3D",
+        name: Cow::Borrowed("Position3D"),
         datatype: PointAttributeDataType::Vec3f64,
     };
 
     /// Attribute definition for an intensity value. Default datatype is U16
     pub const INTENSITY: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Intensity",
+        name: Cow::Borrowed("Intensity"),
         datatype: PointAttributeDataType::U16,
     };
 
     /// Attribute definition for a return number. Default datatype is U8
     pub const RETURN_NUMBER: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ReturnNumber",
+        name: Cow::Borrowed("ReturnNumber"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the number of returns. Default datatype is U8
     pub const NUMBER_OF_RETURNS: PointAttributeDefinition = PointAttributeDefinition {
-        name: "NumberOfReturns",
+        name: Cow::Borrowed("NumberOfReturns"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the classification flags. Default datatype is U8
     pub const CLASSIFICATION_FLAGS: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ClassificationFlags",
+        name: Cow::Borrowed("ClassificationFlags"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the scanner channel. Default datatype is U8
     pub const SCANNER_CHANNEL: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScannerChannel",
+        name: Cow::Borrowed("ScannerChannel"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for a scan direction flag. Default datatype is Bool
     pub const SCAN_DIRECTION_FLAG: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScanDirectionFlag",
-        datatype: PointAttributeDataType::Bool,
+        name: Cow::Borrowed("ScanDirectionFlag"),
+        datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for an edge of flight line flag. Default datatype is Bool
     pub const EDGE_OF_FLIGHT_LINE: PointAttributeDefinition = PointAttributeDefinition {
-        name: "EdgeOfFlightLine",
-        datatype: PointAttributeDataType::Bool,
+        name: Cow::Borrowed("EdgeOfFlightLine"),
+        datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for a classification. Default datatype is U8
     pub const CLASSIFICATION: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Classification",
+        name: Cow::Borrowed("Classification"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for a scan angle rank. Default datatype is I8
     pub const SCAN_ANGLE_RANK: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScanAngleRank",
+        name: Cow::Borrowed("ScanAngleRank"),
         datatype: PointAttributeDataType::I8,
     };
 
     /// Attribute definition for a scan angle with extended precision (like in LAS format 1.4). Default datatype is I16
     pub const SCAN_ANGLE: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ScanAngle",
+        name: Cow::Borrowed("ScanAngle"),
         datatype: PointAttributeDataType::I16,
     };
 
     /// Attribute definition for a user data field. Default datatype is U8
     pub const USER_DATA: PointAttributeDefinition = PointAttributeDefinition {
-        name: "UserData",
+        name: Cow::Borrowed("UserData"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for a point source ID. Default datatype is U16
     pub const POINT_SOURCE_ID: PointAttributeDefinition = PointAttributeDefinition {
-        name: "PointSourceID",
+        name: Cow::Borrowed("PointSourceID"),
         datatype: PointAttributeDataType::U16,
     };
 
     /// Attribute definition for an RGB color. Default datatype is Vec3u16
     pub const COLOR_RGB: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ColorRGB",
+        name: Cow::Borrowed("ColorRGB"),
         datatype: PointAttributeDataType::Vec3u16,
     };
 
     /// Attribute definition for a GPS timestamp. Default datatype is F64
     pub const GPS_TIME: PointAttributeDefinition = PointAttributeDefinition {
-        name: "GpsTime",
+        name: Cow::Borrowed("GpsTime"),
         datatype: PointAttributeDataType::F64,
     };
 
@@ -540,49 +569,49 @@ pub mod attributes {
     /// TODO NIR semantically belongs to the color attributes, so there should be a separate
     /// attribute for 4-channel color that includes NIR!
     pub const NIR: PointAttributeDefinition = PointAttributeDefinition {
-        name: "NIR",
+        name: Cow::Borrowed("NIR"),
         datatype: PointAttributeDataType::U16,
     };
 
     /// Attribute definition for the wave packet descriptor index in the LAS format. Default datatype is U8
     pub const WAVE_PACKET_DESCRIPTOR_INDEX: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WavePacketDescriptorIndex",
+        name: Cow::Borrowed("WavePacketDescriptorIndex"),
         datatype: PointAttributeDataType::U8,
     };
 
     /// Attribute definition for the offset to the waveform data in the LAS format. Default datatype is U64
     pub const WAVEFORM_DATA_OFFSET: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WaveformDataOffset",
+        name: Cow::Borrowed("WaveformDataOffset"),
         datatype: PointAttributeDataType::U64,
     };
 
     /// Attribute definition for the size of a waveform data packet in the LAS format. Default datatype is U32
     pub const WAVEFORM_PACKET_SIZE: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WaveformPacketSize",
+        name: Cow::Borrowed("WaveformPacketSize"),
         datatype: PointAttributeDataType::U32,
     };
 
     /// Attribute definition for the return point waveform location in the LAS format. Default datatype is F32
     pub const RETURN_POINT_WAVEFORM_LOCATION: PointAttributeDefinition = PointAttributeDefinition {
-        name: "ReturnPointWaveformLocation",
+        name: Cow::Borrowed("ReturnPointWaveformLocation"),
         datatype: PointAttributeDataType::F32,
     };
 
     /// Attribute definition for the waveform parameters in the LAS format. Default datatype is Vector3<f32>
     pub const WAVEFORM_PARAMETERS: PointAttributeDefinition = PointAttributeDefinition {
-        name: "WaveformParameters",
+        name: Cow::Borrowed("WaveformParameters"),
         datatype: PointAttributeDataType::Vec3f32,
     };
 
     /// Attribute definition for a point ID. Default datatype is U64
     pub const POINT_ID: PointAttributeDefinition = PointAttributeDefinition {
-        name: "PointID",
+        name: Cow::Borrowed("PointID"),
         datatype: PointAttributeDataType::U64,
     };
 
     /// Attribute definition for a 3D point normal. Default datatype is Vec3f32
     pub const NORMAL: PointAttributeDefinition = PointAttributeDefinition {
-        name: "Normal",
+        name: Cow::Borrowed("Normal"),
         datatype: PointAttributeDataType::Vec3f32,
     };
 }
@@ -633,7 +662,7 @@ pub enum FieldAlignment {
 /// To support the different memory layouts, Pasture buffers store point data as raw binary buffers internally. To work with the data,
 /// you will want to use strongly typed Rust structures. Any type `T` that you want to use for accessing point data in a strongly typed manner
 /// must implement the `PointType` trait and thus provide Pasture with a way of figuring out the attributes and memory layout of this type `T`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PointLayout {
     attributes: Vec<PointAttributeMember>,
     memory_layout: Layout,
@@ -655,11 +684,7 @@ impl PointLayout {
     /// # assert_eq!(attributes::POSITION_3D.size(), layout.at(1).offset());
     /// ```
     pub fn from_attributes(attributes: &[PointAttributeDefinition]) -> Self {
-        let mut layout = Self::default();
-        for attribute in attributes {
-            layout.add_attribute(attribute.clone(), FieldAlignment::Default);
-        }
-        layout
+        attributes.iter().cloned().collect()
     }
 
     /// Creates a new PointLayout from the given sequence of attributes. The attributes will be aligned to a 1 byte boundary
@@ -903,7 +928,7 @@ impl PointLayout {
     /// assert_eq!(attributes::POSITION_3D.at_offset_in_type(0), *attributes[0]);
     /// assert_eq!(attributes::INTENSITY.at_offset_in_type(24), *attributes[1]);
     /// ```
-    pub fn attributes<'a>(&'a self) -> impl Iterator<Item = &'a PointAttributeMember> + 'a {
+    pub fn attributes(&self) -> impl Iterator<Item = &PointAttributeMember> {
         self.attributes.iter()
     }
 
@@ -918,7 +943,8 @@ impl PointLayout {
     /// // has an 8-byte minimum alignment, so the whole PointLayout is aligned to an 8-byte boundary. This is reflected in its size:
     /// assert_eq!(32, layout.size_of_point_entry());
     /// ```
-    pub fn size_of_point_entry(&self) -> u64 {
+    #[inline]
+    pub const fn size_of_point_entry(&self) -> u64 {
         self.memory_layout.size() as u64
     }
 
@@ -1014,6 +1040,16 @@ impl Default for PointLayout {
     }
 }
 
+impl FromIterator<PointAttributeDefinition> for PointLayout {
+    fn from_iter<T: IntoIterator<Item = PointAttributeDefinition>>(iter: T) -> Self {
+        let mut layout = Self::default();
+        for attribute in iter.into_iter() {
+            layout.add_attribute(attribute.clone(), FieldAlignment::Default);
+        }
+        layout
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::layout::{
@@ -1024,7 +1060,9 @@ mod tests {
     use super::*;
     use pasture_derive::PointType;
 
-    #[derive(Debug, PointType, Copy, Clone, PartialEq)]
+    #[derive(
+        Debug, PointType, Copy, Clone, PartialEq, bytemuck::NoUninit, bytemuck::AnyBitPattern,
+    )]
     #[repr(C, packed)]
     struct TestPoint1 {
         #[pasture(BUILTIN_POSITION_3D)]

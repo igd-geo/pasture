@@ -1,4 +1,3 @@
-use crate::containers::InterleavedPointView;
 use crate::layout::conversion::get_converter_for_attributes;
 use crate::layout::{PointAttributeDefinition, PointLayout, PrimitiveType};
 use anyhow::{bail, Context, Result};
@@ -24,10 +23,7 @@ pub trait UntypedPoint {
         value_byte_slice: &[u8],
     ) -> Result<()>;
     /// Gets the data from an attribute and converts it to an `PrimitiveType`.
-    fn get_attribute<'point, T: PrimitiveType>(
-        &'point self,
-        attribute: &PointAttributeDefinition,
-    ) -> Result<T>;
+    fn get_attribute<T: PrimitiveType>(&self, attribute: &PointAttributeDefinition) -> Result<T>;
     /// Sets the data from an attribute with an `PrimitiveType`.
     fn set_attribute<T: PrimitiveType>(
         &mut self,
@@ -38,9 +34,8 @@ pub trait UntypedPoint {
     fn get_layout(&self) -> &PointLayout;
     // To handle byte manipulation.
     fn get_cursor(&mut self) -> Cursor<&mut [u8]>;
-    /// Gets an `InterleavedPointView` of the point.
-    /// This can help to create `PointBuffer`.
-    fn get_interleaved_point_view(&self) -> InterleavedPointView;
+    /// Access the underlying memory buffer of the untyped point
+    fn get_buffer(&self) -> &[u8];
 }
 
 /// An implementaion of `UntypedPoint` trait that has an internal buffer.
@@ -77,7 +72,6 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
         &mut self,
         attribute: &PointAttributeDefinition,
         value_byte_slice: &[u8],
-
     ) -> Result<()> {
         let attribute = self
             .layout
@@ -96,18 +90,15 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
         self.layout
     }
 
+    fn get_buffer(&self) -> &[u8] {
+        &self.buffer
+    }
+
     fn get_cursor(&mut self) -> Cursor<&mut [u8]> {
         Cursor::new(&mut self.buffer)
     }
 
-    fn get_interleaved_point_view(&self) -> InterleavedPointView {
-        InterleavedPointView::from_raw_slice(&self.buffer, self.layout.clone())
-    }
-
-    fn get_attribute<'point, T: PrimitiveType>(
-        &'point self,
-        attribute: &PointAttributeDefinition,
-    ) -> Result<T> {
+    fn get_attribute<T: PrimitiveType>(&self, attribute: &PointAttributeDefinition) -> Result<T> {
         let mut target_attribute = MaybeUninit::<T>::uninit();
         let source_attribute_byte_slice = self.get_raw_attribute(attribute)?;
         // access via [u8] slice
@@ -182,10 +173,7 @@ impl<'point> UntypedPointSlice<'point> {
 }
 
 impl UntypedPoint for UntypedPointSlice<'_> {
-    fn get_attribute<'point, T: PrimitiveType>(
-        &'point self,
-        attribute: &PointAttributeDefinition,
-    ) -> Result<T> {
+    fn get_attribute<T: PrimitiveType>(&self, attribute: &PointAttributeDefinition) -> Result<T> {
         let mut target_attribute = MaybeUninit::<T>::uninit();
         let source_attribute_byte_slice = self.get_raw_attribute(attribute)?;
         // access via [u8] slice
@@ -251,7 +239,7 @@ impl UntypedPoint for UntypedPointSlice<'_> {
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
         let start = attribute.offset() as usize;
-        let end = start as usize + attribute.datatype().size() as usize;
+        let end = start + attribute.datatype().size() as usize;
         if self.slice.len() < end {
             bail!("Buffer size to small.");
         }
@@ -267,8 +255,8 @@ impl UntypedPoint for UntypedPointSlice<'_> {
         Cursor::new(self.slice)
     }
 
-    fn get_interleaved_point_view(&self) -> InterleavedPointView {
-        InterleavedPointView::from_raw_slice(&self.slice, self.layout.clone())
+    fn get_buffer(&self) -> &[u8] {
+        self.slice
     }
 
     fn set_attribute<T: PrimitiveType>(
@@ -365,9 +353,7 @@ mod tests {
         let mut point = UntypedPointSlice::new(&layout, &mut buffer);
         let intensity_value: u16 = 42;
 
-        let offset = layout
-            .offset_of(&attributes::INTENSITY)
-            .unwrap();
+        let offset = layout.offset_of(&attributes::INTENSITY).unwrap();
         // Write
         let mut cursor = point.get_cursor();
         cursor.set_position(offset);
@@ -411,23 +397,11 @@ mod tests {
         point.set_attribute(&attributes::INTENSITY, &intensity_value)?;
         point.set_attribute(&attributes::POSITION_3D, &position)?;
         // Readback
-        let intencity_from_point = point.get_attribute::<u16>(&attributes::INTENSITY)?;
+        let intensity_from_point = point.get_attribute::<u16>(&attributes::INTENSITY)?;
         let position_from_point = point.get_attribute::<Vector3<f32>>(&attributes::POSITION_3D)?;
 
-        assert_eq!(intensity_value, intencity_from_point as u16);
+        assert_eq!(intensity_value, intensity_from_point);
         assert_eq!(position, position_from_point);
         Ok(())
-    }
-
-    #[test]
-    #[should_panic(expected = "Invalid conversion")]
-    fn test_error_invalid_conversion() {
-        let layout =
-            PointLayout::from_attributes(&[attributes::POSITION_3D, attributes::INTENSITY]);
-        let mut point = UntypedPointBuffer::new(&layout);
-        let intensity_value: f32 = 42.0;
-        point
-            .set_attribute(&attributes::INTENSITY, &intensity_value)
-            .unwrap();
     }
 }

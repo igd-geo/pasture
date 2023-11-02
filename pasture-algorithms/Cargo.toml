@@ -1,6 +1,6 @@
 [package]
 name = "pasture-algorithms"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
 license-file = "LICENSE"
@@ -12,15 +12,16 @@ categories = ["data-structures", "algorithms"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = { version = "=0.3.0", path = "../pasture-core" }
+pasture-core = { version = "=0.4.0", path = "../pasture-core" }
+pasture-derive = { version = "=0.4.0", path = "../pasture-derive" }
 anyhow = "1.0.34"
-pasture-derive = { version = "=0.2.0", path = "../pasture-derive" }
 rand = "0.8.3"
 rayon = "1.5"
 typenum = "1.13.0"
 kd-tree = "0.3.0"
 num-traits = "0.2.14"
 getrandom = {version = "0.2.5", features = ["js"]}
+bytemuck = { version = "1.5.1" }
 
 # Some algorithms/dependencies are not supported on wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

@@ -2,12 +2,9 @@
 use core::panic;
 use kd_tree::{self, KdPoint, KdTree};
 use num_traits::{self};
-use pasture_core::containers::{PointBufferWriteable, PointBufferWriteableExt, OwningPointBuffer};
+use pasture_core::containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, OwningBuffer};
 use pasture_core::layout::{attributes::POSITION_3D, PointType};
-use pasture_core::{
-    containers::{PerAttributeVecPointStorage, PointBuffer, PointBufferExt},
-    nalgebra::{DMatrix, Vector3},
-};
+use pasture_core::nalgebra::{DMatrix, Vector3};
 use std::result::Result;
 
 /// Normal Estimation Algorithm
@@ -29,8 +26,8 @@ use std::result::Result;
 /// # use pasture_derive::PointType;
 /// # use typenum;
 ///
-/// #[repr(C)]
-/// #[derive(PointType, Debug, Clone, Copy)]
+/// #[repr(C, packed)]
+/// #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///     pub position: Vector3<f64>,
@@ -41,7 +38,8 @@ use std::result::Result;
 ///     type Scalar = f64;
 ///     type Dim = typenum::U3;
 ///     fn at(&self, k: usize) -> f64 {
-///         return self.position[k];
+///         let position = self.position;
+///         position[k]
 ///     }
 /// }
 /// fn main() {
@@ -64,11 +62,9 @@ use std::result::Result;
 ///         },
 ///     ];
 ///
-///     let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+///     let interleaved = points.into_iter().collect::<VectorBuffer>();
 ///
-///     interleaved.push_points(points.as_slice());
-///
-///     let solution_vec = compute_normals::<InterleavedVecPointStorage, SimplePoint>(&interleaved, 4);
+///     let solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 4);
 ///     for solution in solution_vec {
 ///    println!(
 ///        "Point: {:?}, n_x: {}, n_y: {}, n_z: {}, curvature: {}",
@@ -78,8 +74,8 @@ use std::result::Result;
 /// }
 /// ```
 
-pub fn compute_normals<T: PointBuffer, P: PointType + KdPoint + Copy>(
-    point_cloud: &T,
+pub fn compute_normals<'a, T: BorrowedBuffer<'a>, P: PointType + KdPoint + Copy>(
+    point_cloud: &'a T,
     k_nn: usize,
 ) -> Vec<(Vector3<f64>, f64)>
 where
@@ -96,8 +92,8 @@ where
     let mut points_with_normals_curvature = vec![];
 
     // transform point cloud in vector of points
-    let mut points : Vec<[f64; 3]> = vec![];
-    for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+    let mut points: Vec<[f64; 3]> = vec![];
+    for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
         points.push(*point.as_ref());
     }
 
@@ -105,20 +101,17 @@ where
     let cloud_as_kd_tree = KdTree::build_by_ordered_float(points);
 
     // iterate over all points in the point cloud and and calculate the k nearest neighbors with the constructed kd tree
-    for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
-        let r : &[f64; 3] = point.as_ref();
+    for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
+        let r: &[f64; 3] = point.as_ref();
         let nearest_points = cloud_as_kd_tree.nearests(r, k_nn);
 
         // stores the k nearest neighbors in a PointStorage
-        let mut k_nn_buffer = PerAttributeVecPointStorage::with_capacity(
-            nearest_points.len(),
-            point_cloud.point_layout().clone(),
-        );
+        let mut k_nn_buffer =
+            HashMapBuffer::with_capacity(nearest_points.len(), point_cloud.point_layout().clone());
         k_nn_buffer.resize(nearest_points.len());
 
         for (index, point) in nearest_points.iter().enumerate() {
-            k_nn_buffer.set_attribute(
-                &POSITION_3D,
+            k_nn_buffer.view_attribute_mut(&POSITION_3D).set_at(
                 index,
                 Vector3::new(point.item[0], point.item[1], point.item[2]),
             );
@@ -131,17 +124,17 @@ where
         points_with_normals_curvature.push((surface_normal, curvature));
     }
 
-    return points_with_normals_curvature;
+    points_with_normals_curvature
 }
 
 /// checks whether a given point cloud has points with coordinates that are Not a Number
-fn is_dense<T: PointBuffer>(point_cloud: &T) -> bool {
-    for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+fn is_dense<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> bool {
+    for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
         if point.x.is_nan() || point.y.is_nan() || point.z.is_nan() {
             return false;
         }
     }
-    return true;
+    true
 }
 
 /// checks whether a given point has finite coordinates
@@ -149,7 +142,7 @@ fn is_finite(point: &Vector3<f64>) -> bool {
     if point.x.is_finite() && point.y.is_finite() && point.z.is_finite() {
         return true;
     }
-    return false;
+    false
 }
 
 /// Computes the centroid for a given point cloud.
@@ -168,8 +161,8 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::normal_estimation::compute_centroid;
 ///
-/// #[repr(C)]
-/// #[derive(PointType, Debug)]
+/// #[repr(C, packed)]
+/// #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
 ///     #[pasture(BUILTIN_POSITION_3D)]
 ///     pub position: Vector3<f64>,
@@ -195,14 +188,12 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 ///     },
 /// ];
 
-/// let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
-
-/// interleaved.push_points(points.as_slice());
+/// let interleaved = points.into_iter().collect::<VectorBuffer>();
 
 /// let centroid = compute_centroid(&interleaved);
 ///
 /// ```
-pub fn compute_centroid<T: PointBuffer>(point_cloud: &T) -> Vector3<f64> {
+pub fn compute_centroid<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> Vector3<f64> {
     if point_cloud.is_empty() {
         panic!("The point cloud is empty!");
     }
@@ -212,7 +203,7 @@ pub fn compute_centroid<T: PointBuffer>(point_cloud: &T) -> Vector3<f64> {
 
     if is_dense(point_cloud) {
         // add all points up
-        for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+        for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
             temp_centroid[0] += point.x;
             temp_centroid[1] += point.y;
             temp_centroid[2] += point.z;
@@ -224,13 +215,13 @@ pub fn compute_centroid<T: PointBuffer>(point_cloud: &T) -> Vector3<f64> {
         centroid[2] = temp_centroid[2] / point_cloud.len() as f64;
     } else {
         let mut points_in_cloud = 0;
-        for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+        for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
             if is_finite(&point) {
                 // add all points up
                 temp_centroid[0] += point.x;
                 temp_centroid[1] += point.y;
                 temp_centroid[2] += point.z;
-                points_in_cloud = points_in_cloud + 1;
+                points_in_cloud += 1;
             }
         }
 
@@ -240,12 +231,12 @@ pub fn compute_centroid<T: PointBuffer>(point_cloud: &T) -> Vector3<f64> {
         centroid[2] = temp_centroid[2] / points_in_cloud as f64;
     }
 
-    return centroid;
+    centroid
 }
 
 /// compute the covariance matrix for a given point cloud which is a measure of spread out the points are
-fn compute_covariance_matrix<T: PointBuffer>(
-    point_cloud: &T,
+fn compute_covariance_matrix<'a, T: BorrowedBuffer<'a>>(
+    point_cloud: &'a T,
 ) -> Result<DMatrix<f64>, &'static str> {
     let mut covariance_matrix = DMatrix::<f64>::zeros(3, 3);
     let mut point_count = 0;
@@ -256,7 +247,7 @@ fn compute_covariance_matrix<T: PointBuffer>(
     if is_dense(point_cloud) {
         point_count = point_cloud.len();
         let mut diff_mean = Vector3::<f64>::zeros();
-        for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+        for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
             // calculate difference from the centroid for each point
             diff_mean[0] = point.x - centroid[0];
             diff_mean[1] = point.y - centroid[1];
@@ -267,7 +258,7 @@ fn compute_covariance_matrix<T: PointBuffer>(
             covariance_matrix[(2, 2)] += diff_mean[2] * diff_mean[2];
 
             let diff_x = diff_mean[0];
-            diff_mean.iter_mut().for_each(|x| *x = *x * diff_x);
+            diff_mean.iter_mut().for_each(|x| *x *= diff_x);
 
             covariance_matrix[(0, 0)] += diff_mean[0];
             covariance_matrix[(0, 1)] += diff_mean[1];
@@ -275,7 +266,7 @@ fn compute_covariance_matrix<T: PointBuffer>(
         }
     } else {
         // in this case we dont know the number of points in the point cloud that are finite
-        for point in point_cloud.iter_attribute::<Vector3<f64>>(&POSITION_3D) {
+        for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
             if !is_finite(&point) {
                 continue;
             }
@@ -291,12 +282,12 @@ fn compute_covariance_matrix<T: PointBuffer>(
             covariance_matrix[(2, 2)] += diff_mean[2] * diff_mean[2];
 
             let diff_x = diff_mean[0];
-            diff_mean.iter_mut().for_each(|x| *x = *x * diff_x);
+            diff_mean.iter_mut().for_each(|x| *x *= diff_x);
 
             covariance_matrix[(0, 0)] += diff_mean[0];
             covariance_matrix[(0, 1)] += diff_mean[1];
             covariance_matrix[(0, 2)] += diff_mean[2];
-            point_count = point_count + 1;
+            point_count += 1;
         }
     }
 
@@ -308,7 +299,7 @@ fn compute_covariance_matrix<T: PointBuffer>(
     covariance_matrix[(2, 0)] = covariance_matrix[(0, 2)];
     covariance_matrix[(2, 1)] = covariance_matrix[(1, 2)];
 
-    return Ok(covariance_matrix);
+    Ok(covariance_matrix)
 }
 
 /// find the eigen value solution if the highest degree of the polynomial is 2
@@ -328,7 +319,7 @@ fn solve_polynomial_quadratic(coefficient_2: f64, coefficient_1: f64) -> Vector3
     eigen_values[2] = 0.5 * (coefficient_2 + sqrt_delta);
     eigen_values[1] = 0.5 * (coefficient_2 - sqrt_delta);
 
-    return eigen_values;
+    eigen_values
 }
 
 /// solve the polynomial to find the eigen values for a given covariance matrix
@@ -351,7 +342,7 @@ fn solve_polynomial(covariance_matrix: &DMatrix<f64>) -> Vector3<f64> {
 
     // check if one eigen value solution is zero
     if coefficient_0.abs() < std::f64::EPSILON {
-        return solve_polynomial_quadratic(coefficient_2, coefficient_1);
+        solve_polynomial_quadratic(coefficient_2, coefficient_1)
     } else {
         let mut eigen_values = Vector3::<f64>::zeros();
 
@@ -391,19 +382,20 @@ fn solve_polynomial(covariance_matrix: &DMatrix<f64>) -> Vector3<f64> {
 
         // if the smallest eigen value is zero or less the solution is a quadratic
         if eigen_values[0] <= 0.0 {
-            return solve_polynomial_quadratic(coefficient_2, coefficient_1);
+            solve_polynomial_quadratic(coefficient_2, coefficient_1)
         } else {
-            return eigen_values;
+            eigen_values
         }
     }
 }
 
 /// calculates the largest eigen vector for a given matrix
 fn get_largest_eigen_vector(scaled_matrix: &DMatrix<f64>) -> Vector3<f64> {
-    let mut rows = vec![];
-    rows.push(scaled_matrix.row(0).cross(&scaled_matrix.row(1)));
-    rows.push(scaled_matrix.row(0).cross(&scaled_matrix.row(2)));
-    rows.push(scaled_matrix.row(1).cross(&scaled_matrix.row(2)));
+    let rows = vec![
+        scaled_matrix.row(0).cross(&scaled_matrix.row(1)),
+        scaled_matrix.row(0).cross(&scaled_matrix.row(2)),
+        scaled_matrix.row(1).cross(&scaled_matrix.row(2)),
+    ];
 
     let mut cross_product = DMatrix::<f64>::zeros(3, 3);
 
@@ -428,7 +420,7 @@ fn get_largest_eigen_vector(scaled_matrix: &DMatrix<f64>) -> Vector3<f64> {
         eigen_vector[i] = largest_eigen_vec[i];
     }
 
-    return eigen_vector;
+    eigen_vector
 }
 
 /// for a given 3x3 matrix the functions calculates the eigen vector of the smallest eigen value that can be found
@@ -452,10 +444,10 @@ fn eigen_3x3(covariance_matrix: &DMatrix<f64>) -> (f64, Vector3<f64>) {
     covariance_matrix_scaled
         .diagonal()
         .iter_mut()
-        .for_each(|x| *x = *x - eigen_values[0]);
+        .for_each(|x| *x -= eigen_values[0]);
 
-    let eigen_vector = get_largest_eigen_vector(&mut covariance_matrix_scaled);
-    return (eigen_value, eigen_vector);
+    let eigen_vector = get_largest_eigen_vector(&covariance_matrix_scaled);
+    (eigen_value, eigen_vector)
 }
 
 /// calculates the orientation of the surface as a normal vector with components n_x, n_y and n_z as well as the curvature of the surface for a given covariance matrix
@@ -463,38 +455,34 @@ fn solve_plane_parameter(covariance_matrix: &DMatrix<f64>) -> (Vector3<f64>, f64
     let (eigen_value, eigen_vector) = eigen_3x3(covariance_matrix);
 
     let eigen_sum = covariance_matrix[0] + covariance_matrix[4] + covariance_matrix[8];
-    let curvature;
-    if eigen_sum != 0.0 {
-        curvature = (eigen_value / eigen_sum).abs();
+    let curvature = if eigen_sum != 0.0 {
+        (eigen_value / eigen_sum).abs()
     } else {
-        curvature = 0.0;
-    }
+        0.0
+    };
 
-    return (eigen_vector, curvature);
+    (eigen_vector, curvature)
 }
 
 /// calculates the normal vectors and the curvature of the surface for the given point cloud
-fn normal_estimation<T: PointBuffer>(point_cloud: &T) -> (Vector3<f64>, f64) {
+fn normal_estimation<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> (Vector3<f64>, f64) {
     let covariance_matrix = compute_covariance_matrix(point_cloud).unwrap();
 
     let (eigen_vector, curvature) = solve_plane_parameter(&covariance_matrix);
 
-    return (eigen_vector, curvature);
+    (eigen_vector, curvature)
 }
 
 #[cfg(test)]
 mod tests {
 
-    use pasture_core::{
-        containers::{InterleavedVecPointStorage, OwningPointBuffer}, layout::PointType, nalgebra::Matrix3,
-        nalgebra::Vector3,
-    };
+    use pasture_core::{containers::VectorBuffer, nalgebra::Matrix3, nalgebra::Vector3};
     use pasture_derive::PointType;
 
     use super::*;
 
-    #[repr(C)]
-    #[derive(PointType, Debug, Clone, Copy)]
+    #[repr(C, packed)]
+    #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
     pub struct SimplePoint {
         #[pasture(BUILTIN_POSITION_3D)]
         pub position: Vector3<f64>,
@@ -505,7 +493,8 @@ mod tests {
         type Scalar = f64;
         type Dim = typenum::U3;
         fn at(&self, k: usize) -> f64 {
-            return self.position[k];
+            let position = self.position;
+            position[k]
         }
     }
 
@@ -530,9 +519,7 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
-
-        interleaved.push_points(points.as_slice());
+        let interleaved = points.into_iter().collect::<VectorBuffer>();
 
         let centroid = compute_centroid(&interleaved);
         let result_centroid = Vector3::<f64>::new(0.25, 0.5, 0.0);
@@ -581,9 +568,7 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
-
-        interleaved.push_points(points.as_slice());
+        let interleaved = points.into_iter().collect::<VectorBuffer>();
 
         let result = compute_covariance_matrix(&interleaved);
         let expected_result = Err("The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!");
@@ -611,12 +596,9 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+        let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        interleaved.push_points(points.as_slice());
-
-        let solution_vec =
-            compute_normals::<InterleavedVecPointStorage, SimplePoint>(&interleaved, 3);
+        let solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 3);
         for solution in solution_vec {
             assert_eq!(solution.0[0], 0.0);
             assert_eq!(solution.0[1], 0.0);
@@ -635,12 +617,9 @@ mod tests {
             intensity: 42,
         }];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+        let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        interleaved.push_points(points.as_slice());
-
-        let _solution_vec =
-            compute_normals::<InterleavedVecPointStorage, SimplePoint>(&interleaved, 3);
+        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 3);
     }
     #[test]
     #[should_panic(
@@ -658,12 +637,9 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+        let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        interleaved.push_points(points.as_slice());
-
-        let _solution_vec =
-            compute_normals::<InterleavedVecPointStorage, SimplePoint>(&interleaved, 3);
+        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 3);
     }
 
     #[test]
@@ -688,12 +664,9 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+        let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        interleaved.push_points(points.as_slice());
-
-        let _solution_vec =
-            compute_normals::<InterleavedVecPointStorage, SimplePoint>(&interleaved, 1);
+        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 1);
     }
     #[test]
     #[should_panic(expected = "The k nearest neigbors attribute is too small!")]
@@ -717,11 +690,8 @@ mod tests {
             },
         ];
 
-        let mut interleaved = InterleavedVecPointStorage::new(SimplePoint::layout());
+        let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        interleaved.push_points(points.as_slice());
-
-        let _solution_vec =
-            compute_normals::<InterleavedVecPointStorage, SimplePoint>(&interleaved, 2);
+        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 2);
     }
 }
