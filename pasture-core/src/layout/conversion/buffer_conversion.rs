@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::{
     containers::{
         BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, ColumnarBufferMut, InterleavedBuffer,
@@ -264,7 +266,7 @@ impl<'a> BufferLayoutConverter<'a> {
     ///
     /// If `source_buffer.point_layout()` does not match the source `PointLayout` used to construct this `BufferLayoutConverter`
     /// If `target_buffer.point_layout()` does not match the target `PointLayout` used to construct this `BufferLayoutConverter`
-    /// If `target_buffer.len()` is less than `source_buffer.len()`
+    /// If `target_buffer.len()` is not equal to `source_buffer.len()`
     pub fn convert_into<'b, 'c, 'd, 'e>(
         &self,
         source_buffer: &'c impl BorrowedBuffer<'b>,
@@ -273,9 +275,37 @@ impl<'a> BufferLayoutConverter<'a> {
         'b: 'c,
         'd: 'e,
     {
+        let source_range = 0..source_buffer.len();
+        self.convert_into_range(
+            source_buffer,
+            source_range.clone(),
+            target_buffer,
+            source_range,
+        );
+    }
+
+    /// Like [`convert_into`], but converts the points from `source_range` in `source_buffer` into the `target_range` in `target_buffer`
+    ///
+    /// # Panics
+    ///
+    /// If `source_buffer.point_layout()` does not match the source `PointLayout` used to construct this `BufferLayoutConverter`
+    /// If `target_buffer.point_layout()` does not match the target `PointLayout` used to construct this `BufferLayoutConverter`
+    /// If `target_buffer.len()` is less than `source_buffer.len()`
+    pub fn convert_into_range<'b, 'c, 'd, 'e>(
+        &self,
+        source_buffer: &'c impl BorrowedBuffer<'b>,
+        source_range: Range<usize>,
+        target_buffer: &'e mut impl BorrowedMutBuffer<'d>,
+        target_range: Range<usize>,
+    ) where
+        'b: 'c,
+        'd: 'e,
+    {
         assert_eq!(source_buffer.point_layout(), self.from_layout);
         assert_eq!(target_buffer.point_layout(), self.to_layout);
-        assert!(target_buffer.len() >= source_buffer.len());
+        assert!(source_range.len() == target_range.len());
+        assert!(source_range.end <= source_buffer.len());
+        assert!(target_range.end <= target_buffer.len());
 
         let max_attribute_size = self
             .mappings
@@ -287,14 +317,21 @@ impl<'a> BufferLayoutConverter<'a> {
             // neither `InterleavedBuffer` nor `ColumnarBuffer` would be possible, but more inefficient to implement
             match (source_buffer.as_columnar(), target_buffer.as_columnar_mut()) {
                 (Some(source_buffer), Some(target_buffer)) => {
-                    self.convert_columnar_to_columnar(source_buffer, target_buffer);
+                    self.convert_columnar_to_columnar(
+                        source_buffer,
+                        source_range,
+                        target_buffer,
+                        target_range,
+                    );
                 }
                 (Some(source_buffer), None) => {
                     self.convert_columnar_to_interleaved(
                         source_buffer,
+                        source_range,
                         target_buffer.as_interleaved_mut().expect(
                             "Target buffer must either be an interleaved or columnar buffer",
                         ),
+                        target_range,
                     );
                 }
                 (None, Some(target_buffer)) => {
@@ -302,7 +339,9 @@ impl<'a> BufferLayoutConverter<'a> {
                         source_buffer.as_interleaved().expect(
                             "Source buffer must either be an interleaved or columnar buffer",
                         ),
+                        source_range,
                         target_buffer,
+                        target_range,
                         max_attribute_size,
                     );
                 }
@@ -310,9 +349,11 @@ impl<'a> BufferLayoutConverter<'a> {
                     source_buffer
                         .as_interleaved()
                         .expect("Source buffer must either be an interleaved or columnar buffer"),
+                    source_range,
                     target_buffer
                         .as_interleaved_mut()
                         .expect("Target buffer must either be an interleaved or columnar buffer"),
+                    target_range,
                     max_attribute_size,
                 ),
             }
@@ -379,18 +420,19 @@ impl<'a> BufferLayoutConverter<'a> {
     fn convert_columnar_to_columnar(
         &self,
         source_buffer: &dyn ColumnarBuffer,
+        source_range: Range<usize>,
         target_buffer: &mut dyn ColumnarBufferMut,
+        target_range: Range<usize>,
     ) {
-        let num_points = source_buffer.len();
         for mapping in &self.mappings {
             let source_attribute_data = source_buffer.get_attribute_range_ref(
                 mapping.source_attribute.attribute_definition(),
-                0..num_points,
+                source_range.clone(),
             );
             if let Some(converter) = mapping.converter {
                 let target_attribute_data = target_buffer.get_attribute_range_mut(
                     mapping.target_attribute.attribute_definition(),
-                    0..num_points,
+                    target_range.clone(),
                 );
                 let source_attribute_size = mapping.source_attribute.size() as usize;
                 let target_attribute_size = mapping.target_attribute.size() as usize;
@@ -424,7 +466,7 @@ impl<'a> BufferLayoutConverter<'a> {
                 unsafe {
                     target_buffer.set_attribute_range(
                         mapping.target_attribute.attribute_definition(),
-                        0..num_points,
+                        target_range.clone(),
                         source_attribute_data,
                     );
                 }
@@ -433,7 +475,7 @@ impl<'a> BufferLayoutConverter<'a> {
                     // as both have the same datatype!
                     let target_attribute_range = target_buffer.get_attribute_range_mut(
                         mapping.target_attribute.attribute_definition(),
-                        0..num_points,
+                        target_range.clone(),
                     );
                     let target_attribute_size = mapping.target_attribute.size() as usize;
                     for target_chunk in
@@ -449,14 +491,14 @@ impl<'a> BufferLayoutConverter<'a> {
     fn convert_columnar_to_interleaved<'b, B: InterleavedBufferMut<'b> + ?Sized>(
         &self,
         source_buffer: &dyn ColumnarBuffer,
+        source_range: Range<usize>,
         target_buffer: &mut B,
+        target_range: Range<usize>,
     ) {
-        let num_points = source_buffer.len();
-
         for mapping in &self.mappings {
             let source_attribute_data = source_buffer.get_attribute_range_ref(
                 mapping.source_attribute.attribute_definition(),
-                0..num_points,
+                source_range.clone(),
             );
             let mut target_attribute_data =
                 target_buffer.view_raw_attribute_mut(mapping.target_attribute);
@@ -468,7 +510,8 @@ impl<'a> BufferLayoutConverter<'a> {
                     .chunks_exact(source_attribute_size)
                     .enumerate()
                 {
-                    let target_attribute_chunk = &mut target_attribute_data[index];
+                    let target_attribute_chunk =
+                        &mut target_attribute_data[index + target_range.start];
                     // Safe because we guarantee that the slice sizes match and their data comes from the
                     // correct attribute
                     unsafe {
@@ -491,7 +534,8 @@ impl<'a> BufferLayoutConverter<'a> {
                     .chunks_exact(source_attribute_size)
                     .enumerate()
                 {
-                    let target_attribute_chunk = &mut target_attribute_data[index];
+                    let target_attribute_chunk =
+                        &mut target_attribute_data[index + target_range.start];
                     target_attribute_chunk.copy_from_slice(attribute_data);
                     if let Some(transformation) = mapping.transformation.as_ref() {
                         (transformation.func)(target_attribute_chunk);
@@ -504,17 +548,18 @@ impl<'a> BufferLayoutConverter<'a> {
     fn convert_interleaved_to_columnar<'b, B: InterleavedBuffer<'b> + ?Sized>(
         &self,
         source_buffer: &B,
+        source_range: Range<usize>,
         target_buffer: &mut dyn ColumnarBufferMut,
+        target_range: Range<usize>,
         max_attribute_size: usize,
     ) {
         let mut buffer: Vec<u8> = vec![0; max_attribute_size];
-        let num_points = source_buffer.len();
 
         for mapping in &self.mappings {
             let source_attribute_data = source_buffer.view_raw_attribute(mapping.source_attribute);
             let target_attribute_range = target_buffer.get_attribute_range_mut(
                 mapping.target_attribute.attribute_definition(),
-                0..num_points,
+                target_range.clone(),
             );
             let target_attribute_size = mapping.target_attribute.size() as usize;
 
@@ -522,7 +567,8 @@ impl<'a> BufferLayoutConverter<'a> {
                 .chunks_exact_mut(target_attribute_size)
                 .enumerate()
             {
-                let source_attribute_chunk = &source_attribute_data[point_index];
+                let source_attribute_chunk =
+                    &source_attribute_data[point_index + source_range.start];
 
                 if let Some(converter) = mapping.converter {
                     if let Some(transformation) = mapping.transformation.as_ref() {
@@ -567,7 +613,9 @@ impl<'a> BufferLayoutConverter<'a> {
     >(
         &self,
         source_buffer: &InBuffer,
+        source_range: Range<usize>,
         target_buffer: &mut OutBuffer,
+        target_range: Range<usize>,
         max_attribute_size: usize,
     ) {
         let mut buffer: Vec<u8> = vec![0; max_attribute_size];
@@ -579,9 +627,9 @@ impl<'a> BufferLayoutConverter<'a> {
                 target_buffer.view_raw_attribute_mut(mapping.target_attribute);
 
             // Then apply conversions and transformations for each point
-            for point_index in 0..source_buffer.len() {
-                let source_attribute_data = &source_attribute_view[point_index];
-                let target_attribute_data = &mut target_attribute_view[point_index];
+            for (source_index, target_index) in source_range.clone().zip(target_range.clone()) {
+                let source_attribute_data = &source_attribute_view[source_index];
+                let target_attribute_data = &mut target_attribute_view[target_index];
 
                 if let Some(converter) = mapping.converter {
                     if let Some(transformation) = mapping.transformation.as_ref() {

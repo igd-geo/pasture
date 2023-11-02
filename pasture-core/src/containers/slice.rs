@@ -515,6 +515,14 @@ impl<'a, T: InterleavedBuffer<'a>> InterleavedBuffer<'a> for BufferSliceInterlea
     }
 }
 
+impl<'a, T: InterleavedBuffer<'a>> SliceBuffer<'a> for BufferSliceInterleaved<'a, T> {
+    type SliceType = Self;
+
+    fn slice(&'a self, range: Range<usize>) -> Self::SliceType {
+        Self(self.0.slice(range))
+    }
+}
+
 /// A mutable buffer slice for an interleaved buffer
 pub struct BufferSliceInterleavedMut<'a, T: InterleavedBufferMut<'a>>(BufferSliceMut<'a, T>);
 
@@ -624,6 +632,22 @@ impl<'a, T: InterleavedBufferMut<'a>> InterleavedBufferMut<'a>
         'a: 'b,
     {
         self.0.get_point_range_mut(range)
+    }
+}
+
+impl<'a, T: InterleavedBufferMut<'a>> SliceBuffer<'a> for BufferSliceInterleavedMut<'a, T> {
+    type SliceType = BufferSliceInterleaved<'a, T>;
+
+    fn slice(&'a self, range: Range<usize>) -> Self::SliceType {
+        BufferSliceInterleaved(self.0.slice(range))
+    }
+}
+
+impl<'a, T: InterleavedBufferMut<'a>> SliceBufferMut<'a> for BufferSliceInterleavedMut<'a, T> {
+    type SliceTypeMut = Self;
+
+    fn slice_mut(&'a mut self, range: Range<usize>) -> Self::SliceTypeMut {
+        Self(self.0.slice_mut(range))
     }
 }
 

@@ -300,28 +300,53 @@ impl<T: Read + Seek> RawLASReader<T> {
         &mut self,
         point_buffer: &'b mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'a: 'b,
-    {
+    ) -> Result<usize> {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
         }
 
-        let mut convert_buffer =
-            VectorBuffer::with_capacity(num_points_to_read, self.las_point_records_layout.clone());
-        convert_buffer.resize(num_points_to_read);
-        self.read_into_default_layout(&mut convert_buffer, num_points_to_read)?;
+        const CHUNK_BYTES: usize = 1 << 20; // 1 MiB
+        let points_per_chunk =
+            CHUNK_BYTES / self.las_point_records_layout.size_of_point_entry() as usize;
+        let num_chunks = (num_points_to_read + points_per_chunk - 1) / points_per_chunk;
 
+        let size_of_chunk = if num_chunks > 1 {
+            points_per_chunk
+        } else {
+            num_points_to_read
+        };
+
+        let mut convert_buffer =
+            VectorBuffer::with_capacity(size_of_chunk, self.las_point_records_layout.clone());
+        convert_buffer.resize(size_of_chunk);
+
+        let source_layout = self.las_point_records_layout.clone();
         let target_layout = point_buffer.point_layout().clone();
         let converter = get_default_las_converter(
-            &self.las_point_records_layout,
+            &source_layout,
             &target_layout,
             self.metadata.raw_las_header().expect("Missing LAS header"),
         )
         .context("Unsupported conversion")?;
-        converter.convert_into(&convert_buffer, point_buffer);
+
+        for chunk_idx in 0..num_chunks {
+            let points_in_current_chunk = if chunk_idx == num_chunks - 1 {
+                num_points_to_read - ((num_chunks - 1) * size_of_chunk)
+            } else {
+                size_of_chunk
+            };
+
+            self.read_into_default_layout(&mut convert_buffer, points_in_current_chunk)?;
+            let target_buffer_first_point = chunk_idx * size_of_chunk;
+            let target_buffer_last_point = target_buffer_first_point + points_in_current_chunk;
+            converter.convert_into_range(
+                &convert_buffer,
+                0..points_in_current_chunk,
+                point_buffer,
+                target_buffer_first_point..target_buffer_last_point,
+            );
+        }
 
         Ok(num_points_to_read)
     }
