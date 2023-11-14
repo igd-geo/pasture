@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{containers::BorrowedMutBuffer, layout::PointLayout};
 
 // use crate::las::{LASReader, LASWriter};
@@ -25,13 +25,11 @@ enum SupportedFileExtensions {
 }
 
 /// Returns a lookup value for the file extension of the given file path
-fn get_extension_lookup(path: &Path) -> Result<SupportedFileExtensions> {
-    let extension = path.extension().ok_or_else(|| {
-        anyhow!(
-            "File extension could not be determined from path {}",
-            path.display()
-        )
-    })?;
+fn get_extension_lookup(path: &Path) -> Result<Option<SupportedFileExtensions>> {
+    let extension = match path.extension() {
+        Some(ex) => ex,
+        None => return Ok(None),
+    };
     let extension_str = extension.to_str().ok_or_else(|| {
         anyhow!(
             "File extension of path {} is no valid Unicode string",
@@ -39,9 +37,9 @@ fn get_extension_lookup(path: &Path) -> Result<SupportedFileExtensions> {
         )
     })?;
     match extension_str.to_lowercase().as_str() {
-        "las" | "laz" => Ok(SupportedFileExtensions::Las),
-        "pnts" => Ok(SupportedFileExtensions::Tiles3D),
-        other => Err(anyhow!("Unsupported file extension {other}")),
+        "las" | "laz" => Ok(Some(SupportedFileExtensions::Las)),
+        "pnts" => Ok(Some(SupportedFileExtensions::Tiles3D)),
+        _ => Ok(None),
     }
 }
 
@@ -54,15 +52,26 @@ impl GenericPointReader {
     pub fn open_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let extension = get_extension_lookup(path.as_ref())?;
         match extension {
-            SupportedFileExtensions::Las => {
+            Some(SupportedFileExtensions::Las) => {
                 let reader = LASReader::from_path(path, false)?;
                 Ok(Self::LAS(reader))
             }
-            SupportedFileExtensions::Tiles3D => {
+            Some(SupportedFileExtensions::Tiles3D) => {
                 let reader = PntsReader::from_path(path)?;
                 Ok(Self::Tiles3D(reader))
             }
+            None => bail!(
+                "Unsupported file format of file {}",
+                path.as_ref().display()
+            ),
         }
+    }
+
+    /// Checks whether the given `path` is a valid point cloud file that can be read using a `GenericPointReader`. If yes,
+    /// `Ok(true)` is returned, if not `Ok(false)` is returned. `Err` is returned only if there is an error accessing the
+    /// `path` or its file extension
+    pub fn is_supported_file<P: AsRef<Path>>(path: P) -> Result<bool> {
+        Ok(get_extension_lookup(path.as_ref())?.is_some())
     }
 
     /// Returns the total number of points in the underlying point cloud file. Returns `None` if the number of
@@ -123,11 +132,11 @@ impl GenericPointWriter {
     pub fn open_file<P: AsRef<Path>>(path: P, point_layout: &PointLayout) -> Result<Self> {
         let extension = get_extension_lookup(path.as_ref())?;
         match extension {
-            SupportedFileExtensions::Las => {
+            Some(SupportedFileExtensions::Las) => {
                 let writer = LASWriter::from_path_and_point_layout(path, point_layout)?;
                 Ok(Self::LAS(writer))
             }
-            SupportedFileExtensions::Tiles3D => {
+            Some(SupportedFileExtensions::Tiles3D) => {
                 let file = BufWriter::new(File::create(path.as_ref()).context(format!(
                     "Could not open file {} for writing",
                     path.as_ref().display()
@@ -135,6 +144,10 @@ impl GenericPointWriter {
                 let writer = PntsWriter::from_write_and_layout(file, point_layout.clone());
                 Ok(Self::Tiles3D(writer))
             }
+            None => bail!(
+                "Unsupported file format of file {}",
+                path.as_ref().display()
+            ),
         }
     }
 }

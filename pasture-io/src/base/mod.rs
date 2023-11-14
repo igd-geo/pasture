@@ -17,6 +17,12 @@ pub use self::seek::*;
 mod io_factory;
 pub use self::io_factory::*;
 
+mod pipeline;
+pub use self::pipeline::*;
+
+mod pointcloud;
+pub use self::pointcloud::*;
+
 /// Try to read all points in the given point cloud file. This function uses the default `IOFactory` to determine the
 /// file type from the file extension of `path`. If this succeeds, an appropriate reader is created and all points are
 /// read into an implementation-defined `PointBuffer` type. If you want to use a specific type of `PointBuffer`, use

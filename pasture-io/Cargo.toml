@@ -34,6 +34,8 @@ bitfield = "0.14"
 num-traits = "0.2.16"
 memmap2 = "0.7.1"
 lazy_static = "1.4.0"
+walkdir = "2.4.0"
+gat-lending-iterator = "0.1.1"
 
 [dev-dependencies]
 criterion = "0.3"
