@@ -1,6 +1,5 @@
 # Unreleased
-- Add `BorrowedBuffer::view_attribute_checked` that returns None rather than panicking if the data type does not match the requested one.
-- Require the user to specify the underlying floating point type of their point cloud's `POSITION_3D` when running `compute_centroid`.
+- Take an `AttributeView` instead of a `BorrowedBuffer` for `compute_centroid`.
 
 # 0.4.0 
 
