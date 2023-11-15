@@ -168,6 +168,29 @@ pub trait BorrowedBuffer<'a> {
         AttributeView::new(self, attribute)
     }
 
+    /// Gets a strongly typed view of the `attribute` of all points in this buffer
+    ///
+    /// Returns None if `attribute` is not part of the `PointLayout` of this buffer,
+    /// or if `T::data_type()` does not match the data type of the attribute within the buffer
+    fn view_attribute_checked<'b, T: PrimitiveType>(
+        &'b self,
+        attribute: &PointAttributeDefinition,
+    ) -> Option<AttributeView<'a, 'b, Self, T>>
+    where
+        Self: Sized,
+        'a: 'b,
+    {
+        self.point_layout()
+            .get_attribute(attribute)
+            .and_then(|member| {
+                if T::data_type() == member.datatype() {
+                    Some(AttributeView::new(self, attribute))
+                } else {
+                    None
+                }
+            })
+    }
+
     /// Like `view_attribute`, but allows `T::data_type()` to be different from the data type of  
     /// the `attribute` within this buffer.
     ///

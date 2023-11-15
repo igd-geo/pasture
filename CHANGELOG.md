@@ -1,3 +1,7 @@
+# Unreleased
+- Add `BorrowedBuffer::view_attribute_checked` that returns None rather than panicking if the data type does not match the requested one.
+- Require the user to specify the underlying floating point type of their point cloud's `POSITION_3D` when running `compute_centroid`.
+
 # 0.4.0 
 
 - Major overhaul of the buffer API in `pasture-core`. This is a breaking change for previous `pasture` versions

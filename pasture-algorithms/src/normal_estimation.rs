@@ -1,10 +1,12 @@
 // The normal estimation algorithm is inspired by the PCL library (https://pointclouds.org/)
 use core::panic;
 use kd_tree::{self, KdPoint, KdTree};
-use num_traits::{self};
+use num_traits::{Float, AsPrimitive};
 use pasture_core::containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, OwningBuffer};
-use pasture_core::layout::{attributes::POSITION_3D, PointType};
-use pasture_core::nalgebra::{DMatrix, Vector3};
+use pasture_core::layout::PrimitiveType;
+use pasture_core::layout::attributes::POSITION_3D;
+use pasture_core::layout::PointType;
+use pasture_core::nalgebra::{DMatrix, Vector3, RealField};
 use std::result::Result;
 
 /// Normal Estimation Algorithm
@@ -79,7 +81,7 @@ pub fn compute_normals<'a, T: BorrowedBuffer<'a>, P: PointType + KdPoint + Copy>
     k_nn: usize,
 ) -> Vec<(Vector3<f64>, f64)>
 where
-    P::Scalar: num_traits::Float,
+    P::Scalar: Float,
 {
     if point_cloud.len() < 3 {
         panic!("The point cloud is too small. Please use a point cloud that has 3 or more points!");
@@ -138,7 +140,7 @@ fn is_dense<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> bool {
 }
 
 /// checks whether a given point has finite coordinates
-fn is_finite(point: &Vector3<f64>) -> bool {
+fn is_finite(point: &Vector3<impl RealField>) -> bool {
     if point.x.is_finite() && point.y.is_finite() && point.z.is_finite() {
         return true;
     }
@@ -149,9 +151,7 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 /// The centroid is the point that has the same distance to all other points in the point cloud.
 /// Iterates over all points in the 'point_cloud'.
 ///
-/// # Panics
-///
-/// If the point_cloud is empty
+/// Returns None if the point cloud is empty, or if the POSITION_3D attribute is not a float vector.
 ///
 /// # Examples
 ///
@@ -190,32 +190,39 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 
 /// let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-/// let centroid = compute_centroid(&interleaved);
+/// let centroid = compute_centroid::<f64>(&interleaved);
 ///
 /// ```
-pub fn compute_centroid<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> Vector3<f64> {
+pub fn compute_centroid<'a, F>(
+	point_cloud: &'a impl BorrowedBuffer<'a>
+) -> Option<Vector3<F>>
+where
+    F: Float + RealField,
+    Vector3<F>: PrimitiveType,
+    usize: AsPrimitive<F>,
+{
     if point_cloud.is_empty() {
-        panic!("The point cloud is empty!");
+        return None;
     }
 
-    let mut centroid = Vector3::<f64>::zeros();
-    let mut temp_centroid = Vector3::<f64>::zeros();
+    let mut centroid = Vector3::<F>::zeros();
+    let mut temp_centroid = Vector3::<F>::zeros();
 
     if is_dense(point_cloud) {
         // add all points up
-        for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
+        for point in point_cloud.view_attribute_checked::<Vector3<F>>(&POSITION_3D)? {
             temp_centroid[0] += point.x;
             temp_centroid[1] += point.y;
             temp_centroid[2] += point.z;
         }
 
         //normalize over all points
-        centroid[0] = temp_centroid[0] / point_cloud.len() as f64;
-        centroid[1] = temp_centroid[1] / point_cloud.len() as f64;
-        centroid[2] = temp_centroid[2] / point_cloud.len() as f64;
+        centroid[0] = temp_centroid[0] / point_cloud.len().as_();
+        centroid[1] = temp_centroid[1] / point_cloud.len().as_();
+        centroid[2] = temp_centroid[2] / point_cloud.len().as_();
     } else {
         let mut points_in_cloud = 0;
-        for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
+        for point in point_cloud.view_attribute_checked::<Vector3<F>>(&POSITION_3D)? {
             if is_finite(&point) {
                 // add all points up
                 temp_centroid[0] += point.x;
@@ -226,12 +233,12 @@ pub fn compute_centroid<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> Vector
         }
 
         // normalize over all points
-        centroid[0] = temp_centroid[0] / points_in_cloud as f64;
-        centroid[1] = temp_centroid[1] / points_in_cloud as f64;
-        centroid[2] = temp_centroid[2] / points_in_cloud as f64;
+        centroid[0] = temp_centroid[0] / points_in_cloud.as_();
+        centroid[1] = temp_centroid[1] / points_in_cloud.as_();
+        centroid[2] = temp_centroid[2] / points_in_cloud.as_();
     }
 
-    centroid
+    Some(centroid)
 }
 
 /// compute the covariance matrix for a given point cloud which is a measure of spread out the points are
@@ -242,7 +249,8 @@ fn compute_covariance_matrix<'a, T: BorrowedBuffer<'a>>(
     let mut point_count = 0;
 
     // compute the centroid of the point cloud
-    let centroid = compute_centroid(point_cloud);
+    let centroid = compute_centroid::<f64>(point_cloud)
+        .ok_or("Failed to compute point cloud centroid.")?;
 
     if is_dense(point_cloud) {
         point_count = point_cloud.len();
@@ -521,7 +529,7 @@ mod tests {
 
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        let centroid = compute_centroid(&interleaved);
+        let centroid = compute_centroid::<f64>(&interleaved).unwrap();
         let result_centroid = Vector3::<f64>::new(0.25, 0.5, 0.0);
         assert_eq!(centroid, result_centroid);
 
