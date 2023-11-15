@@ -210,43 +210,19 @@ where
         return None;
     }
 
-    let mut centroid = Vector3::<F>::zeros();
-    let mut temp_centroid = Vector3::<F>::zeros();
-
-    let points_in_cloud = if is_dense(attribute_view) {
-        // add all points up
-        let points_in_cloud = attribute_view.len();
-        for point in attribute_view.into_iter() {
-            temp_centroid[0] += point.x;
-            temp_centroid[1] += point.y;
-            temp_centroid[2] += point.z;
-        }
-
-        // normalize over all points
-        centroid[0] = temp_centroid[0] / points_in_cloud.as_();
-        centroid[1] = temp_centroid[1] / points_in_cloud.as_();
-        centroid[2] = temp_centroid[2] / points_in_cloud.as_();
-        points_in_cloud
+    if is_dense(attribute_view) {
+        Some(attribute_view.into_iter().sum::<Vector3<F>>() / attribute_view.len().as_())
     } else {
+        let mut temp_centroid = Vector3::<F>::zeros();
         let mut points_in_cloud = 0;
         for point in attribute_view.into_iter() {
             if is_finite(&point) {
-                // add all points up
-                temp_centroid[0] += point.x;
-                temp_centroid[1] += point.y;
-                temp_centroid[2] += point.z;
+                temp_centroid += point;
                 points_in_cloud += 1;
             }
         }
-        points_in_cloud
-    };
-
-    // normalize over all points
-    centroid[0] = temp_centroid[0] / points_in_cloud.as_();
-    centroid[1] = temp_centroid[1] / points_in_cloud.as_();
-    centroid[2] = temp_centroid[2] / points_in_cloud.as_();
-
-    Some(centroid)
+        Some(temp_centroid / points_in_cloud.as_())
+    }
 }
 
 /// compute the covariance matrix for a given point cloud which is a measure of spread out the points are
