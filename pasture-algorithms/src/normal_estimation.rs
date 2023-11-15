@@ -2,7 +2,7 @@
 use core::panic;
 use kd_tree::{self, KdPoint, KdTree};
 use num_traits::{Float, AsPrimitive};
-use pasture_core::containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, OwningBuffer};
+use pasture_core::containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, OwningBuffer, AttributeView};
 use pasture_core::layout::PrimitiveType;
 use pasture_core::layout::attributes::POSITION_3D;
 use pasture_core::layout::PointType;
@@ -130,8 +130,11 @@ where
 }
 
 /// checks whether a given point cloud has points with coordinates that are Not a Number
-fn is_dense<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> bool {
-    for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
+fn is_dense<'a, 'b, T: BorrowedBuffer<'a> + 'a, F: Float + RealField>(attribute_view: &AttributeView<'a, 'b, T, Vector3<F>>) -> bool
+where
+    Vector3<F>: PrimitiveType
+{
+    for point in attribute_view.into_iter() {
         if point.x.is_nan() || point.y.is_nan() || point.z.is_nan() {
             return false;
         }
@@ -160,6 +163,7 @@ fn is_finite(point: &Vector3<impl RealField>) -> bool {
 /// # use pasture_core::nalgebra::Vector3;
 /// # use pasture_derive::PointType;
 /// # use pasture_algorithms::normal_estimation::compute_centroid;
+/// # use pasture_core::layout::attributes::POSITION_3D;
 ///
 /// #[repr(C, packed)]
 /// #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
@@ -190,39 +194,42 @@ fn is_finite(point: &Vector3<impl RealField>) -> bool {
 
 /// let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-/// let centroid = compute_centroid::<f64>(&interleaved);
+/// let centroid = compute_centroid(&interleaved.view_attribute::<Vector3<f64>>(&POSITION_3D));
 ///
 /// ```
-pub fn compute_centroid<'a, F>(
-	point_cloud: &'a impl BorrowedBuffer<'a>
+pub fn compute_centroid<'a, 'b, T, F>(
+    attribute_view: &AttributeView<'a, 'b, T, Vector3<F>>
 ) -> Option<Vector3<F>>
 where
+    T: BorrowedBuffer<'a> + 'a,
     F: Float + RealField,
     Vector3<F>: PrimitiveType,
     usize: AsPrimitive<F>,
 {
-    if point_cloud.is_empty() {
+    if attribute_view.is_empty() {
         return None;
     }
 
     let mut centroid = Vector3::<F>::zeros();
     let mut temp_centroid = Vector3::<F>::zeros();
 
-    if is_dense(point_cloud) {
+    let points_in_cloud = if is_dense(attribute_view) {
         // add all points up
-        for point in point_cloud.view_attribute_checked::<Vector3<F>>(&POSITION_3D)? {
+        let points_in_cloud = attribute_view.len();
+        for point in attribute_view.into_iter() {
             temp_centroid[0] += point.x;
             temp_centroid[1] += point.y;
             temp_centroid[2] += point.z;
         }
 
-        //normalize over all points
-        centroid[0] = temp_centroid[0] / point_cloud.len().as_();
-        centroid[1] = temp_centroid[1] / point_cloud.len().as_();
-        centroid[2] = temp_centroid[2] / point_cloud.len().as_();
+        // normalize over all points
+        centroid[0] = temp_centroid[0] / points_in_cloud.as_();
+        centroid[1] = temp_centroid[1] / points_in_cloud.as_();
+        centroid[2] = temp_centroid[2] / points_in_cloud.as_();
+        points_in_cloud
     } else {
         let mut points_in_cloud = 0;
-        for point in point_cloud.view_attribute_checked::<Vector3<F>>(&POSITION_3D)? {
+        for point in attribute_view.into_iter() {
             if is_finite(&point) {
                 // add all points up
                 temp_centroid[0] += point.x;
@@ -231,12 +238,13 @@ where
                 points_in_cloud += 1;
             }
         }
+        points_in_cloud
+    };
 
-        // normalize over all points
-        centroid[0] = temp_centroid[0] / points_in_cloud.as_();
-        centroid[1] = temp_centroid[1] / points_in_cloud.as_();
-        centroid[2] = temp_centroid[2] / points_in_cloud.as_();
-    }
+    // normalize over all points
+    centroid[0] = temp_centroid[0] / points_in_cloud.as_();
+    centroid[1] = temp_centroid[1] / points_in_cloud.as_();
+    centroid[2] = temp_centroid[2] / points_in_cloud.as_();
 
     Some(centroid)
 }
@@ -249,10 +257,10 @@ fn compute_covariance_matrix<'a, T: BorrowedBuffer<'a>>(
     let mut point_count = 0;
 
     // compute the centroid of the point cloud
-    let centroid = compute_centroid::<f64>(point_cloud)
+    let centroid = compute_centroid(&point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D))
         .ok_or("Failed to compute point cloud centroid.")?;
 
-    if is_dense(point_cloud) {
+    if is_dense(&point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D)) {
         point_count = point_cloud.len();
         let mut diff_mean = Vector3::<f64>::zeros();
         for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
@@ -529,7 +537,7 @@ mod tests {
 
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        let centroid = compute_centroid::<f64>(&interleaved).unwrap();
+        let centroid = compute_centroid(&interleaved.view_attribute::<Vector3<f64>>(&POSITION_3D)).unwrap();
         let result_centroid = Vector3::<f64>::new(0.25, 0.5, 0.0);
         assert_eq!(centroid, result_centroid);
 
