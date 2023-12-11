@@ -13,21 +13,26 @@ readme = "README.md"
 
 [dependencies]
 pasture-derive = {version = "=0.4.0", path = "../pasture-derive" }
-nalgebra = {version = "0.32", features = ["serde-serialize", "convert-bytemuck"] }
+nalgebra = {version = "0.32", features = ["convert-bytemuck"] }
 anyhow = "1.0.34"
 float-ord = "0.2.0"
 static_assertions = "1.1.0"
 lazy_static = "1.4.0"
-serde = { version = "1.0.119", features = ["derive"] }
+serde = { version = "1.0.193", features = ["derive"], optional = true }
 rayon = "1.5.0"
 itertools = "0.10.0"
 byteorder = "1.4.2"
 num-traits = "0.2.16"
 bytemuck = { version = "1.5.1", features = ["derive"] }
+uuid = {version = "1.6.1"}
 
 [dev-dependencies]
 rand = "0.8.2"
 criterion = "0.3"
+serde_json = "1.0.107"
+
+[features]
+serde = ["dep:serde", "nalgebra/serde-serialize", "uuid/serde"]
 
 [[bench]]
 name = "point_buffer_iterators_bench"

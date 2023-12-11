@@ -3,6 +3,7 @@ use std::{alloc::Layout, borrow::Cow, fmt::Display, iter::FromIterator, ops::Ran
 use itertools::Itertools;
 use nalgebra::{Vector3, Vector4};
 use static_assertions::const_assert;
+use uuid::Uuid;
 
 use crate::math::Alignable;
 
@@ -41,6 +42,7 @@ mod private {
 /// simply disallows slice-to-T casts for types that are not valid for any bit pattern, is was deemed that this is not worth
 /// the effort. If you need `bool`-like behavior, you can always use an `u8` type and check for `value != 0`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PointAttributeDataType {
     /// An unsigned 8-bit integer value, corresponding to Rusts `u8` type
     U8,
@@ -82,7 +84,7 @@ pub enum PointAttributeDataType {
     Custom {
         size: u64,
         min_alignment: u64,
-        name: &'static str,
+        name: Uuid,
     }, //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
        //TODO Instead of representing each VecN<T> type as a separate literal, might it be possible to do: Vec3(PointAttributeDataType)?
        //Not in that way of course, because of recursive datastructures, but something like that?
@@ -278,6 +280,7 @@ const_assert!(std::mem::size_of::<Vector4<u8>>() == 4);
 /// that a single record of the attribute is stored in. Attributes can be grouped into two categories: Built-in
 /// attributes (e.g. POSITION_3D, INTENSITY, GPS_TIME etc.) and custom attributes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PointAttributeDefinition {
     name: Cow<'static, str>,
     datatype: PointAttributeDataType,
@@ -369,6 +372,7 @@ impl Display for PointAttributeDefinition {
 /// A point attribute within a `PointType` structure. This is similar to a `PointAttributeDefinition`, but includes the
 /// offset of the member within the structure
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PointAttributeMember {
     attribute_definition: PointAttributeDefinition,
     offset: u64,
@@ -663,8 +667,10 @@ pub enum FieldAlignment {
 /// you will want to use strongly typed Rust structures. Any type `T` that you want to use for accessing point data in a strongly typed manner
 /// must implement the `PointType` trait and thus provide Pasture with a way of figuring out the attributes and memory layout of this type `T`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PointLayout {
     attributes: Vec<PointAttributeMember>,
+    #[cfg_attr(feature = "serde", serde(with = "serde_layout"))]
     memory_layout: Layout,
 }
 
@@ -1052,13 +1058,13 @@ impl FromIterator<PointAttributeDefinition> for PointLayout {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::layout::{
         attributes::{COLOR_RGB, INTENSITY, POSITION_3D},
         PointType,
     };
-
-    use super::*;
     use pasture_derive::PointType;
+    use serde_json::json;
 
     #[derive(
         Debug, PointType, Copy, Clone, PartialEq, bytemuck::NoUninit, bytemuck::AnyBitPattern,
@@ -1085,5 +1091,58 @@ mod tests {
         );
 
         assert_eq!(expected_layout_1, TestPoint1::layout());
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_point_layout_serde() {
+        let original_value = PointLayout {
+            attributes: vec![],
+            memory_layout: Layout::from_size_align(20, 4).unwrap(),
+        };
+        let serialized = serde_json::to_value(original_value.clone()).unwrap();
+        let expected = json!({
+            "attributes": [],
+            "memory_layout": {
+                "align": 4,
+                "size": 20
+            },
+        });
+        assert_eq!(serialized, expected);
+        let deserialized: PointLayout = serde_json::from_value(serialized).unwrap();
+        assert_eq!(deserialized, original_value);
+    }
+}
+
+#[cfg(feature = "serde")]
+mod serde_layout {
+    use std::alloc::Layout;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(rename = "Layout")]
+    struct SizeAndAlignment {
+        size: usize,
+        align: usize,
+    }
+
+    pub fn serialize<S>(layout: &Layout, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SizeAndAlignment {
+            size: layout.size(),
+            align: layout.align(),
+        }
+        .serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(de: D) -> Result<Layout, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let fields = SizeAndAlignment::deserialize(de)?;
+        Layout::from_size_align(fields.size, fields.align).map_err(serde::de::Error::custom)
     }
 }
