@@ -319,6 +319,16 @@ impl<'a, 'b, B: BorrowedBuffer<'a>, T: PrimitiveType> AttributeView<'a, 'b, B, T
         }
         attribute
     }
+
+    /// Get the length of the underlying buffer.
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Check if the underlying buffer is empty.
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
 }
 
 impl<'a, 'b, B: ColumnarBuffer<'a>, T: PrimitiveType> AttributeView<'a, 'b, B, T>
@@ -351,6 +361,17 @@ where
 
 impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PrimitiveType> IntoIterator
     for AttributeView<'a, 'b, B, T>
+{
+    type Item = T;
+    type IntoIter = AttributeIteratorByValue<'a, 'b, T, B>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        AttributeIteratorByValue::new(self.buffer, self.attribute.attribute_definition())
+    }
+}
+
+impl<'a, 'b, B: BorrowedBuffer<'a> + 'a, T: PrimitiveType> IntoIterator
+    for &AttributeView<'a, 'b, B, T>
 {
     type Item = T;
     type IntoIter = AttributeIteratorByValue<'a, 'b, T, B>;

@@ -1,3 +1,6 @@
+# Unreleased
+- Take an `AttributeView` instead of a `BorrowedBuffer` for `compute_centroid`.
+
 # 0.4.0 
 
 - Major overhaul of the buffer API in `pasture-core`. This is a breaking change for previous `pasture` versions
