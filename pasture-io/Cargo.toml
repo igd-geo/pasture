@@ -35,10 +35,16 @@ num-traits = "0.2.16"
 memmap2 = "0.7.1"
 lazy_static = "1.4.0"
 nalgebra = { version = "0.32", features = ["serde-serialize"]}
+crossbeam = "0.8"
+rayon = "1.8"
+concurrent-queue = "2.4.0"
+tracy-client = { version = "0.15.2", default-features = false, features = ["enable", "system-tracing"] }
+human-repr = "1"
 
 [dev-dependencies]
 criterion = "0.3"
 rand = {version = "0.8.3" }
+clap = {version = "4", features = ["derive"] }
 
 [[bench]]
 name = "las_bench"

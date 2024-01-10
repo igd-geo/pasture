@@ -28,7 +28,7 @@ fn is_laszip_vlr(vlr: &Vlr) -> bool {
 
 /// Returns a `BufferLayoutConverter` that performs a conversion from the given raw LAS `PointLayout` into
 /// the given `target_layout`
-fn get_default_las_converter<'a>(
+pub fn get_default_las_converter<'a>(
     raw_las_layout: &'a PointLayout,
     target_layout: &'a PointLayout,
     las_header: &Header,

@@ -14,7 +14,7 @@ mod las_metadata;
 pub use self::las_metadata::*;
 
 mod raw_readers;
-pub(crate) use self::raw_readers::*;
+pub use self::raw_readers::*;
 
 mod raw_writers;
 pub(crate) use self::raw_writers::*;
