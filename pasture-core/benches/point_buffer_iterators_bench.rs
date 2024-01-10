@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_core::{
     containers::{
-        BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, HashMapBuffer, InterleavedBuffer,
-        VectorBuffer,
+        BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, ColumnarBuffer, HashMapBuffer,
+        InterleavedBuffer, VectorBuffer,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,

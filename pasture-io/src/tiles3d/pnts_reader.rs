@@ -401,7 +401,7 @@ mod tests {
 
     use super::*;
     use pasture_core::{
-        containers::{BorrowedBuffer, HashMapBuffer, VectorBuffer},
+        containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},
         layout::PointType,
     };
     use pasture_derive::PointType;

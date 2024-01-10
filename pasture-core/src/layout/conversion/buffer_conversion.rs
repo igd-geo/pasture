@@ -673,7 +673,7 @@ mod tests {
     use rand::{thread_rng, Rng};
 
     use crate::{
-        containers::{HashMapBuffer, VectorBuffer},
+        containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},
         layout::{
             attributes::{CLASSIFICATION, POSITION_3D, RETURN_NUMBER},
             PointType,

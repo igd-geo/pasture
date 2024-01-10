@@ -1,7 +1,9 @@
 use std::{collections::HashMap, u16};
 
 use pasture_core::{
-    containers::{BorrowedBuffer, OwningBuffer, UntypedPoint, UntypedPointBuffer},
+    containers::{
+        BorrowedBuffer, BorrowedBufferExt, OwningBuffer, UntypedPoint, UntypedPointBuffer,
+    },
     layout::{
         attributes::{self, POSITION_3D},
         PointAttributeDataType, PointAttributeDefinition, PointLayout,
@@ -691,7 +693,7 @@ mod tests {
 
     use crate::voxel_grid::voxelgrid_filter;
     use pasture_core::{
-        containers::{BorrowedBuffer, HashMapBuffer, MakeBufferFromLayout},
+        containers::{BorrowedBuffer, BorrowedBufferExt, HashMapBuffer, MakeBufferFromLayout},
         layout::attributes,
         nalgebra::Vector3,
     };

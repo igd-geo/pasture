@@ -2,7 +2,7 @@ use pasture_algorithms::segmentation::{
     ransac_line_par, ransac_line_serial, ransac_plane_par, ransac_plane_serial,
 };
 use pasture_core::{
-    containers::{BorrowedMutBuffer, HashMapBuffer},
+    containers::{BorrowedMutBufferExt, HashMapBuffer},
     layout::attributes::INTENSITY,
     nalgebra::Vector3,
 };

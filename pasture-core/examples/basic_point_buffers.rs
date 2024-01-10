@@ -1,5 +1,5 @@
 use pasture_core::containers::{
-    BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, MakeBufferFromLayout, SliceBuffer,
+    BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, MakeBufferFromLayout, SliceBuffer,
     SliceBufferMut,
 };
 use pasture_core::nalgebra::Vector3;

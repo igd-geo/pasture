@@ -4,8 +4,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use nalgebra::Vector3;
 use pasture_core::{
     containers::{
-        ColumnarBuffer, HashMapBuffer, InterleavedBuffer, MakeBufferFromLayout, OwningBuffer,
-        VectorBuffer,
+        BorrowedBufferExt, ColumnarBuffer, HashMapBuffer, InterleavedBuffer, MakeBufferFromLayout,
+        OwningBuffer, VectorBuffer,
     },
     layout::{conversion::BufferLayoutConverter, PointType},
 };

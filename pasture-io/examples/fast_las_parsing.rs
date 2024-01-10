@@ -12,7 +12,7 @@ use std::{
 use anyhow::{bail, Result};
 use memmap2::{Advice, MmapOptions};
 use pasture_core::{
-    containers::{BorrowedBuffer, ExternalMemoryBuffer},
+    containers::{BorrowedBufferExt, ExternalMemoryBuffer},
     layout::{attributes::POSITION_3D, PointAttributeDataType},
     nalgebra::Vector3,
 };

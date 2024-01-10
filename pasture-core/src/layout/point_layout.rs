@@ -1064,7 +1064,6 @@ mod tests {
         PointType,
     };
     use pasture_derive::PointType;
-    use serde_json::json;
 
     #[derive(
         Debug, PointType, Copy, Clone, PartialEq, bytemuck::NoUninit, bytemuck::AnyBitPattern,

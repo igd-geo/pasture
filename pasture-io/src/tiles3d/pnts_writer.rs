@@ -414,7 +414,7 @@ mod tests {
 
     use super::*;
     use pasture_core::{
-        containers::VectorBuffer,
+        containers::{BorrowedBufferExt, VectorBuffer},
         layout::PointType,
         nalgebra::{Vector3, Vector4},
     };

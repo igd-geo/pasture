@@ -2,7 +2,7 @@ use std::io::Write;
 
 use anyhow::Result;
 use pasture_core::{
-    containers::{BorrowedBuffer, InterleavedBuffer, VectorBuffer},
+    containers::{BorrowedBufferExt, InterleavedBuffer, VectorBuffer},
     layout::attributes::CLASSIFICATION,
 };
 use pasture_io::{base::PointReader, las::LASReader};

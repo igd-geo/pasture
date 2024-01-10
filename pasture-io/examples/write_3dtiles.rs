@@ -2,7 +2,7 @@ use std::{fs::File, io::BufWriter};
 
 use anyhow::Result;
 use pasture_core::{
-    containers::{BorrowedMutBuffer, HashMapBuffer},
+    containers::{BorrowedMutBufferExt, HashMapBuffer},
     layout::PointType,
     math::AABB,
     nalgebra::{Point3, Vector3},

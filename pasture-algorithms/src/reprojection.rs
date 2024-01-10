@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use anyhow::Result;
-use pasture_core::containers::BorrowedMutBuffer;
+use pasture_core::containers::{BorrowedBufferExt, BorrowedMutBuffer, BorrowedMutBufferExt};
 use pasture_core::math::AABB;
 use pasture_core::nalgebra::{Point3, Vector3};
 

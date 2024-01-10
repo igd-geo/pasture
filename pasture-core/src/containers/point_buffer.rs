@@ -138,53 +138,6 @@ pub trait BorrowedBuffer<'a> {
         data: &mut [u8],
     );
 
-    /// Get a strongly typed view of the point data of this buffer
-    ///
-    /// # Panics
-    ///
-    /// Panics if `T::layout()` does not match the `PointLayout` of this buffer
-    fn view<'b, T: PointType>(&'b self) -> PointView<'a, 'b, Self, T>
-    where
-        Self: Sized,
-        'a: 'b,
-    {
-        PointView::new(self)
-    }
-
-    /// Gets a strongly typed view of the `attribute` of all points in this buffer
-    ///
-    /// # Panics
-    ///
-    /// If `attribute` is not part of the `PointLayout` of this buffer.
-    /// If `T::data_type()` does not match the data type of the attribute within the buffer
-    fn view_attribute<'b, T: PrimitiveType>(
-        &'b self,
-        attribute: &PointAttributeDefinition,
-    ) -> AttributeView<'a, 'b, Self, T>
-    where
-        Self: Sized,
-        'a: 'b,
-    {
-        AttributeView::new(self, attribute)
-    }
-
-    /// Like `view_attribute`, but allows `T::data_type()` to be different from the data type of  
-    /// the `attribute` within this buffer.
-    ///
-    /// # Panics
-    ///
-    /// If `T::data_type()` does not match the data type of `attribute`
-    fn view_attribute_with_conversion<'b, T: PrimitiveType>(
-        &'b self,
-        attribute: &PointAttributeDefinition,
-    ) -> Result<AttributeViewConverting<'a, 'b, Self, T>>
-    where
-        Self: Sized,
-        'a: 'b,
-    {
-        AttributeViewConverting::new(self, attribute)
-    }
-
     /// Try to get a reference to `self` as an `InterleavedBuffer`. Returns `None` if `self` does not
     /// implement `InterleavedBuffer`
     fn as_interleaved(&self) -> Option<&dyn InterleavedBuffer<'a>> {
@@ -306,37 +259,6 @@ pub trait BorrowedMutBuffer<'a>: BorrowedBuffer<'a> {
         }
     }
 
-    /// Get a strongly typed view of the point data of this buffer. This view allows mutating the point data!
-    ///
-    /// # Panics
-    ///
-    /// If `T::point_layout()` does not match `self.point_layout()`
-    fn view_mut<'b, T: PointType>(&'b mut self) -> PointViewMut<'a, 'b, Self, T>
-    where
-        Self: Sized,
-        'a: 'b,
-    {
-        PointViewMut::new(self)
-    }
-
-    /// Get a strongly typed view of the `attribute` of all points in this buffer. This view allows mutating
-    /// the attribute data!
-    ///
-    /// # Panics
-    ///
-    /// If `attribute` is not part of the `PointLayout` of this buffer.<br>
-    /// If `T::data_type()` does not match `attribute.datatype()`
-    fn view_attribute_mut<'b, T: PrimitiveType>(
-        &'b mut self,
-        attribute: &PointAttributeDefinition,
-    ) -> AttributeViewMut<'a, 'b, Self, T>
-    where
-        Self: Sized,
-        'a: 'b,
-    {
-        AttributeViewMut::new(self, attribute)
-    }
-
     /// Try to get a mutable reference to `self` as an `InterleavedBufferMut`. Returns `None` if `self` does not
     /// implement `InterleavedBufferMut`
     fn as_interleaved_mut(&mut self) -> Option<&mut dyn InterleavedBufferMut<'a>> {
@@ -350,12 +272,12 @@ pub trait BorrowedMutBuffer<'a>: BorrowedBuffer<'a> {
     }
 }
 
-/// Trait for point buffers that own their memory. Compared to [`BorrowedBufferMut`], buffers that implement
+/// Trait for point buffers that own their memory. Compared to [`BorrowedMutBuffer`], buffers that implement
 /// this trait support the following additional capabilities:
 /// - Pushing point data into the buffer using `push_points`
 /// - Appending other buffers to the end of this buffer using `append`, `append_interleaved`, and `append_columnar`
 /// - Resizing and clearing the contents of the buffer using `resize` and `clear`
-pub trait OwningBuffer<'a>: BorrowedMutBuffer<'a> + Sized {
+pub trait OwningBuffer<'a>: BorrowedMutBuffer<'a> {
     /// Push the raw memory for a range of points into this buffer. Works similar to `Vec::push`
     ///
     /// # Safety
@@ -416,6 +338,123 @@ pub trait OwningBuffer<'a>: BorrowedMutBuffer<'a> + Sized {
     /// Clears the contents of this buffer, removing all point data and setting the length to `0`
     fn clear(&mut self);
 }
+
+/// Extension trait for `BorrowedBuffer` that allows obtaining strongly-typed views over points and
+/// attributes.
+///
+/// # Notes
+///
+/// The `view...` methods on this type are implemented in an extension trait and not the base trait
+/// `BorrowedBuffer` so that we retain the option to create trait objects for types implementing
+/// `BorrowedBuffer`, while also allowing both static types `T: BorrowedBuffer` and dynamic trait object
+/// types (`dyn BorrowedBuffer`) to be used for views. I.e. this makes the following code possible:
+///
+/// ```ignore
+/// let layout = ...;
+/// let buffer = VectorBuffer::new_from_layout(layout);
+/// let view_from_sized_type = buffer.view::<Vector3<f64>>(&POSITION_3D);
+///
+/// // In previous pasture version, this code was not possible because views required sized types:
+/// let buffer_trait_object: &dyn InterleavedBuffer = buffer.as_interleaved().unwrap();
+/// let view_from_trait_object = buffer_trait_object.view::<Vector3<f64>>(&POSITION_3D);
+/// ```
+pub trait BorrowedBufferExt<'a>: BorrowedBuffer<'a> {
+    /// Get a strongly typed view of the point data of this buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if `T::layout()` does not match the `PointLayout` of this buffer
+    fn view<'b, T: PointType>(&'b self) -> PointView<'a, 'b, Self, T>
+    where
+        'a: 'b,
+    {
+        PointView::new(self)
+    }
+
+    /// Gets a strongly typed view of the `attribute` of all points in this buffer
+    ///
+    /// # Panics
+    ///
+    /// If `attribute` is not part of the `PointLayout` of this buffer.
+    /// If `T::data_type()` does not match the data type of the attribute within the buffer
+    fn view_attribute<'b, T: PrimitiveType>(
+        &'b self,
+        attribute: &PointAttributeDefinition,
+    ) -> AttributeView<'a, 'b, Self, T>
+    where
+        'a: 'b,
+    {
+        AttributeView::new(self, attribute)
+    }
+
+    /// Like `view_attribute`, but allows `T::data_type()` to be different from the data type of  
+    /// the `attribute` within this buffer.
+    ///
+    /// # Panics
+    ///
+    /// If `T::data_type()` does not match the data type of `attribute`
+    fn view_attribute_with_conversion<'b, T: PrimitiveType>(
+        &'b self,
+        attribute: &PointAttributeDefinition,
+    ) -> Result<AttributeViewConverting<'a, 'b, Self, T>>
+    where
+        'a: 'b,
+    {
+        AttributeViewConverting::new(self, attribute)
+    }
+}
+
+impl<'a, T: BorrowedBuffer<'a>> BorrowedBufferExt<'a> for T {}
+impl<'a> BorrowedBufferExt<'a> for dyn BorrowedBuffer<'a> + 'a {}
+impl<'a> BorrowedBufferExt<'a> for dyn BorrowedMutBuffer<'a> + 'a {}
+// TODO Make OwningBuffer object safe, e.g. by moving the append functions to another extension trait
+// Open question how to deal with append_interleaved / append_columnar
+// impl<'a> BorrowedBufferExt<'a> for dyn OwningBuffer<'a> + 'a {}
+impl<'a> BorrowedBufferExt<'a> for dyn InterleavedBuffer<'a> + 'a {}
+impl<'a> BorrowedBufferExt<'a> for dyn InterleavedBufferMut<'a> + 'a {}
+impl<'a> BorrowedBufferExt<'a> for dyn ColumnarBuffer<'a> + 'a {}
+impl<'a> BorrowedBufferExt<'a> for dyn ColumnarBufferMut<'a> + 'a {}
+
+/// Extension trait for `BorrowedMutBuffer` that allows obtaining strongly-typed views over points and
+/// attributes.
+pub trait BorrowedMutBufferExt<'a>: BorrowedMutBuffer<'a> {
+    /// Get a strongly typed view of the point data of this buffer. This view allows mutating the point data!
+    ///
+    /// # Panics
+    ///
+    /// If `T::point_layout()` does not match `self.point_layout()`
+    fn view_mut<'b, T: PointType>(&'b mut self) -> PointViewMut<'a, 'b, Self, T>
+    where
+        Self: Sized,
+        'a: 'b,
+    {
+        PointViewMut::new(self)
+    }
+
+    /// Get a strongly typed view of the `attribute` of all points in this buffer. This view allows mutating
+    /// the attribute data!
+    ///
+    /// # Panics
+    ///
+    /// If `attribute` is not part of the `PointLayout` of this buffer.<br>
+    /// If `T::data_type()` does not match `attribute.datatype()`
+    fn view_attribute_mut<'b, T: PrimitiveType>(
+        &'b mut self,
+        attribute: &PointAttributeDefinition,
+    ) -> AttributeViewMut<'a, 'b, Self, T>
+    where
+        Self: Sized,
+        'a: 'b,
+    {
+        AttributeViewMut::new(self, attribute)
+    }
+}
+
+impl<'a, T: BorrowedMutBuffer<'a>> BorrowedMutBufferExt<'a> for T {}
+impl<'a> BorrowedMutBufferExt<'a> for dyn BorrowedMutBuffer<'a> + 'a {}
+// TODO impl for owning buffer
+impl<'a> BorrowedMutBufferExt<'a> for dyn InterleavedBufferMut<'a> + 'a {}
+impl<'a> BorrowedMutBufferExt<'a> for dyn ColumnarBufferMut<'a> + 'a {}
 
 /// Trait for all buffers that can be default-constructed from a given `PointLayout`. This trait is helpful for generic
 /// code that needs to construct an generic buffer type
@@ -1440,7 +1479,7 @@ impl<T: PointType> FromIterator<T> for HashMapBuffer {
 
 /// A point buffer that stores point data in interleaved memory layout in an externally borrowed memory resource.
 /// This can be any type that is convertible to a `&[u8]`. If `T` also is convertible to a `&mut [u8]`, this buffer
-/// also implements [`BorrowedBufferMut`]
+/// also implements [`BorrowedMutBuffer`]
 pub struct ExternalMemoryBuffer<T: AsRef<[u8]>> {
     external_memory: T,
     point_layout: PointLayout,

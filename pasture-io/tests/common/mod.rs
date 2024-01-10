@@ -1,6 +1,6 @@
 use bitfield::{bitfield_bitrange, bitfield_fields};
 use pasture_core::{
-    containers::BorrowedBuffer,
+    containers::{BorrowedBuffer, BorrowedBufferExt},
     layout::{PointAttributeDataType, PointAttributeDefinition, PrimitiveType},
     nalgebra::{Vector3, Vector4},
 };

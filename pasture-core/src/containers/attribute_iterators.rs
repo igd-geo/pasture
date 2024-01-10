@@ -6,7 +6,7 @@ use super::point_buffer::{BorrowedBuffer, ColumnarBuffer, ColumnarBufferMut};
 
 /// An iterator over strongly typed attribute data in a point buffer. Returns attribute data
 /// by value and makes assumptions about the memory layout of the underlying buffer
-pub struct AttributeIteratorByValue<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>>
+pub struct AttributeIteratorByValue<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a> + ?Sized>
 where
     'a: 'b,
 {
@@ -16,7 +16,9 @@ where
     _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>> AttributeIteratorByValue<'a, 'b, T, B> {
+impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a> + ?Sized>
+    AttributeIteratorByValue<'a, 'b, T, B>
+{
     pub(crate) fn new(buffer: &'b B, attribute: &PointAttributeDefinition) -> Self {
         Self {
             attribute_member: buffer
@@ -30,7 +32,7 @@ impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>> AttributeIteratorByValue<'
     }
 }
 
-impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a>> Iterator
+impl<'a, 'b, T: PrimitiveType, B: BorrowedBuffer<'a> + ?Sized> Iterator
     for AttributeIteratorByValue<'a, 'b, T, B>
 {
     type Item = T;
@@ -68,7 +70,7 @@ pub struct AttributeIteratorByRef<'a, T: PrimitiveType> {
 }
 
 impl<'a, T: PrimitiveType> AttributeIteratorByRef<'a, T> {
-    pub(crate) fn new<'b, B: ColumnarBuffer<'b>>(
+    pub(crate) fn new<'b, B: ColumnarBuffer<'b> + ?Sized>(
         buffer: &'a B,
         attribute: &PointAttributeDefinition,
     ) -> Self
@@ -110,7 +112,7 @@ pub struct AttributeIteratorByMut<'a, T: PrimitiveType> {
 }
 
 impl<'a, T: PrimitiveType> AttributeIteratorByMut<'a, T> {
-    pub(crate) fn new<'b, B: ColumnarBufferMut<'b>>(
+    pub(crate) fn new<'b, B: ColumnarBufferMut<'b> + ?Sized>(
         buffer: &'a mut B,
         attribute: &PointAttributeDefinition,
     ) -> Self
@@ -152,12 +154,10 @@ mod tests {
     use rand::{thread_rng, Rng};
 
     use crate::{
-        containers::{BorrowedMutBuffer, HashMapBuffer},
+        containers::{BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer},
         layout::attributes::POSITION_3D,
         test_utils::{CustomPointTypeSmall, DefaultPointDistribution},
     };
-
-    use super::*;
 
     #[test]
     #[allow(clippy::iter_nth_zero)]

@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use common::TestLASPointDistribution;
 use itertools::Itertools;
 use pasture_core::{
-    containers::{BorrowedBuffer, HashMapBuffer, VectorBuffer},
+    containers::{BorrowedBuffer, BorrowedBufferExt, HashMapBuffer, VectorBuffer},
     layout::{
         attributes::{CLASSIFICATION, NORMAL, POSITION_3D},
         PointType,
