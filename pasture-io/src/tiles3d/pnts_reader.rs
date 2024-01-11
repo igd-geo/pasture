@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
-    containers::BorrowedMutBuffer,
+    containers::{BorrowedMutBuffer, BorrowedMutBufferExt},
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
         conversion::get_converter_for_attributes,

@@ -228,37 +228,6 @@ pub trait BorrowedMutBuffer<'a>: BorrowedBuffer<'a> {
     /// May panic if any of `from_index` or `to_index` is out of bounds
     fn swap(&mut self, from_index: usize, to_index: usize);
 
-    /// Apply a transformation function to the given `attribute` of all points within this buffer. This function is
-    /// helpful if you want to modify a single attribute of a buffer in-place and works for buffers of all memory
-    /// layouts. For columnar buffers, prefer using `get_attribute_range_mut` to modify attribute data in-place.
-    ///
-    /// This function does not support attribute type conversion, so the type `T` must match the `PointAttributeDataType`
-    /// of `attribute`!
-    ///
-    /// The conversion function takes the current value of the attribute as a strongly typed `T` and returns the new value
-    /// for the attribute. It also takes the index of the point within the buffer, so that `func` can access additional
-    /// data.
-    ///
-    /// # Panics
-    ///
-    /// If `attribute` is not part of the `PointLayout` of this buffer.<br>
-    /// If `T::data_type()` does not equal `attribute.datatype()`
-    fn transform_attribute<'b, T: PrimitiveType, F: Fn(usize, T) -> T>(
-        &'b mut self,
-        attribute: &PointAttributeDefinition,
-        func: F,
-    ) where
-        Self: Sized,
-        'a: 'b,
-    {
-        let num_points = self.len();
-        let mut attribute_view = self.view_attribute_mut(attribute);
-        for point_index in 0..num_points {
-            let attribute_value = attribute_view.at(point_index);
-            attribute_view.set_at(point_index, func(point_index, attribute_value));
-        }
-    }
-
     /// Try to get a mutable reference to `self` as an `InterleavedBufferMut`. Returns `None` if `self` does not
     /// implement `InterleavedBufferMut`
     fn as_interleaved_mut(&mut self) -> Option<&mut dyn InterleavedBufferMut<'a>> {
@@ -289,49 +258,6 @@ pub trait OwningBuffer<'a>: BorrowedMutBuffer<'a> {
     ///
     /// May panic if `point_bytes.len()` is not a multiple of `self.point_layout().size_of_point_record()`
     unsafe fn push_points(&mut self, point_bytes: &[u8]);
-    /// Appends data from the given buffer to the end of this buffer. Makes no assumptions about the memory
-    /// layout of `other`. If you know the memory layout of `other`, consider using `append_interleaved` or
-    /// `append_columnar`instead, as these will give better performance.
-    ///
-    /// # Panics
-    ///
-    /// If `self.point_layout()` does not equal `other.point_layout()`
-    fn append<'b, B: BorrowedBuffer<'b>>(&mut self, other: &'_ B) {
-        assert_eq!(self.point_layout(), other.point_layout());
-        let old_self_len = self.len();
-        self.resize(old_self_len + other.len());
-        let mut point_buffer = vec![0; self.point_layout().size_of_point_entry() as usize];
-        for point_index in 0..other.len() {
-            other.get_point(point_index, &mut point_buffer);
-            // Is safe because we assert that the point layouts of self and other match
-            unsafe {
-                self.set_point(old_self_len + point_index, &point_buffer);
-            }
-        }
-    }
-    /// Appends data from the given interleaved buffer to the end of this buffer
-    ///
-    /// # Note
-    ///
-    /// Why is there no single `append` function? As far as I understand the currently Rust rules, we can't
-    /// state that two traits are mutually exclusive. So in principle there could be some point buffer type
-    /// that implements both `InterleavedBuffer` and `ColumnarBuffer`. So we can't auto-detect from the type
-    /// `B` whether we should use an implementation that assumes interleaved memory layout, or one that assumes
-    /// columnar memory layout. We could always be conservative and assume neither layout and use the `get_point`
-    /// and `set_point` API, but this is pessimistic and has suboptimal performance. So instead, we provide
-    /// two independent functions that allow more optimal implementations if the memory layouts of `Self` and
-    /// `B` match.
-    ///
-    /// # Panics
-    ///
-    /// If `self.point_layout()` does not equal `other.point_layout()`
-    fn append_interleaved<'b, B: InterleavedBuffer<'b>>(&mut self, other: &'_ B);
-    /// Appends data from the given columnar buffer to the end of this buffer
-    ///
-    /// # Panics
-    ///
-    /// If `self.point_layout()` does not equal `other.point_layout()`
-    fn append_columnar<'b, B: ColumnarBuffer<'b>>(&mut self, other: &'_ B);
     /// Resize this buffer to contain exactly `count` points. If `count` is less than `self.len()`, point data
     /// is removed, if `count` is greater than `self.len()` new points are default-constructed (i.e. zero-initialized).
     fn resize(&mut self, count: usize);
@@ -425,7 +351,6 @@ pub trait BorrowedMutBufferExt<'a>: BorrowedMutBuffer<'a> {
     /// If `T::point_layout()` does not match `self.point_layout()`
     fn view_mut<'b, T: PointType>(&'b mut self) -> PointViewMut<'a, 'b, Self, T>
     where
-        Self: Sized,
         'a: 'b,
     {
         PointViewMut::new(self)
@@ -443,10 +368,39 @@ pub trait BorrowedMutBufferExt<'a>: BorrowedMutBuffer<'a> {
         attribute: &PointAttributeDefinition,
     ) -> AttributeViewMut<'a, 'b, Self, T>
     where
-        Self: Sized,
         'a: 'b,
     {
         AttributeViewMut::new(self, attribute)
+    }
+
+    /// Apply a transformation function to the given `attribute` of all points within this buffer. This function is
+    /// helpful if you want to modify a single attribute of a buffer in-place and works for buffers of all memory
+    /// layouts. For columnar buffers, prefer using `get_attribute_range_mut` to modify attribute data in-place.
+    ///
+    /// This function does not support attribute type conversion, so the type `T` must match the `PointAttributeDataType`
+    /// of `attribute`!
+    ///
+    /// The conversion function takes the current value of the attribute as a strongly typed `T` and returns the new value
+    /// for the attribute. It also takes the index of the point within the buffer, so that `func` can access additional
+    /// data.
+    ///
+    /// # Panics
+    ///
+    /// If `attribute` is not part of the `PointLayout` of this buffer.<br>
+    /// If `T::data_type()` does not equal `attribute.datatype()`
+    fn transform_attribute<'b, T: PrimitiveType, F: Fn(usize, T) -> T>(
+        &'b mut self,
+        attribute: &PointAttributeDefinition,
+        func: F,
+    ) where
+        'a: 'b,
+    {
+        let num_points = self.len();
+        let mut attribute_view = self.view_attribute_mut(attribute);
+        for point_index in 0..num_points {
+            let attribute_value = attribute_view.at(point_index);
+            attribute_view.set_at(point_index, func(point_index, attribute_value));
+        }
     }
 }
 
@@ -455,6 +409,88 @@ impl<'a> BorrowedMutBufferExt<'a> for dyn BorrowedMutBuffer<'a> + 'a {}
 // TODO impl for owning buffer
 impl<'a> BorrowedMutBufferExt<'a> for dyn InterleavedBufferMut<'a> + 'a {}
 impl<'a> BorrowedMutBufferExt<'a> for dyn ColumnarBufferMut<'a> + 'a {}
+
+pub trait OwningBufferExt<'a>: OwningBuffer<'a> {
+    /// Appends data from the given buffer to the end of this buffer
+    ///
+    /// # Panics
+    ///
+    /// If `self.point_layout()` does not equal `other.point_layout()`
+    fn append<'b, B: BorrowedBuffer<'b> + ?Sized>(&mut self, other: &'_ B) {
+        assert_eq!(self.point_layout(), other.point_layout());
+
+        // There are a bunch of ways we can append data, depending on the memory layout. In general, if
+        // the memory layout of this buffer and other match, we can get by with only a few copy operations
+        // (one for interleaved layout, one per attribute for columnar layout)
+        // If we know the specific layout of one buffer but not the other, we can get by without any allocations
+        // If both buffers are neither interleaved nor columnar, we have to resort to the most general, but
+        // slowest methods
+
+        if let (Some(_), Some(other_interleaved)) =
+            (self.as_interleaved_mut(), other.as_interleaved())
+        {
+            // The happy case where append is equal to Vec::append
+            // Safe because both point layouts are equal
+            unsafe {
+                self.push_points(other_interleaved.get_point_range_ref(0..other.len()));
+            }
+            return;
+        }
+
+        let old_self_len = self.len();
+        let new_self_len = old_self_len + other.len();
+        self.resize(new_self_len);
+
+        if let Some(self_interleaved) = self.as_interleaved_mut() {
+            let point_size = self_interleaved.point_layout().size_of_point_entry() as usize;
+            let new_points = self_interleaved.get_point_range_mut(old_self_len..new_self_len);
+            for (index, new_point) in new_points.chunks_exact_mut(point_size).enumerate() {
+                other.get_point(index, new_point);
+            }
+        } else if let Some(self_columnar) = self.as_columnar_mut() {
+            if let Some(other_columnar) = other.as_columnar() {
+                for attribute in other.point_layout().attributes() {
+                    // Safe because point layouts are equal
+                    unsafe {
+                        self_columnar.set_attribute_range(
+                            attribute.attribute_definition(),
+                            old_self_len..new_self_len,
+                            other_columnar.get_attribute_range_ref(
+                                attribute.attribute_definition(),
+                                0..other_columnar.len(),
+                            ),
+                        );
+                    }
+                }
+            } else {
+                for attribute in other.point_layout().attributes() {
+                    let new_attributes = self_columnar.get_attribute_range_mut(
+                        attribute.attribute_definition(),
+                        old_self_len..new_self_len,
+                    );
+                    for (index, new_attribute) in new_attributes
+                        .chunks_exact_mut(attribute.size() as usize)
+                        .enumerate()
+                    {
+                        other.get_attribute(attribute.attribute_definition(), index, new_attribute);
+                    }
+                }
+            }
+        } else {
+            let mut point_buffer = vec![0; self.point_layout().size_of_point_entry() as usize];
+            for point_index in 0..other.len() {
+                other.get_point(point_index, &mut point_buffer);
+                // Is safe because we assert that the point layouts of self and other match
+                unsafe {
+                    self.set_point(old_self_len + point_index, &point_buffer);
+                }
+            }
+        }
+    }
+}
+
+impl<'a, T: OwningBuffer<'a>> OwningBufferExt<'a> for T {}
+impl<'a> OwningBufferExt<'a> for dyn OwningBuffer<'a> + 'a {}
 
 /// Trait for all buffers that can be default-constructed from a given `PointLayout`. This trait is helpful for generic
 /// code that needs to construct an generic buffer type
@@ -803,24 +839,6 @@ where
     fn clear(&mut self) {
         self.storage.clear();
         self.length = 0;
-    }
-
-    fn append_interleaved<'b, B: InterleavedBuffer<'b>>(&mut self, other: &'_ B) {
-        assert_eq!(self.point_layout(), other.point_layout());
-        // Is safe because we checked that the two `PointLayout`s match
-        unsafe {
-            self.push_points(other.get_point_range_ref(0..other.len()));
-        }
-    }
-
-    fn append_columnar<'b, B: ColumnarBuffer<'b>>(&mut self, other: &'_ B) {
-        assert_eq!(self.point_layout(), other.point_layout());
-        let previous_self_len = self.len();
-        self.resize(previous_self_len + other.len());
-        for point_index in 0..other.len() {
-            let self_memory = self.get_point_mut(previous_self_len + point_index);
-            other.get_point(point_index, self_memory);
-        }
     }
 }
 
@@ -1346,28 +1364,6 @@ where
             storage.clear();
         }
         self.length = 0;
-    }
-
-    fn append_interleaved<'b, B: InterleavedBuffer<'b>>(&mut self, other: &'_ B) {
-        assert_eq!(self.point_layout(), other.point_layout());
-        // Safe because we checked that the point layouts match
-        unsafe {
-            self.push_points(other.get_point_range_ref(0..other.len()));
-        }
-    }
-
-    fn append_columnar<'b, B: ColumnarBuffer<'b>>(&mut self, other: &'_ B) {
-        assert_eq!(self.point_layout(), other.point_layout());
-        for attribute in self.point_layout.attributes() {
-            let storage = self
-                .attributes_storage
-                .get_mut(attribute.attribute_definition())
-                .expect("Attribute not found in storage of this buffer");
-            storage.extend_from_slice(
-                other.get_attribute_range_ref(attribute.attribute_definition(), 0..other.len()),
-            );
-        }
-        self.length += other.len();
     }
 }
 
@@ -2067,16 +2063,6 @@ mod tests {
             assert_eq!(expected_buffer_interleaved, vector_buffer);
         }
         {
-            let mut vector_buffer = VectorBuffer::new_from_layout(CustomPointTypeBig::layout());
-            vector_buffer.append_interleaved(&expected_buffer_interleaved);
-            assert_eq!(expected_buffer_interleaved, vector_buffer);
-        }
-        {
-            let mut vector_buffer = VectorBuffer::new_from_layout(CustomPointTypeBig::layout());
-            vector_buffer.append_columnar(&expected_buffer_columnar);
-            assert_eq!(expected_buffer_interleaved, vector_buffer);
-        }
-        {
             let mut hashmap_buffer = HashMapBuffer::new_from_layout(CustomPointTypeBig::layout());
             hashmap_buffer.append(&expected_buffer_columnar);
             assert_eq!(expected_buffer_columnar, hashmap_buffer);
@@ -2084,17 +2070,6 @@ mod tests {
         {
             let mut hashmap_buffer = HashMapBuffer::new_from_layout(CustomPointTypeBig::layout());
             hashmap_buffer.append(&expected_buffer_interleaved);
-            assert_eq!(expected_buffer_columnar, hashmap_buffer);
-        }
-        {
-            let mut hashmap_buffer = HashMapBuffer::new_from_layout(CustomPointTypeBig::layout());
-            hashmap_buffer.append_columnar(&expected_buffer_columnar);
-            assert_eq!(expected_buffer_columnar, hashmap_buffer);
-        }
-        {
-            let mut hashmap_buffer: HashMapBuffer =
-                HashMapBuffer::new_from_layout(CustomPointTypeBig::layout());
-            hashmap_buffer.append_interleaved(&expected_buffer_interleaved);
             assert_eq!(expected_buffer_columnar, hashmap_buffer);
         }
     }
