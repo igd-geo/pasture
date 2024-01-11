@@ -93,8 +93,8 @@
 //! - [`ExternalMemoryBuffer`], a non-owning (though potentially mutable) interleaved point buffer
 //!   which uses an arbitrary external memory resource for its underlying storage
 
-mod point_buffer;
-pub use self::point_buffer::*;
+mod buffers;
+pub use self::buffers::*;
 
 mod attribute_iterators;
 pub use self::attribute_iterators::*;

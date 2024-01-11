@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::layout::PointType;
 
-use super::point_buffer::{BorrowedBuffer, InterleavedBuffer, InterleavedBufferMut};
+use super::buffers::{BorrowedBuffer, InterleavedBuffer, InterleavedBufferMut};
 
 /// Iterator over strongly typed points by value
 pub struct PointIteratorByValue<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized>

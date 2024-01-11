@@ -10,7 +10,7 @@ use super::{
     attribute_iterators::{
         AttributeIteratorByMut, AttributeIteratorByRef, AttributeIteratorByValue,
     },
-    point_buffer::{
+    buffers::{
         BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, ColumnarBufferMut, InterleavedBuffer,
         InterleavedBufferMut,
     },

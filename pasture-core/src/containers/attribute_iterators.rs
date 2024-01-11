@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::layout::{PointAttributeDefinition, PointAttributeMember, PrimitiveType};
 
-use super::point_buffer::{BorrowedBuffer, ColumnarBuffer, ColumnarBufferMut};
+use super::buffers::{BorrowedBuffer, ColumnarBuffer, ColumnarBufferMut};
 
 /// An iterator over strongly typed attribute data in a point buffer. Returns attribute data
 /// by value and makes assumptions about the memory layout of the underlying buffer
