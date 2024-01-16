@@ -10,6 +10,9 @@ pub use self::hashmap_buffer::*;
 mod borrowed_buffers;
 pub use self::borrowed_buffers::*;
 
+mod matrix_buffer;
+pub use self::matrix_buffer::*;
+
 #[cfg(test)]
 mod tests {
     use std::iter::FromIterator;

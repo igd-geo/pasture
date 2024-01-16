@@ -1005,6 +1005,16 @@ impl PointLayout {
             .map(|member| member.offset())
     }
 
+    /// Returns the minimum alignment for points with this layout if the default Rust memory layout for structs
+    /// would be used. The actual minimum alignment of corresponding struct types for this point layout might be
+    /// smaller, for example when using `#[derive(PointType)]` together with `#[repr(C, packed)]`!
+    pub fn min_alignment_for_rust_layout(&self) -> u64 {
+        self.attributes()
+            .map(|a| a.datatype().min_alignment())
+            .max()
+            .unwrap_or(1)
+    }
+
     /// Returns the offset of the next field that could be added to this `PointLayout`, without any alignment
     /// requirements
     fn packed_offset_of_next_field(&self) -> u64 {
