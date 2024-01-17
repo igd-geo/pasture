@@ -938,6 +938,21 @@ impl PointLayout {
         self.attributes.iter()
     }
 
+    /// Returns the number of point attributes within this `PointLayout`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pasture_core::layout::*;
+    /// let mut layout = PointLayout::default();
+    /// layout.add_attribute(attributes::POSITION_3D, FieldAlignment::Default);
+    /// layout.add_attribute(attributes::INTENSITY, FieldAlignment::Default);
+    /// assert_eq!(2, layout.count());
+    /// ```
+    pub fn count(&self) -> usize {
+        self.attributes.len()
+    }
+
     /// Returns the size in bytes of a single point entry with the associated `PointLayout`. Note that the size can be
     /// larger than the sum of the sizes of all attributes because of alignment requirements!
     ///

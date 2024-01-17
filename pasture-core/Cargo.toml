@@ -25,6 +25,7 @@ byteorder = "1.4.2"
 num-traits = "0.2.16"
 bytemuck = { version = "1.5.1", features = ["derive"] }
 uuid = {version = "1.6.1"}
+arrayvec = "0.7"
 
 [dev-dependencies]
 rand = "0.8.2"
