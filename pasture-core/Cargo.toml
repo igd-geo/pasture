@@ -26,6 +26,7 @@ num-traits = "0.2.16"
 bytemuck = { version = "1.5.1", features = ["derive"] }
 uuid = {version = "1.6.1"}
 arrayvec = "0.7"
+rustc-hash = "1.1"
 
 [dev-dependencies]
 rand = "0.8.2"
@@ -49,4 +50,8 @@ harness = false
 
 [[bench]]
 name = "buffer_filter_bench"
+harness = false
+
+[[bench]]
+name = "point_layout_bench"
 harness = false

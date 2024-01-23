@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_core::{
     containers::{
-        BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, ColumnarBuffer, HashMapBuffer,
-        InterleavedBuffer, VectorBuffer,
+        BorrowedBuffer, BorrowedBufferExt, ColumnarBuffer, HashMapBuffer, InterleavedBuffer,
+        MatrixBuffer, VectorBuffer,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,
@@ -47,28 +47,28 @@ fn random_custom_point_small<R: Rng + ?Sized>(rng: &mut R) -> CustomPointTypeSma
     }
 }
 
-fn get_dummy_points_custom_format_small_interleaved() -> VectorBuffer {
+fn get_dummy_points_small_vector_buffer() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000;
-    let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
     let mut rng = thread_rng();
-    for _ in 0..NUM_POINTS {
-        buffer
-            .view_mut()
-            .push_point(random_custom_point_small(&mut rng));
-    }
-    buffer
+    (0..NUM_POINTS)
+        .map(|_| random_custom_point_small(&mut rng))
+        .collect()
 }
 
-fn get_dummy_points_custom_format_small_perattribute() -> HashMapBuffer {
+fn get_dummy_points_small_hashmap_buffer() -> HashMapBuffer {
     const NUM_POINTS: usize = 1_000;
-    let mut buffer = HashMapBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
     let mut rng = thread_rng();
-    for _ in 0..NUM_POINTS {
-        buffer
-            .view_mut()
-            .push_point(random_custom_point_small(&mut rng));
-    }
-    buffer
+    (0..NUM_POINTS)
+        .map(|_| random_custom_point_small(&mut rng))
+        .collect()
+}
+
+fn get_dummy_points_small_matrix_buffer() -> MatrixBuffer {
+    const NUM_POINTS: usize = 1_000;
+    let mut rng = thread_rng();
+    (0..NUM_POINTS)
+        .map(|_| random_custom_point_small(&mut rng))
+        .collect()
 }
 
 fn points_iterator_performance_opaque_buffer<'a, T: PointType + Default, B: BorrowedBuffer<'a>>(
@@ -157,15 +157,16 @@ fn attribute_ref_iterator_performance_small_type<'a>(buffer: &'a impl ColumnarBu
 }
 
 fn bench(c: &mut Criterion) {
-    let dummy_points_small_interleaved = get_dummy_points_custom_format_small_interleaved();
-    let dummy_points_small_perattribute = get_dummy_points_custom_format_small_perattribute();
+    let dummy_points_small_vector = get_dummy_points_small_vector_buffer();
+    let dummy_points_small_hashmap = get_dummy_points_small_hashmap_buffer();
+    let dummy_points_small_matrix = get_dummy_points_small_matrix_buffer();
 
     c.bench_function(
         "points_iterator_interleaved_opaque_buffer_small_type",
         |b| {
             b.iter(|| {
                 points_iterator_performance_opaque_buffer::<CustomPointTypeSmall, _>(
-                    &dummy_points_small_interleaved,
+                    &dummy_points_small_vector,
                 )
             })
         },
@@ -175,15 +176,22 @@ fn bench(c: &mut Criterion) {
         |b| {
             b.iter(|| {
                 points_iterator_performance_opaque_buffer::<CustomPointTypeSmall, _>(
-                    &dummy_points_small_perattribute,
+                    &dummy_points_small_hashmap,
                 )
             })
         },
     );
+    c.bench_function("points_iterator_matrix_buffer_opaque_small_type", |b| {
+        b.iter(|| {
+            points_iterator_performance_opaque_buffer::<CustomPointTypeSmall, _>(
+                &dummy_points_small_matrix,
+            )
+        })
+    });
     c.bench_function("points_iterator_interleaved_typed_buffer_small_type", |b| {
         b.iter(|| {
             points_iterator_performance_interleaved_buffer::<CustomPointTypeSmall, _>(
-                &dummy_points_small_interleaved,
+                &dummy_points_small_vector,
             )
         })
     });
@@ -192,24 +200,29 @@ fn bench(c: &mut Criterion) {
         |b| {
             b.iter(|| {
                 points_iterator_performance_per_attribute_buffer::<CustomPointTypeSmall, _>(
-                    &dummy_points_small_perattribute,
+                    &dummy_points_small_hashmap,
                 )
             })
         },
     );
+    c.bench_function("points_iterator_matrix_buffer_columnar_small_type", |b| {
+        b.iter(|| {
+            points_iterator_performance_per_attribute_buffer::<CustomPointTypeSmall, _>(
+                &dummy_points_small_matrix,
+            )
+        })
+    });
     c.bench_function("points_ref_iterator_small_type", |b| {
-        b.iter(|| points_ref_iterator_performance_small_type(&dummy_points_small_interleaved))
+        b.iter(|| points_ref_iterator_performance_small_type(&dummy_points_small_vector))
     });
     c.bench_function("points_ref_iterator_small_type_with_trait_object", |b| {
-        b.iter(|| {
-            points_ref_iterator_performance_with_trait_object(&dummy_points_small_interleaved)
-        })
+        b.iter(|| points_ref_iterator_performance_with_trait_object(&dummy_points_small_vector))
     });
 
     c.bench_function("attribute_iterator_interleaved_opaque_buffer", |b| {
         b.iter(|| {
             attribute_iterator_performance_opaque_buffer::<Vector3<f64>>(
-                &dummy_points_small_interleaved,
+                &dummy_points_small_vector,
                 &POSITION_3D,
             )
         })
@@ -217,7 +230,15 @@ fn bench(c: &mut Criterion) {
     c.bench_function("attribute_iterator_perattribute_opaque_buffer", |b| {
         b.iter(|| {
             attribute_iterator_performance_opaque_buffer::<Vector3<f64>>(
-                &dummy_points_small_perattribute,
+                &dummy_points_small_hashmap,
+                &POSITION_3D,
+            )
+        })
+    });
+    c.bench_function("attribute_iterator_matrix_buffer_opaque_buffer", |b| {
+        b.iter(|| {
+            attribute_iterator_performance_opaque_buffer::<Vector3<f64>>(
+                &dummy_points_small_matrix,
                 &POSITION_3D,
             )
         })
@@ -225,7 +246,7 @@ fn bench(c: &mut Criterion) {
     c.bench_function("attribute_iterator_interleaved_typed_buffer", |b| {
         b.iter(|| {
             attribute_iterator_performance_interleaved_buffer::<Vector3<f64>, _>(
-                &dummy_points_small_interleaved,
+                &dummy_points_small_vector,
                 &POSITION_3D,
             )
         })
@@ -233,13 +254,24 @@ fn bench(c: &mut Criterion) {
     c.bench_function("attribute_iterator_perattribute_typed_buffer", |b| {
         b.iter(|| {
             attribute_iterator_performance_perattribute_buffer::<Vector3<f64>, _>(
-                &dummy_points_small_perattribute,
+                &dummy_points_small_hashmap,
+                &POSITION_3D,
+            )
+        })
+    });
+    c.bench_function("attribute_iterator_matrix_buffer_typed_buffer", |b| {
+        b.iter(|| {
+            attribute_iterator_performance_perattribute_buffer::<Vector3<f64>, _>(
+                &dummy_points_small_matrix,
                 &POSITION_3D,
             )
         })
     });
     c.bench_function("attribute_ref_iterator_small_type", |b| {
-        b.iter(|| attribute_ref_iterator_performance_small_type(&dummy_points_small_perattribute))
+        b.iter(|| attribute_ref_iterator_performance_small_type(&dummy_points_small_hashmap))
+    });
+    c.bench_function("attribute_ref_iterator_matrix_buffer_small_type", |b| {
+        b.iter(|| attribute_ref_iterator_performance_small_type(&dummy_points_small_matrix))
     });
 }
 

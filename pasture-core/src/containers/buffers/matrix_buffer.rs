@@ -380,9 +380,7 @@ impl<'a, S: BinaryStorage> ColumnarBuffer<'a> for MatrixBufferBase<S> {
         let offset_start = self
             .offset_lut
             .offset_to_attribute(range.start, attribute_member);
-        let offset_end = self
-            .offset_lut
-            .offset_to_attribute(range.end, attribute_member);
+        let offset_end = offset_start + (range.len() * attribute.size() as usize);
         &self.storage[offset_start..offset_end]
     }
 }
