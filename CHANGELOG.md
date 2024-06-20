@@ -1,3 +1,11 @@
+# 0.5.0
+
+- Allows creating point and attribute views on trait objects, i.e. `dyn BorrowedBuffer` and the likes
+- `serde` is now an optional dependency in `pasture-core`
+- Fixed some bugs with LAS reading/writing
+    - The `LargeFile` header entry is now only set for LAS files that actually support it, i.e. LAS files with version 1.4
+    - Compressed LAZ files now correctly write the LAZ compression bit into the point format
+
 # 0.4.0 
 
 - Major overhaul of the buffer API in `pasture-core`. This is a breaking change for previous `pasture` versions

@@ -1,6 +1,6 @@
 [package]
 name = "pasture-tools"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
 edition = "2018"
 license-file = "LICENSE"
@@ -12,10 +12,10 @@ categories = ["data-structures", "command-line-utilities"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = {version = "=0.4.0", path = "../pasture-core" }
-pasture-io = {version = "=0.4.0", path = "../pasture-io" }
-pasture-algorithms = {version = "=0.4.0", path = "../pasture-algorithms" }
-pasture-derive = {version = "=0.4.0", path = "../pasture-derive" }
+pasture-core = {version = "=0.5.0", path = "../pasture-core" }
+pasture-io = {version = "=0.5.0", path = "../pasture-io" }
+pasture-algorithms = {version = "=0.5.0", path = "../pasture-algorithms" }
+pasture-derive = {version = "=0.5.0", path = "../pasture-derive" }
 anyhow = "1.0.34"
 clap = "2.33.3"
 log = "0.4"
