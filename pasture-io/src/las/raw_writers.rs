@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
-use las_rs::{point::Format, Builder, Vlr};
+use las_rs::{feature::LargeFiles, point::Format, Builder, Vlr};
 use laz::{LasZipCompressor, LazItemRecordBuilder, LazVlr};
 use pasture_core::{containers::BorrowedBuffer, layout::PointLayout, nalgebra::Vector3};
 
@@ -51,18 +51,33 @@ fn update_point_counts_in_las_header(
     additional_points: usize,
     additional_points_by_return: &HashMap<u8, u64>,
     las_header: &mut las::raw::Header,
-) {
-    let large_file = las_header
-        .large_file
-        .as_mut()
-        .expect("LAS header must contain large_file field!");
-
-    large_file.number_of_point_records += additional_points as u64;
-    additional_points_by_return
-        .iter()
-        .for_each(|(return_number, additional_count)| {
-            large_file.number_of_points_by_return[(return_number - 1) as usize] += additional_count;
-        });
+) -> Result<()> {
+    if let Some(large_file) = las_header.large_file.as_mut() {
+        large_file.number_of_point_records += additional_points as u64;
+        large_file.number_of_points_by_return[0] += additional_points as u64;
+        additional_points_by_return
+            .iter()
+            .for_each(|(return_number, additional_count)| {
+                large_file.number_of_points_by_return[(return_number - 1) as usize] +=
+                    additional_count;
+            });
+        Ok(())
+    } else {
+        las_header.number_of_point_records = (las_header.number_of_point_records as usize
+            + additional_points)
+            .try_into()
+            .context(
+                "Number of points exceeds maximum point count in LAS files prior to version 1.4",
+            )?;
+        las_header.number_of_points_by_return[0] += additional_points as u32;
+        additional_points_by_return
+            .iter()
+            .for_each(|(return_number, additional_count)| {
+                las_header.number_of_points_by_return[(return_number - 1) as usize] +=
+                    *additional_count as u32;
+            });
+        Ok(())
+    }
 }
 
 /// Do final checkup of the LAS header
@@ -109,11 +124,15 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         // Sanitize header, i.e. clear point counts and bounds
         // TODO Add flag to prevent recalculating bounds
         let mut raw_header = header.clone().into_raw()?;
-        //raw_header.version = Version::new(1, 2);
         raw_header.number_of_point_records = 0;
         raw_header.number_of_points_by_return = [0; 5];
-        // Pasture always uses the 'large_file' field for keeping track of the number of points
-        raw_header.large_file = Some(Default::default());
+        // las-rs always creates a large_file structure when calling `into_raw()` on a Header, but this
+        // is wrong, as only LAS version 1.4 supports large files. So we manually fix this!
+        raw_header.large_file = if raw_header.version.supports::<LargeFiles>() {
+            Some(Default::default())
+        } else {
+            None
+        };
         raw_header.min_x = std::f64::MAX;
         raw_header.min_y = std::f64::MAX;
         raw_header.min_z = std::f64::MAX;
@@ -337,7 +356,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
             points.len(),
             &points_by_return,
             &mut self.current_header,
-        );
+        )?;
         self.requires_flush = true;
 
         Ok(())
@@ -577,7 +596,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
             points.len(),
             &points_by_return,
             &mut self.current_header,
-        );
+        )?;
         self.requires_flush = true;
 
         Ok(())
@@ -632,11 +651,17 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         }
 
         let mut raw_header = header.clone().into_raw()?;
-        // raw_header.version = Version::new(1, 2);
         raw_header.number_of_point_records = 0;
         raw_header.number_of_points_by_return = [0; 5];
-        // Pasture always uses the 'large_file' field for keeping track of the number of points
-        raw_header.large_file = Some(Default::default());
+        // Write the LAZ compressed bit into the point record format
+        raw_header.point_data_record_format |= 0x80;
+        // las-rs always creates a large_file structure when calling `into_raw()` on a Header, but this
+        // is wrong, as only LAS version 1.4 supports large files. So we manually fix this!
+        raw_header.large_file = if raw_header.version.supports::<LargeFiles>() {
+            Some(Default::default())
+        } else {
+            None
+        };
         raw_header.min_x = std::f64::INFINITY;
         raw_header.min_y = std::f64::INFINITY;
         raw_header.min_z = std::f64::INFINITY;
@@ -870,7 +895,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
             points.len(),
             &points_by_return,
             &mut self.current_header,
-        );
+        )?;
         self.requires_flush = true;
 
         Ok(())
@@ -1115,7 +1140,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
             points.len(),
             &points_by_return,
             &mut self.current_header,
-        );
+        )?;
         self.requires_flush = true;
 
         Ok(())

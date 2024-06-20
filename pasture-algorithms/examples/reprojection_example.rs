@@ -1,7 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod ex {
     use pasture_algorithms::reprojection::reproject_point_cloud_within;
-    use pasture_core::containers::{BorrowedBuffer, VectorBuffer};
+    use pasture_core::containers::{BorrowedBufferExt, VectorBuffer};
     use pasture_core::nalgebra::Vector3;
     use pasture_derive::PointType;
 

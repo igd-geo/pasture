@@ -1,5 +1,5 @@
 use pasture_core::{
-    containers::BorrowedBuffer,
+    containers::{BorrowedBuffer, BorrowedBufferExt},
     layout::{PointAttributeDefinition, PrimitiveType},
     math::MinMax,
 };

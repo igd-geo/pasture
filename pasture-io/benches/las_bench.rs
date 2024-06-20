@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use las::Builder;
 use pasture_core::{
     containers::{
-        BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, MakeBufferFromLayout, OwningBuffer,
+        BorrowedBuffer, BorrowedMutBufferExt, HashMapBuffer, MakeBufferFromLayout, OwningBuffer,
         VectorBuffer,
     },
     layout::PointType,

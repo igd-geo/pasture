@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use pasture_core::{
-    containers::BorrowedBuffer,
+    containers::{BorrowedBuffer, BorrowedBufferExt},
     layout::attributes::POSITION_3D,
     math::AABB,
     nalgebra::{Point3, Vector3},

@@ -7,29 +7,6 @@ use uuid::Uuid;
 
 use crate::math::Alignable;
 
-mod private {
-    use super::*;
-
-    pub trait Sealed {}
-
-    impl Sealed for u8 {}
-    impl Sealed for u16 {}
-    impl Sealed for u32 {}
-    impl Sealed for u64 {}
-    impl Sealed for i8 {}
-    impl Sealed for i16 {}
-    impl Sealed for i32 {}
-    impl Sealed for i64 {}
-    impl Sealed for f32 {}
-    impl Sealed for f64 {}
-    impl Sealed for bool {}
-    impl Sealed for Vector3<u8> {}
-    impl Sealed for Vector3<u16> {}
-    impl Sealed for Vector3<f32> {}
-    impl Sealed for Vector3<f64> {}
-    impl Sealed for Vector4<u8> {}
-}
-
 /// Possible data types for individual point attributes
 ///
 /// # Why no `bool` anymore?
@@ -515,13 +492,13 @@ pub mod attributes {
         datatype: PointAttributeDataType::U8,
     };
 
-    /// Attribute definition for a scan direction flag. Default datatype is Bool
+    /// Attribute definition for a scan direction flag. Default datatype is U8
     pub const SCAN_DIRECTION_FLAG: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("ScanDirectionFlag"),
         datatype: PointAttributeDataType::U8,
     };
 
-    /// Attribute definition for an edge of flight line flag. Default datatype is Bool
+    /// Attribute definition for an edge of flight line flag. Default datatype is U8
     pub const EDGE_OF_FLIGHT_LINE: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("EdgeOfFlightLine"),
         datatype: PointAttributeDataType::U8,
@@ -1064,7 +1041,6 @@ mod tests {
         PointType,
     };
     use pasture_derive::PointType;
-    use serde_json::json;
 
     #[derive(
         Debug, PointType, Copy, Clone, PartialEq, bytemuck::NoUninit, bytemuck::AnyBitPattern,

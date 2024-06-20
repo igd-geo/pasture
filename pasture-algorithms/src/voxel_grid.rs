@@ -1,7 +1,9 @@
 use std::{collections::HashMap, u16};
 
 use pasture_core::{
-    containers::{BorrowedBuffer, OwningBuffer, UntypedPoint, UntypedPointBuffer},
+    containers::{
+        BorrowedBuffer, BorrowedBufferExt, OwningBuffer, UntypedPoint, UntypedPointBuffer,
+    },
     layout::{
         attributes::{self, POSITION_3D},
         PointAttributeDataType, PointAttributeDefinition, PointLayout,
@@ -19,9 +21,9 @@ pub struct Voxel {
 /// finds leaf of point p by iterating over the marked axis
 fn find_leaf(
     p: Vector3<f64>,
-    markers_x: &Vec<f64>,
-    markers_y: &Vec<f64>,
-    markers_z: &Vec<f64>,
+    markers_x: &[f64],
+    markers_y: &[f64],
+    markers_z: &[f64],
 ) -> (usize, usize, usize) {
     let mut index_x = 0;
     let mut index_y = 0;
@@ -691,7 +693,7 @@ mod tests {
 
     use crate::voxel_grid::voxelgrid_filter;
     use pasture_core::{
-        containers::{BorrowedBuffer, HashMapBuffer, MakeBufferFromLayout},
+        containers::{BorrowedBuffer, BorrowedBufferExt, HashMapBuffer, MakeBufferFromLayout},
         layout::attributes,
         nalgebra::Vector3,
     };

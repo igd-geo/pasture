@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use pasture_core::containers::{BorrowedMutBuffer, MakeBufferFromLayout, VectorBuffer};
+use pasture_core::containers::{BorrowedMutBufferExt, MakeBufferFromLayout, VectorBuffer};
 use pasture_core::layout::{
     attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
 };

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use pasture_core::containers::BorrowedBuffer;
+use pasture_core::containers::{BorrowedBuffer, BorrowedBufferExt};
 use pasture_core::{layout::attributes::POSITION_3D, nalgebra::Vector3};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -464,7 +464,7 @@ mod tests {
     use crate::convexhull;
     use anyhow::Result;
     use pasture_core::{
-        containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer},
+        containers::{BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer},
         layout::attributes::POSITION_3D,
         layout::PointType,
         nalgebra::Vector3,

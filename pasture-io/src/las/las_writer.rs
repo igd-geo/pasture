@@ -130,7 +130,7 @@ mod tests {
 
     use las::{point::Format, Builder};
     use pasture_core::{
-        containers::{MakeBufferFromLayout, OwningBuffer, VectorBuffer},
+        containers::{BorrowedBufferExt, MakeBufferFromLayout, OwningBuffer, VectorBuffer},
         layout::PointType,
         nalgebra::Vector3,
     };

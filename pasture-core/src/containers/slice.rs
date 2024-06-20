@@ -18,7 +18,7 @@ where
     Self: 'a,
 {
     /// The slice type
-    type SliceType: BorrowedBuffer<'a> + Sized;
+    type SliceType: BorrowedBuffer<'a>;
 
     /// Take a immutable slice to this buffer using the given `range` of points
     ///
@@ -33,7 +33,7 @@ pub trait SliceBufferMut<'a>: SliceBuffer<'a>
 where
     Self: 'a,
 {
-    type SliceTypeMut: BorrowedMutBuffer<'a> + Sized;
+    type SliceTypeMut: BorrowedMutBuffer<'a>;
     /// Take a mutable slice to this buffer using the given `range` of points
     ///
     /// # Panics
@@ -75,12 +75,12 @@ fn get_and_check_global_point_range(
 /// An immutable slice to a point buffer. In terms of memory layout, the slice will have the same
 /// capabilities as the underlying buffer, i.e. if `T` implements `InterleavedBuffer`, so does this
 /// slice, and similar for the other memory layout traits.
-pub struct BufferSlice<'a, T: BorrowedBuffer<'a>> {
+pub struct BufferSlice<'a, T: BorrowedBuffer<'a> + ?Sized> {
     buffer: &'a T,
     point_range: Range<usize>,
 }
 
-impl<'a, T: BorrowedBuffer<'a>> BufferSlice<'a, T> {
+impl<'a, T: BorrowedBuffer<'a> + ?Sized> BufferSlice<'a, T> {
     /// Creates a new `BufferSlice` for the given `point_range` in the given `buffer`
     pub fn new(buffer: &'a T, point_range: Range<usize>) -> Self {
         Self {
@@ -90,7 +90,7 @@ impl<'a, T: BorrowedBuffer<'a>> BufferSlice<'a, T> {
     }
 }
 
-impl<'a, T: BorrowedBuffer<'a>> BorrowedBuffer<'a> for BufferSlice<'a, T> {
+impl<'a, T: BorrowedBuffer<'a> + ?Sized> BorrowedBuffer<'a> for BufferSlice<'a, T> {
     fn len(&self) -> usize {
         self.point_range.end - self.point_range.start
     }
@@ -135,7 +135,7 @@ impl<'a, T: BorrowedBuffer<'a>> BorrowedBuffer<'a> for BufferSlice<'a, T> {
     }
 }
 
-impl<'a, T: InterleavedBuffer<'a>> InterleavedBuffer<'a> for BufferSlice<'a, T> {
+impl<'a, T: InterleavedBuffer<'a> + ?Sized> InterleavedBuffer<'a> for BufferSlice<'a, T> {
     fn get_point_ref<'c>(&'c self, index: usize) -> &'c [u8]
     where
         'a: 'c,
@@ -153,7 +153,7 @@ impl<'a, T: InterleavedBuffer<'a>> InterleavedBuffer<'a> for BufferSlice<'a, T> 
     }
 }
 
-impl<'a, T: ColumnarBuffer<'a>> ColumnarBuffer<'a> for BufferSlice<'a, T> {
+impl<'a, T: ColumnarBuffer<'a> + ?Sized> ColumnarBuffer<'a> for BufferSlice<'a, T> {
     fn get_attribute_ref<'c>(
         &'c self,
         attribute: &PointAttributeDefinition,
@@ -183,12 +183,12 @@ impl<'a, T: ColumnarBuffer<'a>> ColumnarBuffer<'a> for BufferSlice<'a, T> {
     }
 }
 
-impl<'a, T: BorrowedBuffer<'a> + Sized> SliceBuffer<'a> for BufferSlice<'a, T> {
+impl<'a, T: BorrowedBuffer<'a> + ?Sized> SliceBuffer<'a> for BufferSlice<'a, T> {
     type SliceType = BufferSlice<'a, T>;
 
     fn slice(&self, range: Range<usize>) -> BufferSlice<'a, T> {
-        assert!(range.start < self.len());
-        assert!(range.end < self.len());
+        assert!(range.start <= self.len());
+        assert!(range.end <= self.len());
         let global_range = if range.start > range.end {
             (self.point_range.start + range.end)..(self.point_range.start + range.end)
         } else {
@@ -204,12 +204,12 @@ impl<'a, T: BorrowedBuffer<'a> + Sized> SliceBuffer<'a> for BufferSlice<'a, T> {
 /// A mutable slice to a point buffer. Works like [`BufferSlice`], but allows mutable access to the
 /// underlying buffer. This type conditionally implements the [`InterleavedBufferMut`] and [`ColumnarBufferMut`]
 /// traits if `T` implements them
-pub struct BufferSliceMut<'a, T: BorrowedMutBuffer<'a>> {
+pub struct BufferSliceMut<'a, T: BorrowedMutBuffer<'a> + ?Sized> {
     buffer: &'a mut T,
     point_range: Range<usize>,
 }
 
-impl<'a, T: BorrowedMutBuffer<'a>> BufferSliceMut<'a, T> {
+impl<'a, T: BorrowedMutBuffer<'a> + ?Sized> BufferSliceMut<'a, T> {
     /// Creates a new `BufferSliceMut` for the given `point_range` in the given `buffer`
     pub fn new(buffer: &'a mut T, point_range: Range<usize>) -> Self {
         Self {
@@ -234,7 +234,7 @@ impl<'a, T: BorrowedMutBuffer<'a>> BufferSliceMut<'a, T> {
     }
 }
 
-impl<'a, T: BorrowedMutBuffer<'a>> BorrowedBuffer<'a> for BufferSliceMut<'a, T> {
+impl<'a, T: BorrowedMutBuffer<'a> + ?Sized> BorrowedBuffer<'a> for BufferSliceMut<'a, T> {
     fn len(&self) -> usize {
         self.point_range.end - self.point_range.start
     }
@@ -275,7 +275,7 @@ impl<'a, T: BorrowedMutBuffer<'a>> BorrowedBuffer<'a> for BufferSliceMut<'a, T> 
     }
 }
 
-impl<'a, T: BorrowedMutBuffer<'a>> BorrowedMutBuffer<'a> for BufferSliceMut<'a, T> {
+impl<'a, T: BorrowedMutBuffer<'a> + ?Sized> BorrowedMutBuffer<'a> for BufferSliceMut<'a, T> {
     unsafe fn set_point(&mut self, index: usize, point_data: &[u8]) {
         self.buffer
             .set_point(self.get_and_check_global_point_index(index), point_data)
@@ -322,7 +322,7 @@ impl<'a, T: BorrowedMutBuffer<'a>> BorrowedMutBuffer<'a> for BufferSliceMut<'a, 
     }
 }
 
-impl<'a, T: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>> InterleavedBuffer<'a>
+impl<'a, T: InterleavedBuffer<'a> + BorrowedMutBuffer<'a> + ?Sized> InterleavedBuffer<'a>
     for BufferSliceMut<'a, T>
 {
     fn get_point_ref<'b>(&'b self, index: usize) -> &'b [u8]
@@ -342,7 +342,7 @@ impl<'a, T: InterleavedBuffer<'a> + BorrowedMutBuffer<'a>> InterleavedBuffer<'a>
     }
 }
 
-impl<'a, T: InterleavedBufferMut<'a> + BorrowedMutBuffer<'a>> InterleavedBufferMut<'a>
+impl<'a, T: InterleavedBufferMut<'a> + BorrowedMutBuffer<'a> + ?Sized> InterleavedBufferMut<'a>
     for BufferSliceMut<'a, T>
 {
     fn get_point_mut<'b>(&'b mut self, index: usize) -> &'b mut [u8]
@@ -362,7 +362,7 @@ impl<'a, T: InterleavedBufferMut<'a> + BorrowedMutBuffer<'a>> InterleavedBufferM
     }
 }
 
-impl<'a, T: ColumnarBuffer<'a> + BorrowedMutBuffer<'a>> ColumnarBuffer<'a>
+impl<'a, T: ColumnarBuffer<'a> + BorrowedMutBuffer<'a> + ?Sized> ColumnarBuffer<'a>
     for BufferSliceMut<'a, T>
 {
     fn get_attribute_ref<'b>(
@@ -390,7 +390,7 @@ impl<'a, T: ColumnarBuffer<'a> + BorrowedMutBuffer<'a>> ColumnarBuffer<'a>
     }
 }
 
-impl<'a, T: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>> ColumnarBufferMut<'a>
+impl<'a, T: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a> + ?Sized> ColumnarBufferMut<'a>
     for BufferSliceMut<'a, T>
 {
     fn get_attribute_mut<'b>(
@@ -418,14 +418,14 @@ impl<'a, T: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a>> ColumnarBufferMut<'a>
     }
 }
 
-impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + Sized> SliceBuffer<'a>
+impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + ?Sized> SliceBuffer<'a>
     for BufferSliceMut<'a, T>
 {
     type SliceType = BufferSlice<'a, T>;
 
     fn slice(&'a self, range: Range<usize>) -> Self::SliceType {
-        assert!(range.start < self.len());
-        assert!(range.end < self.len());
+        assert!(range.start <= self.len());
+        assert!(range.end <= self.len());
         let global_range = if range.start > range.end {
             (self.point_range.start + range.end)..(self.point_range.start + range.end)
         } else {
@@ -438,14 +438,14 @@ impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + Sized> SliceBuffer<'a>
     }
 }
 
-impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + Sized> SliceBufferMut<'a>
+impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + ?Sized> SliceBufferMut<'a>
     for BufferSliceMut<'a, T>
 {
     type SliceTypeMut = BufferSliceMut<'a, T>;
 
     fn slice_mut(&'a mut self, range: Range<usize>) -> Self::SliceTypeMut {
-        assert!(range.start < self.len());
-        assert!(range.end < self.len());
+        assert!(range.start <= self.len());
+        assert!(range.end <= self.len());
         let global_range = if range.start > range.end {
             (self.point_range.start + range.end)..(self.point_range.start + range.end)
         } else {
@@ -459,15 +459,15 @@ impl<'a, T: BorrowedBuffer<'a> + BorrowedMutBuffer<'a> + Sized> SliceBufferMut<'
 }
 
 /// A buffer slice for an interleaved buffer
-pub struct BufferSliceInterleaved<'a, T: InterleavedBuffer<'a>>(BufferSlice<'a, T>);
+pub struct BufferSliceInterleaved<'a, T: InterleavedBuffer<'a> + ?Sized>(BufferSlice<'a, T>);
 
-impl<'a, T: InterleavedBuffer<'a>> BufferSliceInterleaved<'a, T> {
+impl<'a, T: InterleavedBuffer<'a> + ?Sized> BufferSliceInterleaved<'a, T> {
     pub fn new(buffer: &'a T, point_range: Range<usize>) -> Self {
         Self(BufferSlice::new(buffer, point_range))
     }
 }
 
-impl<'a, T: InterleavedBuffer<'a>> BorrowedBuffer<'a> for BufferSliceInterleaved<'a, T> {
+impl<'a, T: InterleavedBuffer<'a> + ?Sized> BorrowedBuffer<'a> for BufferSliceInterleaved<'a, T> {
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -499,7 +499,9 @@ impl<'a, T: InterleavedBuffer<'a>> BorrowedBuffer<'a> for BufferSliceInterleaved
     }
 }
 
-impl<'a, T: InterleavedBuffer<'a>> InterleavedBuffer<'a> for BufferSliceInterleaved<'a, T> {
+impl<'a, T: InterleavedBuffer<'a> + ?Sized> InterleavedBuffer<'a>
+    for BufferSliceInterleaved<'a, T>
+{
     fn get_point_ref<'c>(&'c self, index: usize) -> &'c [u8]
     where
         'a: 'c,
@@ -515,7 +517,7 @@ impl<'a, T: InterleavedBuffer<'a>> InterleavedBuffer<'a> for BufferSliceInterlea
     }
 }
 
-impl<'a, T: InterleavedBuffer<'a>> SliceBuffer<'a> for BufferSliceInterleaved<'a, T> {
+impl<'a, T: InterleavedBuffer<'a> + ?Sized> SliceBuffer<'a> for BufferSliceInterleaved<'a, T> {
     type SliceType = Self;
 
     fn slice(&'a self, range: Range<usize>) -> Self::SliceType {
@@ -524,15 +526,19 @@ impl<'a, T: InterleavedBuffer<'a>> SliceBuffer<'a> for BufferSliceInterleaved<'a
 }
 
 /// A mutable buffer slice for an interleaved buffer
-pub struct BufferSliceInterleavedMut<'a, T: InterleavedBufferMut<'a>>(BufferSliceMut<'a, T>);
+pub struct BufferSliceInterleavedMut<'a, T: InterleavedBufferMut<'a> + ?Sized>(
+    BufferSliceMut<'a, T>,
+);
 
-impl<'a, T: InterleavedBufferMut<'a>> BufferSliceInterleavedMut<'a, T> {
+impl<'a, T: InterleavedBufferMut<'a> + ?Sized> BufferSliceInterleavedMut<'a, T> {
     pub fn new(buffer: &'a mut T, point_range: Range<usize>) -> Self {
         Self(BufferSliceMut::new(buffer, point_range))
     }
 }
 
-impl<'a, T: InterleavedBufferMut<'a>> BorrowedBuffer<'a> for BufferSliceInterleavedMut<'a, T> {
+impl<'a, T: InterleavedBufferMut<'a> + ?Sized> BorrowedBuffer<'a>
+    for BufferSliceInterleavedMut<'a, T>
+{
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -564,7 +570,9 @@ impl<'a, T: InterleavedBufferMut<'a>> BorrowedBuffer<'a> for BufferSliceInterlea
     }
 }
 
-impl<'a, T: InterleavedBufferMut<'a>> BorrowedMutBuffer<'a> for BufferSliceInterleavedMut<'a, T> {
+impl<'a, T: InterleavedBufferMut<'a> + ?Sized> BorrowedMutBuffer<'a>
+    for BufferSliceInterleavedMut<'a, T>
+{
     unsafe fn set_point(&mut self, index: usize, point_data: &[u8]) {
         self.0.set_point(index, point_data)
     }
@@ -601,7 +609,9 @@ impl<'a, T: InterleavedBufferMut<'a>> BorrowedMutBuffer<'a> for BufferSliceInter
     }
 }
 
-impl<'a, T: InterleavedBufferMut<'a>> InterleavedBuffer<'a> for BufferSliceInterleavedMut<'a, T> {
+impl<'a, T: InterleavedBufferMut<'a> + ?Sized> InterleavedBuffer<'a>
+    for BufferSliceInterleavedMut<'a, T>
+{
     fn get_point_ref<'b>(&'b self, index: usize) -> &'b [u8]
     where
         'a: 'b,
@@ -617,7 +627,7 @@ impl<'a, T: InterleavedBufferMut<'a>> InterleavedBuffer<'a> for BufferSliceInter
     }
 }
 
-impl<'a, T: InterleavedBufferMut<'a>> InterleavedBufferMut<'a>
+impl<'a, T: InterleavedBufferMut<'a> + ?Sized> InterleavedBufferMut<'a>
     for BufferSliceInterleavedMut<'a, T>
 {
     fn get_point_mut<'b>(&'b mut self, index: usize) -> &'b mut [u8]
@@ -635,7 +645,9 @@ impl<'a, T: InterleavedBufferMut<'a>> InterleavedBufferMut<'a>
     }
 }
 
-impl<'a, T: InterleavedBufferMut<'a>> SliceBuffer<'a> for BufferSliceInterleavedMut<'a, T> {
+impl<'a, T: InterleavedBufferMut<'a> + ?Sized> SliceBuffer<'a>
+    for BufferSliceInterleavedMut<'a, T>
+{
     type SliceType = BufferSliceInterleaved<'a, T>;
 
     fn slice(&'a self, range: Range<usize>) -> Self::SliceType {
@@ -643,7 +655,9 @@ impl<'a, T: InterleavedBufferMut<'a>> SliceBuffer<'a> for BufferSliceInterleaved
     }
 }
 
-impl<'a, T: InterleavedBufferMut<'a>> SliceBufferMut<'a> for BufferSliceInterleavedMut<'a, T> {
+impl<'a, T: InterleavedBufferMut<'a> + ?Sized> SliceBufferMut<'a>
+    for BufferSliceInterleavedMut<'a, T>
+{
     type SliceTypeMut = Self;
 
     fn slice_mut(&'a mut self, range: Range<usize>) -> Self::SliceTypeMut {
@@ -652,15 +666,15 @@ impl<'a, T: InterleavedBufferMut<'a>> SliceBufferMut<'a> for BufferSliceInterlea
 }
 
 /// A buffer slice for a columnar buffer
-pub struct BufferSliceColumnar<'a, T: ColumnarBuffer<'a>>(BufferSlice<'a, T>);
+pub struct BufferSliceColumnar<'a, T: ColumnarBuffer<'a> + ?Sized>(BufferSlice<'a, T>);
 
-impl<'a, T: ColumnarBuffer<'a>> BufferSliceColumnar<'a, T> {
+impl<'a, T: ColumnarBuffer<'a> + ?Sized> BufferSliceColumnar<'a, T> {
     pub fn new(buffer: &'a T, point_range: Range<usize>) -> Self {
         Self(BufferSlice::new(buffer, point_range))
     }
 }
 
-impl<'a, T: ColumnarBuffer<'a>> BorrowedBuffer<'a> for BufferSliceColumnar<'a, T> {
+impl<'a, T: ColumnarBuffer<'a> + ?Sized> BorrowedBuffer<'a> for BufferSliceColumnar<'a, T> {
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -692,7 +706,7 @@ impl<'a, T: ColumnarBuffer<'a>> BorrowedBuffer<'a> for BufferSliceColumnar<'a, T
     }
 }
 
-impl<'a, T: ColumnarBuffer<'a>> ColumnarBuffer<'a> for BufferSliceColumnar<'a, T> {
+impl<'a, T: ColumnarBuffer<'a> + ?Sized> ColumnarBuffer<'a> for BufferSliceColumnar<'a, T> {
     fn get_attribute_ref<'c>(
         &'c self,
         attribute: &PointAttributeDefinition,
@@ -717,15 +731,15 @@ impl<'a, T: ColumnarBuffer<'a>> ColumnarBuffer<'a> for BufferSliceColumnar<'a, T
 }
 
 /// A mutable buffer slice for a columnar buffer
-pub struct BufferSliceColumnarMut<'a, T: ColumnarBufferMut<'a>>(BufferSliceMut<'a, T>);
+pub struct BufferSliceColumnarMut<'a, T: ColumnarBufferMut<'a> + ?Sized>(BufferSliceMut<'a, T>);
 
-impl<'a, T: ColumnarBufferMut<'a>> BufferSliceColumnarMut<'a, T> {
+impl<'a, T: ColumnarBufferMut<'a> + ?Sized> BufferSliceColumnarMut<'a, T> {
     pub fn new(buffer: &'a mut T, point_range: Range<usize>) -> Self {
         Self(BufferSliceMut::new(buffer, point_range))
     }
 }
 
-impl<'a, T: ColumnarBufferMut<'a>> BorrowedBuffer<'a> for BufferSliceColumnarMut<'a, T> {
+impl<'a, T: ColumnarBufferMut<'a> + ?Sized> BorrowedBuffer<'a> for BufferSliceColumnarMut<'a, T> {
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -757,7 +771,9 @@ impl<'a, T: ColumnarBufferMut<'a>> BorrowedBuffer<'a> for BufferSliceColumnarMut
     }
 }
 
-impl<'a, T: ColumnarBufferMut<'a>> BorrowedMutBuffer<'a> for BufferSliceColumnarMut<'a, T> {
+impl<'a, T: ColumnarBufferMut<'a> + ?Sized> BorrowedMutBuffer<'a>
+    for BufferSliceColumnarMut<'a, T>
+{
     unsafe fn set_point(&mut self, index: usize, point_data: &[u8]) {
         self.0.set_point(index, point_data)
     }
@@ -794,7 +810,7 @@ impl<'a, T: ColumnarBufferMut<'a>> BorrowedMutBuffer<'a> for BufferSliceColumnar
     }
 }
 
-impl<'a, T: ColumnarBufferMut<'a>> ColumnarBuffer<'a> for BufferSliceColumnarMut<'a, T> {
+impl<'a, T: ColumnarBufferMut<'a> + ?Sized> ColumnarBuffer<'a> for BufferSliceColumnarMut<'a, T> {
     fn get_attribute_ref<'b>(
         &'b self,
         attribute: &PointAttributeDefinition,
@@ -818,7 +834,9 @@ impl<'a, T: ColumnarBufferMut<'a>> ColumnarBuffer<'a> for BufferSliceColumnarMut
     }
 }
 
-impl<'a, T: ColumnarBufferMut<'a>> ColumnarBufferMut<'a> for BufferSliceColumnarMut<'a, T> {
+impl<'a, T: ColumnarBufferMut<'a> + ?Sized> ColumnarBufferMut<'a>
+    for BufferSliceColumnarMut<'a, T>
+{
     fn get_attribute_mut<'b>(
         &'b mut self,
         attribute: &PointAttributeDefinition,
@@ -839,5 +857,97 @@ impl<'a, T: ColumnarBufferMut<'a>> ColumnarBufferMut<'a> for BufferSliceColumnar
         'a: 'b,
     {
         self.0.get_attribute_range_mut(attribute, range)
+    }
+}
+
+macro_rules! impl_slice_buffer_for_trait_object {
+    ($buffer_trait:ident, $slice_type:ident) => {
+        impl<'a> SliceBuffer<'a> for dyn $buffer_trait<'a> + 'a {
+            type SliceType = $slice_type<'a, dyn $buffer_trait<'a> + 'a>;
+
+            fn slice(&'a self, range: Range<usize>) -> Self::SliceType {
+                $slice_type::new(self, range)
+            }
+        }
+    };
+}
+
+impl_slice_buffer_for_trait_object! {BorrowedBuffer, BufferSlice}
+impl_slice_buffer_for_trait_object! {BorrowedMutBuffer, BufferSlice}
+impl_slice_buffer_for_trait_object! {InterleavedBuffer, BufferSliceInterleaved}
+impl_slice_buffer_for_trait_object! {InterleavedBufferMut, BufferSliceInterleaved}
+impl_slice_buffer_for_trait_object! {ColumnarBuffer, BufferSliceColumnar}
+impl_slice_buffer_for_trait_object! {ColumnarBufferMut, BufferSliceColumnar}
+
+macro_rules! impl_slice_buffer_mut_for_trait_object {
+    ($buffer_trait:ident, $slice_type:ident) => {
+        impl<'a> SliceBufferMut<'a> for dyn $buffer_trait<'a> + 'a {
+            type SliceTypeMut = $slice_type<'a, dyn $buffer_trait<'a> + 'a>;
+
+            fn slice_mut(&'a mut self, range: Range<usize>) -> Self::SliceTypeMut {
+                $slice_type::new(self, range)
+            }
+        }
+    };
+}
+
+impl_slice_buffer_mut_for_trait_object! {BorrowedMutBuffer, BufferSliceMut}
+impl_slice_buffer_mut_for_trait_object! {InterleavedBufferMut, BufferSliceInterleavedMut}
+impl_slice_buffer_mut_for_trait_object! {ColumnarBufferMut, BufferSliceColumnarMut}
+
+#[cfg(test)]
+mod tests {
+    use rand::{thread_rng, Rng};
+
+    use crate::{
+        containers::{HashMapBuffer, VectorBuffer},
+        test_utils::{CustomPointTypeBig, DefaultPointDistribution},
+    };
+
+    use super::*;
+
+    #[test]
+    fn slices_on_trait_objects() {
+        const COUNT: usize = 16;
+        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+            .sample_iter(DefaultPointDistribution)
+            .take(COUNT)
+            .collect();
+
+        let mut vector_buffer: VectorBuffer = test_data.iter().copied().collect();
+
+        {
+            let dyn_buffer = vector_buffer.as_interleaved().unwrap();
+            let dyn_buffer_slice = dyn_buffer.slice(0..2);
+            assert_eq!(2, dyn_buffer_slice.len());
+        }
+        {
+            let dyn_buffer_mut = vector_buffer.as_interleaved_mut().unwrap();
+            let dyn_buffer_mut_slice = dyn_buffer_mut.slice(0..2);
+            assert_eq!(2, dyn_buffer_mut_slice.len());
+        }
+        {
+            let dyn_buffer_mut = vector_buffer.as_interleaved_mut().unwrap();
+            let dyn_buffer_mut_slice_mut = dyn_buffer_mut.slice_mut(0..2);
+            assert_eq!(2, dyn_buffer_mut_slice_mut.len());
+        }
+
+        let mut hashmap_buffer: HashMapBuffer = test_data.iter().copied().collect();
+
+        {
+            let dyn_buffer = hashmap_buffer.as_columnar().unwrap();
+            let dyn_buffer_slice = dyn_buffer.slice(0..2);
+            assert_eq!(2, dyn_buffer_slice.len());
+        }
+        {
+            let dyn_buffer_mut = hashmap_buffer.as_columnar_mut().unwrap();
+            let dyn_buffer_mut_slice = dyn_buffer_mut.slice(0..2);
+            assert_eq!(2, dyn_buffer_mut_slice.len());
+        }
+        {
+            let dyn_buffer_mut = hashmap_buffer.as_columnar_mut().unwrap();
+            let dyn_buffer_mut_slice_mut = dyn_buffer_mut.slice_mut(0..2);
+            assert_eq!(2, dyn_buffer_mut_slice_mut.len());
+        }
     }
 }

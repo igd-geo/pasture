@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use pasture_core::{
-    containers::{BorrowedBuffer, VectorBuffer},
+    containers::{BorrowedBuffer, BorrowedBufferExt, VectorBuffer},
     layout::attributes::POSITION_3D,
     nalgebra::Vector3,
 };
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
             println!("({};{};{})", position.x, position.y, position.z);
         }
     } else {
-        println!("Point cloud files has no positions!");
+        println!("Point cloud file has no positions!");
     }
 
     // Writing all points from a buffer to a file is also easy: Just call `write_all`

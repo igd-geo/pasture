@@ -191,15 +191,13 @@ impl<'a> BufferLayoutConverter<'a> {
     /// If `from_attribute` is not part of the source `PointLayout`.
     /// If `to_attribute` is not part of the target `PointLayout`.
     /// If `T::data_type()` does not match `to_attribute.datatype()`.
-    pub fn set_custom_mapping_with_transformation<T: PrimitiveType, F: Fn(T) -> T>(
+    pub fn set_custom_mapping_with_transformation<T: PrimitiveType, F: Fn(T) -> T + 'static>(
         &mut self,
         from_attribute: &PointAttributeDefinition,
         to_attribute: &PointAttributeDefinition,
         transform_fn: F,
         apply_to_source_attribute: bool,
-    ) where
-        F: 'static,
-    {
+    ) {
         let from_attribute_member = self
             .from_layout
             .get_attribute(from_attribute)
@@ -673,7 +671,7 @@ mod tests {
     use rand::{thread_rng, Rng};
 
     use crate::{
-        containers::{HashMapBuffer, VectorBuffer},
+        containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},
         layout::{
             attributes::{CLASSIFICATION, POSITION_3D, RETURN_NUMBER},
             PointType,

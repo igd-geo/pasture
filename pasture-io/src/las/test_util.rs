@@ -3,7 +3,9 @@ use std::{borrow::Cow, ops::Range, path::PathBuf};
 use anyhow::Result;
 use las_rs::point::Format;
 use pasture_core::{
-    containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, OwningBuffer},
+    containers::{
+        BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, OwningBuffer,
+    },
     layout::{attributes, FieldAlignment, PointAttributeDataType, PointAttributeDefinition},
     math::AABB,
     nalgebra::{Point3, Vector3},

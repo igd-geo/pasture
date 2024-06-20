@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use pasture_core::{
     containers::{
         BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, HashMapBuffer, MakeBufferFromLayout,
-        OwningBuffer,
+        OwningBuffer, OwningBufferExt,
     },
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
@@ -414,7 +414,7 @@ mod tests {
 
     use super::*;
     use pasture_core::{
-        containers::VectorBuffer,
+        containers::{BorrowedBufferExt, VectorBuffer},
         layout::PointType,
         nalgebra::{Vector3, Vector4},
     };
@@ -452,7 +452,7 @@ mod tests {
     fn test_write_pnts_default_layout() -> Result<()> {
         let mut cursor = Cursor::new(Vec::<u8>::new());
 
-        let test_data = vec![
+        let test_data = [
             PntsDefaultPoint {
                 position: Vector3::new(1.0, 2.0, 3.0),
                 color: Vector3::new(10, 20, 30),
@@ -507,7 +507,7 @@ mod tests {
     fn test_write_pnts_custom_layout() -> Result<()> {
         let mut cursor = Cursor::new(Vec::<u8>::new());
 
-        let test_data = vec![
+        let test_data = [
             PntsCustomLayout {
                 position: Vector3::new(1.0, 2.0, 3.0),
                 color: Vector3::new(0x1111, 0x2222, 0x3333),

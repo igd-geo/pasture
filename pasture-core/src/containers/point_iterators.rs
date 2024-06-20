@@ -5,7 +5,7 @@ use crate::layout::PointType;
 use super::point_buffer::{BorrowedBuffer, InterleavedBuffer, InterleavedBufferMut};
 
 /// Iterator over strongly typed points by value
-pub struct PointIteratorByValue<'a, 'b, T: PointType, B: BorrowedBuffer<'a>>
+pub struct PointIteratorByValue<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized>
 where
     'a: 'b,
 {
@@ -14,7 +14,7 @@ where
     _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> From<&'b B>
+impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized> From<&'b B>
     for PointIteratorByValue<'a, 'b, T, B>
 {
     fn from(value: &'b B) -> Self {
@@ -26,7 +26,9 @@ impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> From<&'b B>
     }
 }
 
-impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a>> Iterator for PointIteratorByValue<'a, 'b, T, B> {
+impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized> Iterator
+    for PointIteratorByValue<'a, 'b, T, B>
+{
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -53,7 +55,8 @@ pub struct PointIteratorByRef<'a, T: PointType> {
     current_index: usize,
 }
 
-impl<'a, 'b, T: PointType, B: InterleavedBuffer<'b>> From<&'a B> for PointIteratorByRef<'a, T>
+impl<'a, 'b, T: PointType, B: InterleavedBuffer<'b> + ?Sized> From<&'a B>
+    for PointIteratorByRef<'a, T>
 where
     'b: 'a,
 {
@@ -92,7 +95,7 @@ pub struct PointIteratorByMut<'a, T: PointType> {
     _phantom: PhantomData<T>,
 }
 
-impl<'a, 'b, T: PointType, B: InterleavedBufferMut<'b>> From<&'a mut B>
+impl<'a, 'b, T: PointType, B: InterleavedBufferMut<'b> + ?Sized> From<&'a mut B>
     for PointIteratorByMut<'a, T>
 where
     'b: 'a,
@@ -133,11 +136,9 @@ mod tests {
     use rand::{thread_rng, Rng};
 
     use crate::{
-        containers::{BorrowedMutBuffer, VectorBuffer},
+        containers::{BorrowedBufferExt, BorrowedMutBufferExt, VectorBuffer},
         test_utils::{CustomPointTypeSmall, DefaultPointDistribution},
     };
-
-    use super::*;
 
     #[test]
     #[allow(clippy::iter_nth_zero)]

@@ -1,10 +1,10 @@
-use std::io::Cursor;
+use std::io::{Cursor, Seek, SeekFrom};
 
 use anyhow::{Context, Result};
 use common::TestLASPointDistribution;
 use itertools::Itertools;
 use pasture_core::{
-    containers::{BorrowedBuffer, HashMapBuffer, VectorBuffer},
+    containers::{BorrowedBuffer, BorrowedBufferExt, HashMapBuffer, VectorBuffer},
     layout::{
         attributes::{CLASSIFICATION, NORMAL, POSITION_3D},
         PointType,
@@ -346,5 +346,51 @@ fn test_write_large_file_with_custom_format() -> Result<()> {
         .context("Writing large LAS file with custom format failed")?;
     write_large_file_with_custom_format::<ComplexPointTypeWithConversions>(COUNT, true)
         .context("Writing large LAZ file with custom format failed")?;
+    Ok(())
+}
+
+#[test]
+fn test_las_laz_readers_are_equivalent() -> Result<()> {
+    // Test that writing and reading points as LAS and as LAZ gives the same result
+    let rng = thread_rng();
+    let expected_points = rng
+        .sample_iter::<LasPointFormat0, _>(TestLASPointDistribution)
+        .take(345)
+        .collect::<VectorBuffer>();
+
+    let point_layout = LasPointFormat0::layout();
+
+    let mut las_buffer: Cursor<Vec<u8>> = Cursor::new(Vec::default());
+    let mut laz_buffer: Cursor<Vec<u8>> = Cursor::new(Vec::default());
+
+    {
+        let mut writer = LASWriter::from_writer_and_point_layout(las_buffer, &point_layout, false)?;
+        writer.write(&expected_points)?;
+        writer.flush()?;
+        las_buffer = writer.into_inner()?;
+    }
+
+    {
+        let mut writer = LASWriter::from_writer_and_point_layout(laz_buffer, &point_layout, true)?;
+        writer.write(&expected_points)?;
+        writer.flush()?;
+        laz_buffer = writer.into_inner()?;
+    }
+
+    let points_from_las_file = {
+        las_buffer.seek(SeekFrom::Start(0))?;
+        let mut reader = LASReader::from_read(las_buffer, false, false)?;
+        reader.read::<VectorBuffer>(reader.remaining_points())?
+    };
+
+    let points_from_laz_file = {
+        laz_buffer.seek(SeekFrom::Start(0))?;
+        let mut reader = LASReader::from_read(laz_buffer, true, false)?;
+        reader.read::<VectorBuffer>(reader.remaining_points())?
+    };
+
+    assert_eq!(expected_points, points_from_las_file);
+    assert_eq!(expected_points, points_from_laz_file);
+
     Ok(())
 }

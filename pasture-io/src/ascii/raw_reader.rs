@@ -347,7 +347,7 @@ mod tests {
     };
     use anyhow::Result;
     use pasture_core::containers::{
-        BorrowedBuffer, MakeBufferFromLayout, OwningBuffer, VectorBuffer,
+        BorrowedBufferExt, MakeBufferFromLayout, OwningBuffer, VectorBuffer,
     };
     use pasture_core::layout::{attributes, PointType};
     use pasture_core::nalgebra::Vector3;

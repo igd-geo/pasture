@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_core::{
     containers::{
-        BorrowedBuffer, BorrowedMutBuffer, ColumnarBuffer, HashMapBuffer, InterleavedBuffer,
-        VectorBuffer,
+        BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, ColumnarBuffer, HashMapBuffer,
+        InterleavedBuffer, VectorBuffer,
     },
     layout::attributes::POSITION_3D,
     layout::PointType,
@@ -109,6 +109,12 @@ fn points_ref_iterator_performance_small_type<'a>(buffer: &'a impl InterleavedBu
     }
 }
 
+fn points_ref_iterator_performance_with_trait_object<'a>(buffer: &'a dyn InterleavedBuffer<'a>) {
+    for point in buffer.view::<CustomPointTypeSmall>().iter() {
+        criterion::black_box(point.position);
+    }
+}
+
 fn attribute_iterator_performance_opaque_buffer<'a, T: PrimitiveType + Default>(
     buffer: &'a impl BorrowedBuffer<'a>,
     attribute: &PointAttributeDefinition,
@@ -193,6 +199,11 @@ fn bench(c: &mut Criterion) {
     );
     c.bench_function("points_ref_iterator_small_type", |b| {
         b.iter(|| points_ref_iterator_performance_small_type(&dummy_points_small_interleaved))
+    });
+    c.bench_function("points_ref_iterator_small_type_with_trait_object", |b| {
+        b.iter(|| {
+            points_ref_iterator_performance_with_trait_object(&dummy_points_small_interleaved)
+        })
     });
 
     c.bench_function("attribute_iterator_interleaved_opaque_buffer", |b| {

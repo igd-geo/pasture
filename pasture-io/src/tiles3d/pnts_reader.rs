@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use pasture_core::{
-    containers::BorrowedMutBuffer,
+    containers::{BorrowedMutBuffer, BorrowedMutBufferExt},
     layout::{
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
         conversion::get_converter_for_attributes,
@@ -401,7 +401,7 @@ mod tests {
 
     use super::*;
     use pasture_core::{
-        containers::{BorrowedBuffer, HashMapBuffer, VectorBuffer},
+        containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},
         layout::PointType,
     };
     use pasture_derive::PointType;

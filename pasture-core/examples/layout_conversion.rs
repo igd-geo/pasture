@@ -1,4 +1,4 @@
-use pasture_core::containers::{BorrowedBuffer, OwningBuffer, VectorBuffer};
+use pasture_core::containers::{BorrowedBuffer, BorrowedBufferExt, OwningBuffer, VectorBuffer};
 use pasture_core::layout::attributes::{COLOR_RGB, POSITION_3D};
 use pasture_core::layout::conversion::BufferLayoutConverter;
 use pasture_core::layout::{PointAttributeDataType, PointType};

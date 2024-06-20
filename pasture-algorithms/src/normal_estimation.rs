@@ -2,7 +2,9 @@
 use core::panic;
 use kd_tree::{self, KdPoint, KdTree};
 use num_traits::{self};
-use pasture_core::containers::{BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, OwningBuffer};
+use pasture_core::containers::{
+    BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, OwningBuffer,
+};
 use pasture_core::layout::{attributes::POSITION_3D, PointType};
 use pasture_core::nalgebra::{DMatrix, Vector3};
 use std::result::Result;

@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pasture_algorithms::convexhull;
 use pasture_core::{
-    containers::{BorrowedMutBuffer, HashMapBuffer, VectorBuffer},
+    containers::{BorrowedMutBufferExt, HashMapBuffer, VectorBuffer},
     layout::PointType,
     nalgebra::Vector3,
 };

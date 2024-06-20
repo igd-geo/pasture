@@ -2,7 +2,7 @@ use std::vec;
 
 use pasture_core::{
     layout::attributes::POSITION_3D,
-    nalgebra::Vector3, containers::BorrowedBuffer,
+    nalgebra::Vector3, containers::{BorrowedBuffer, BorrowedBufferExt},
 };
 use rand::Rng;
 use rayon::prelude::*;

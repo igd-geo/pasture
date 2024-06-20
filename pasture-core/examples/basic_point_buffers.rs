@@ -1,5 +1,5 @@
 use pasture_core::containers::{
-    BorrowedBuffer, BorrowedMutBuffer, HashMapBuffer, MakeBufferFromLayout, SliceBuffer,
+    BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, MakeBufferFromLayout, SliceBuffer,
     SliceBufferMut,
 };
 use pasture_core::nalgebra::Vector3;
@@ -69,6 +69,19 @@ fn main() {
         // Note that iterating by (mutable) reference only works because our `buffer` has interleaved memory layout! This
         // is what 'interleaved' means: We can get (mutable) references to the strongly typed point data, since all data
         // for a single point is stored contiguously in memory!
+
+        // We can also access individual attributes by using `view_attribute`:
+        for position in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D) {
+            println!("{position:?}");
+        }
+
+        buffer.transform_attribute(&INTENSITY, |_index: usize, intensity: u16| -> u16 {
+            intensity * 2
+        });
+
+        // Where interleaved memory layout allows references to whole points, it disallows references to individual
+        // attribute values (as these might not be correctly aligned). Therefore, we can only access attributes by
+        // value using a `VectorBuffer`, which requires a copy operation
 
         // Just like arrays and vectors, our buffers can also be sliced. Unfortunately, the current constraints of the `Index`
         // trait prevent us from implementing it for the pasture point buffers, so we can't slice our buffers using the

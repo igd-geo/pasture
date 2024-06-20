@@ -1,6 +1,6 @@
 use bitfield::{bitfield_bitrange, bitfield_fields};
 use pasture_core::{
-    containers::BorrowedBuffer,
+    containers::{BorrowedBuffer, BorrowedBufferExt},
     layout::{PointAttributeDataType, PointAttributeDefinition, PrimitiveType},
     nalgebra::{Vector3, Vector4},
 };
@@ -10,7 +10,6 @@ use pasture_io::las::{
     LasPointFormat9,
 };
 use rand::{prelude::Distribution, Rng};
-use static_assertions::const_assert_eq;
 
 const RETURN_NUMBER_REGULAR_BITMASK: u8 = 0b111;
 const RETURN_NUMBER_EXTENDED_BITMASK: u8 = 0b1111;
@@ -50,59 +49,6 @@ impl ExtendedFlags {
         pub edge_of_flight_line, set_edge_of_flight_line: 15;
     }
 }
-
-#[derive(Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
-#[repr(C, packed)]
-pub struct RawLASPointFormat5 {
-    x: i32,
-    y: i32,
-    z: i32,
-    intensity: u16,
-    flags: BasicFlags,
-    classification: u8,
-    scan_angle_rank: i8,
-    user_data: u8,
-    point_source_id: u16,
-    gps_time: f64,
-    red: u16,
-    green: u16,
-    blue: u16,
-    wave_packet_desriptor_index: u8,
-    byte_offset_to_waveform_data: u64,
-    waveform_packet_size: u32,
-    return_point_waveform_location: f32,
-    dx: f32,
-    dy: f32,
-    dz: f32,
-}
-const_assert_eq!(63, std::mem::size_of::<RawLASPointFormat5>());
-
-#[derive(Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
-#[repr(C, packed)]
-pub struct RawLASPointFormat10 {
-    x: i32,
-    y: i32,
-    z: i32,
-    intensity: u16,
-    flags: ExtendedFlags,
-    classification: u8,
-    user_data: u8,
-    scan_angle: i16,
-    point_source_id: u16,
-    gps_time: f64,
-    red: u16,
-    green: u16,
-    blue: u16,
-    nir: u16,
-    wave_packet_desriptor_index: u8,
-    byte_offset_to_waveform_data: u64,
-    waveform_packet_size: u32,
-    return_point_waveform_location: f32,
-    dx: f32,
-    dy: f32,
-    dz: f32,
-}
-const_assert_eq!(67, std::mem::size_of::<RawLASPointFormat10>());
 
 /// Distribution for sampling random LAS points
 pub struct TestLASPointDistribution;
