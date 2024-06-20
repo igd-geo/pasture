@@ -515,13 +515,13 @@ pub mod attributes {
         datatype: PointAttributeDataType::U8,
     };
 
-    /// Attribute definition for a scan direction flag. Default datatype is Bool
+    /// Attribute definition for a scan direction flag. Default datatype is U8
     pub const SCAN_DIRECTION_FLAG: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("ScanDirectionFlag"),
         datatype: PointAttributeDataType::U8,
     };
 
-    /// Attribute definition for an edge of flight line flag. Default datatype is Bool
+    /// Attribute definition for an edge of flight line flag. Default datatype is U8
     pub const EDGE_OF_FLIGHT_LINE: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("EdgeOfFlightLine"),
         datatype: PointAttributeDataType::U8,

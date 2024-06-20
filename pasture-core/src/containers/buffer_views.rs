@@ -19,9 +19,10 @@ use super::{
 };
 
 /// A strongly typed view over the point data of a buffer. This allows accessing the point data in
-/// the buffer using type `T` instead of only through raw memory (i.e. as `&[u8]`). This type makes
-/// no assumptions about the memory layout of the underlying buffer, so it only provides access to
-/// the point data by value. The `PointView` supports no type conversion, so `T::layout()` must match
+/// the buffer using type `T` instead of only through raw memory (i.e. as `&[u8]`).
+/// Depending on the memory layout of the buffer type `B`, this view supports accessing the point data
+/// only by value (for non-interleaved buffers) or by immutable borrow (for interleaved buffers).
+/// The `PointView` supports no type conversion, so `T::layout()` must match
 /// the `PointLayout` of the buffer. You cannot create instances of `PointView` directly but instead
 /// have to use [`BorrowedBuffer::view`] function and its variations, which perform the necessary type
 /// checks internally!
@@ -142,7 +143,7 @@ impl<'a, 'b, B: BorrowedBuffer<'a> + ?Sized + 'a, T: PointType + Eq> Eq
 
 /// Like [`PointView`], but provides mutable access to the strongly typed point data. For buffers with unknown
 /// memory layout, this means that you have to use [`PointViewMut::set_at`], but if the underlying buffer
-/// implements [`InterleavedBufferMut`], you can also get a mutable borrow the a strongly typed point!
+/// implements [`InterleavedBufferMut`], you can also access strongly-typed points by mutable borrow!
 #[derive(Debug)]
 pub struct PointViewMut<'a, 'b, B: BorrowedMutBuffer<'a> + ?Sized, T: PointType>
 where

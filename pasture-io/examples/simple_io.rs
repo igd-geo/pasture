@@ -25,7 +25,7 @@ fn main() -> Result<()> {
             println!("({};{};{})", position.x, position.y, position.z);
         }
     } else {
-        println!("Point cloud files has no positions!");
+        println!("Point cloud file has no positions!");
     }
 
     // Writing all points from a buffer to a file is also easy: Just call `write_all`
