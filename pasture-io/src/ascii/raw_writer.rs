@@ -4,8 +4,7 @@ use anyhow::{Context, Result};
 use pasture_core::containers::{BorrowedBuffer, UntypedPoint, UntypedPointSlice};
 use pasture_core::layout::{attributes, PointLayout};
 use pasture_core::nalgebra::Vector3;
-// combined trait to handle the PointWriter trait aswell as the AsciiFormat trait
-pub trait PointWriterFormatting: PointWriter + AsciiFormat {}
+
 pub trait AsciiFormat {
     fn set_delimiter(&mut self, delimiter: &str);
     fn set_precision(&mut self, precision: usize);
@@ -38,7 +37,6 @@ impl<T: std::io::Write + std::io::Seek> AsciiFormat for RawAsciiWriter<T> {
         self.precision = precision;
     }
 }
-impl<T: std::io::Write + std::io::Seek> PointWriterFormatting for RawAsciiWriter<T> {}
 
 impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
     fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> anyhow::Result<()> {

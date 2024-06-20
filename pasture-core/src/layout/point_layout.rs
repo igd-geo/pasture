@@ -7,29 +7,6 @@ use uuid::Uuid;
 
 use crate::math::Alignable;
 
-mod private {
-    use super::*;
-
-    pub trait Sealed {}
-
-    impl Sealed for u8 {}
-    impl Sealed for u16 {}
-    impl Sealed for u32 {}
-    impl Sealed for u64 {}
-    impl Sealed for i8 {}
-    impl Sealed for i16 {}
-    impl Sealed for i32 {}
-    impl Sealed for i64 {}
-    impl Sealed for f32 {}
-    impl Sealed for f64 {}
-    impl Sealed for bool {}
-    impl Sealed for Vector3<u8> {}
-    impl Sealed for Vector3<u16> {}
-    impl Sealed for Vector3<f32> {}
-    impl Sealed for Vector3<f64> {}
-    impl Sealed for Vector4<u8> {}
-}
-
 /// Possible data types for individual point attributes
 ///
 /// # Why no `bool` anymore?

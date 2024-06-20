@@ -272,7 +272,7 @@ mod tests {
 
         reproject_point_cloud_within(&mut interleaved, "EPSG:4326", "EPSG:3309");
 
-        let results = vec![
+        let results = [
             Vector3::new(12185139.590523569, 7420953.944297638, 0.0),
             Vector3::new(11104667.534080556, 7617693.973680517, 0.0),
             Vector3::new(11055663.927418157, 5832081.512011217, 2.0),
@@ -318,7 +318,7 @@ mod tests {
 
         reproject_point_cloud_between(&mut interleaved, &mut attribute, "EPSG:4326", "EPSG:3309");
 
-        let results = vec![
+        let results = [
             Vector3::new(12185139.590523569, 7420953.944297638, 0.0),
             Vector3::new(11104667.534080556, 7617693.973680517, 0.0),
             Vector3::new(11055663.927418157, 5832081.512011217, 2.0),
