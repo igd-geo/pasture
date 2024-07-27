@@ -34,14 +34,11 @@ impl<'a, T: Read + Seek + Send + 'a> LASReaderFlavor<'a, T> {
 }
 
 impl<'a, T: Read + Seek + Send + 'a> PointReader for LASReaderFlavor<'a, T> {
-    fn read_into<'b, 'c, B: BorrowedMutBuffer<'b>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'c mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'b: 'c,
-    {
+    ) -> Result<usize> {
         match self {
             LASReaderFlavor::LAS(reader) => reader.read_into(point_buffer, count),
             LASReaderFlavor::LAZ(reader) => reader.read_into(point_buffer, count),
@@ -152,14 +149,11 @@ impl<'a, R: Read + Seek + Send + 'a> PointReader for LASReader<'a, R> {
         self.raw_reader.get_default_point_layout()
     }
 
-    fn read_into<'b, 'c, B: BorrowedMutBuffer<'b>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'c mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'b: 'c,
-    {
+    ) -> Result<usize> {
         self.raw_reader.read_into(point_buffer, count)
     }
 }

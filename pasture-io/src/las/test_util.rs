@@ -187,8 +187,8 @@ pub(crate) fn test_data_extra_bytes_unsigned() -> Vec<u32> {
     vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
 
-pub(crate) fn compare_to_reference_data_range<'a, B: BorrowedBuffer<'a>>(
-    points: &'a B,
+pub(crate) fn compare_to_reference_data_range<B: BorrowedBuffer>(
+    points: &B,
     point_format: Format,
     range: Range<usize>,
 ) {
@@ -438,10 +438,7 @@ pub(crate) fn compare_to_reference_data_range<'a, B: BorrowedBuffer<'a>>(
 }
 
 /// Compare the `points` in the given `point_format` to the reference data for the format
-pub(crate) fn compare_to_reference_data<'a, B: BorrowedBuffer<'a>>(
-    points: &'a B,
-    point_format: Format,
-) {
+pub(crate) fn compare_to_reference_data<B: BorrowedBuffer>(points: &B, point_format: Format) {
     compare_to_reference_data_range(points, point_format, 0..test_data_point_count());
 }
 

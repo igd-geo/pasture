@@ -291,14 +291,11 @@ fn generate_parse_error(datatype: &PointDataType, character: char) -> String {
 }
 
 impl<T: Read + BufRead> PointReader for RawAsciiReader<T> {
-    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'b mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'a: 'b,
-    {
+    ) -> Result<usize> {
         let layout = point_buffer.point_layout().clone();
         let mut temp_point = UntypedPointBuffer::new(&layout);
         //read line by line

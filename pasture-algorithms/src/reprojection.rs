@@ -129,8 +129,8 @@ impl Drop for Projection {
 ///     }
 /// }
 /// ```
-pub fn reproject_point_cloud_within<'a, T: BorrowedMutBuffer<'a>>(
-    point_cloud: &'a mut T,
+pub fn reproject_point_cloud_within<T: BorrowedMutBuffer>(
+    point_cloud: &mut T,
     source_crs: &str,
     target_crs: &str,
 ) {
@@ -198,14 +198,9 @@ pub fn reproject_point_cloud_within<'a, T: BorrowedMutBuffer<'a>>(
 ///     }
 /// }
 /// ```
-pub fn reproject_point_cloud_between<
-    'a,
-    'b,
-    T1: BorrowedMutBuffer<'a>,
-    T2: BorrowedMutBuffer<'b>,
->(
-    source_point_cloud: &'a mut T1,
-    target_point_cloud: &'b mut T2,
+pub fn reproject_point_cloud_between<T1: BorrowedMutBuffer, T2: BorrowedMutBuffer>(
+    source_point_cloud: &mut T1,
+    target_point_cloud: &mut T2,
     source_crs: &str,
     target_crs: &str,
 ) {

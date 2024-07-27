@@ -244,14 +244,11 @@ impl<T: Read + Seek> RawLASReader<T> {
         &self.metadata
     }
 
-    fn read_into_default_layout<'a, 'b, B: BorrowedMutBuffer<'a>>(
+    fn read_into_default_layout<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'b mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'a: 'b,
-    {
+    ) -> Result<usize> {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
@@ -296,9 +293,9 @@ impl<T: Read + Seek> RawLASReader<T> {
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout<'a, 'b, B: BorrowedMutBuffer<'a>>(
+    fn read_into_custom_layout<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'b mut B,
+        point_buffer: &mut B,
         count: usize,
     ) -> Result<usize> {
         let num_points_to_read = usize::min(count, self.remaining_points());
@@ -363,14 +360,11 @@ impl<T: Read + Seek> LASReaderBase for RawLASReader<T> {
 }
 
 impl<T: Read + Seek> PointReader for RawLASReader<T> {
-    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'b mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'a: 'b,
-    {
+    ) -> Result<usize> {
         if point_buffer.len() < count {
             panic!("point_buffer.len() must be >= count");
         }
@@ -490,14 +484,11 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         &self.metadata
     }
 
-    fn read_into_default_layout<'b, 'c, B: BorrowedMutBuffer<'b>>(
+    fn read_into_default_layout<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'c mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'b: 'c,
-    {
+    ) -> Result<usize> {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
@@ -542,14 +533,11 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
         Ok(num_points_to_read)
     }
 
-    fn read_into_custom_layout<'b, 'c, B: BorrowedMutBuffer<'b>>(
+    fn read_into_custom_layout<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'c mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'b: 'c,
-    {
+    ) -> Result<usize> {
         let num_points_to_read = usize::min(count, self.remaining_points());
         if num_points_to_read == 0 {
             return Ok(0);
@@ -584,14 +572,11 @@ impl<'a, T: Read + Seek + Send + 'a> LASReaderBase for RawLAZReader<'a, T> {
 }
 
 impl<'a, T: Read + Seek + Send + 'a> PointReader for RawLAZReader<'a, T> {
-    fn read_into<'b, 'c, B: BorrowedMutBuffer<'b>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'c mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'b: 'c,
-    {
+    ) -> Result<usize> {
         if point_buffer.len() < count {
             panic!("point_buffer.len() must be >= count");
         }

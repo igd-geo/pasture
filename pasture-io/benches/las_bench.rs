@@ -103,19 +103,19 @@ fn remove_dummy_files() {
     std::fs::remove_file(WRITE_DUMMY_FILE).unwrap();
 }
 
-fn read_performance<'a, B: OwningBuffer<'a> + MakeBufferFromLayout<'a> + 'a>(path: &str) {
+fn read_performance<B: OwningBuffer + MakeBufferFromLayout>(path: &str) {
     let mut reader = LASReader::from_path(path, false).unwrap();
     let count = reader.remaining_points();
     reader.read::<B>(count).unwrap();
 }
 
-fn read_performance_custom_format<'a, B: OwningBuffer<'a>>(buffer: &'a mut B, path: &str) {
+fn read_performance_custom_format<B: OwningBuffer>(buffer: &mut B, path: &str) {
     let mut reader = LASReader::from_path(path, false).unwrap();
     let count = reader.remaining_points();
     reader.read_into(buffer, count).unwrap();
 }
 
-fn write_performance<'a, B: BorrowedBuffer<'a>>(points: &'a B, compressed: bool) {
+fn write_performance<B: BorrowedBuffer>(points: &B, compressed: bool) {
     let writer = BufWriter::new(File::create(WRITE_DUMMY_FILE).unwrap());
     let header = Builder::from((1, 4)).into_header().unwrap();
     let mut writer = LASWriter::from_writer_and_header(writer, header, compressed).unwrap();

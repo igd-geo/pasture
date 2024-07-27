@@ -244,13 +244,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
         ))
     }
 
-    fn apply_rtc_center_offset<'a, 'b, B: BorrowedMutBuffer<'a>>(
-        &self,
-        point_buffer: &'b mut B,
-    ) -> Result<()>
-    where
-        'a: 'b,
-    {
+    fn apply_rtc_center_offset<B: BorrowedMutBuffer>(&self, point_buffer: &mut B) -> Result<()> {
         let maybe_position = point_buffer
             .point_layout()
             .get_attribute_by_name(POSITION_3D.name());
@@ -291,14 +285,11 @@ impl PntsReader<BufReader<File>> {
 }
 
 impl<R: BufRead + Seek> PointReader for PntsReader<R> {
-    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'b mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'a: 'b,
-    {
+    ) -> Result<usize> {
         let remaining_points = self.metadata.points_length() - self.current_point_index;
         let num_to_read = usize::min(remaining_points, count);
         if num_to_read == 0 {

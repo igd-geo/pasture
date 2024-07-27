@@ -1,4 +1,4 @@
-use std::{collections::HashMap, u16};
+use std::collections::HashMap;
 
 use pasture_core::{
     containers::{
@@ -106,12 +106,12 @@ fn create_markers_for_axis(
 /// // filtered now has fewer points than buffer
 /// assert!(filtered.len() < buffer.len() / 2);
 /// ```
-pub fn voxelgrid_filter<'a, 'b, PB: BorrowedBuffer<'a>, PBW: OwningBuffer<'b>>(
-    buffer: &'a PB,
+pub fn voxelgrid_filter<PB: BorrowedBuffer, PBW: OwningBuffer>(
+    buffer: &PB,
     leafsize_x: f64,
     leafsize_y: f64,
     leafsize_z: f64,
-    filtered_buffer: &'b mut PBW,
+    filtered_buffer: &mut PBW,
 ) {
     if !buffer
         .point_layout()
@@ -165,9 +165,9 @@ pub fn voxelgrid_filter<'a, 'b, PB: BorrowedBuffer<'a>, PBW: OwningBuffer<'b>>(
 }
 
 /// calculates the attribute attribute_definition via max-pooling
-fn centroid_max_pool<'a, T: BorrowedBuffer<'a>>(
+fn centroid_max_pool<T: BorrowedBuffer>(
     v: &Voxel,
-    buffer: &'a T,
+    buffer: &T,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> f64 {
@@ -215,9 +215,9 @@ fn centroid_max_pool<'a, T: BorrowedBuffer<'a>>(
 }
 
 /// returns the most common value in the voxel for attribute_definition
-fn centroid_most_common<'a, T: BorrowedBuffer<'a>>(
+fn centroid_most_common<T: BorrowedBuffer>(
     v: &Voxel,
-    buffer: &'a T,
+    buffer: &T,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> isize {
@@ -330,9 +330,9 @@ fn centroid_most_common<'a, T: BorrowedBuffer<'a>>(
 
 /// returns the average value in the voxel for attribute_definition
 /// vector types only
-fn centroid_average_vec<'a, T: BorrowedBuffer<'a>>(
+fn centroid_average_vec<T: BorrowedBuffer>(
     v: &Voxel,
-    buffer: &'a T,
+    buffer: &T,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> Vector3<f64> {
@@ -388,9 +388,9 @@ fn centroid_average_vec<'a, T: BorrowedBuffer<'a>>(
 
 /// returns the average value in the voxel for attribute_definition
 /// numeric types only
-fn centroid_average_num<'a, PB: BorrowedBuffer<'a>>(
+fn centroid_average_num<PB: BorrowedBuffer>(
     v: &mut Voxel,
-    buffer: &'a PB,
+    buffer: &PB,
     attribute_definition: &PointAttributeDefinition,
     point_type: PointAttributeDataType,
 ) -> f64 {
@@ -440,11 +440,11 @@ fn centroid_average_num<'a, PB: BorrowedBuffer<'a>>(
 
 /// sets all attributes of the point-buffer for the centroid
 /// currently, only standard builtin types work.
-fn set_all_attributes<'a, PB: BorrowedBuffer<'a>>(
+fn set_all_attributes<PB: BorrowedBuffer>(
     target_layout: &PointLayout,
     centroid: &mut UntypedPointBuffer,
     v: &mut Voxel,
-    buffer: &'a PB,
+    buffer: &PB,
 ) {
     //TODO: for now we just check that the layout of the filtered_buffer does not contain any waveform values.
     // A future version of this algorithm should take a separate object that contains a mapping between point attributes and the desired type of 'reduction function'.

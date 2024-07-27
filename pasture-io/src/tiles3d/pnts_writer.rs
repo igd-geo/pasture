@@ -333,7 +333,7 @@ impl<W: Write + Seek> PntsWriter<W> {
 }
 
 impl<W: Write + Seek> PointWriter for PntsWriter<W> {
-    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
+    fn write<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         if points.point_layout() != &self.expected_layout {
             panic!("PointLayout of buffer does not match the PointLayout that this PntsReader was constructed with! Make sure that you only pass PointBuffers with the same layout as the one you used to create this PntsWriter!");
         }

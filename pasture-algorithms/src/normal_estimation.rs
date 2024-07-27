@@ -76,8 +76,8 @@ use std::result::Result;
 /// }
 /// ```
 
-pub fn compute_normals<'a, T: BorrowedBuffer<'a>, P: PointType + KdPoint + Copy>(
-    point_cloud: &'a T,
+pub fn compute_normals<T: BorrowedBuffer, P: PointType + KdPoint + Copy>(
+    point_cloud: &T,
     k_nn: usize,
 ) -> Vec<(Vector3<f64>, f64)>
 where
@@ -130,7 +130,7 @@ where
 }
 
 /// checks whether a given point cloud has points with coordinates that are Not a Number
-fn is_dense<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> bool {
+fn is_dense<T: BorrowedBuffer>(point_cloud: &T) -> bool {
     for point in point_cloud.view_attribute::<Vector3<f64>>(&POSITION_3D) {
         if point.x.is_nan() || point.y.is_nan() || point.z.is_nan() {
             return false;
@@ -195,7 +195,7 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 /// let centroid = compute_centroid(&interleaved);
 ///
 /// ```
-pub fn compute_centroid<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> Vector3<f64> {
+pub fn compute_centroid<T: BorrowedBuffer>(point_cloud: &T) -> Vector3<f64> {
     if point_cloud.is_empty() {
         panic!("The point cloud is empty!");
     }
@@ -237,8 +237,8 @@ pub fn compute_centroid<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> Vector
 }
 
 /// compute the covariance matrix for a given point cloud which is a measure of spread out the points are
-fn compute_covariance_matrix<'a, T: BorrowedBuffer<'a>>(
-    point_cloud: &'a T,
+fn compute_covariance_matrix<T: BorrowedBuffer>(
+    point_cloud: &T,
 ) -> Result<DMatrix<f64>, &'static str> {
     let mut covariance_matrix = DMatrix::<f64>::zeros(3, 3);
     let mut point_count = 0;
@@ -343,7 +343,7 @@ fn solve_polynomial(covariance_matrix: &DMatrix<f64>) -> Vector3<f64> {
         covariance_matrix[(0, 0)] + covariance_matrix[(1, 1)] + covariance_matrix[(2, 2)];
 
     // check if one eigen value solution is zero
-    if coefficient_0.abs() < std::f64::EPSILON {
+    if coefficient_0.abs() < f64::EPSILON {
         solve_polynomial_quadratic(coefficient_2, coefficient_1)
     } else {
         let mut eigen_values = Vector3::<f64>::zeros();
@@ -467,7 +467,7 @@ fn solve_plane_parameter(covariance_matrix: &DMatrix<f64>) -> (Vector3<f64>, f64
 }
 
 /// calculates the normal vectors and the curvature of the surface for the given point cloud
-fn normal_estimation<'a, T: BorrowedBuffer<'a>>(point_cloud: &'a T) -> (Vector3<f64>, f64) {
+fn normal_estimation<T: BorrowedBuffer>(point_cloud: &T) -> (Vector3<f64>, f64) {
     let covariance_matrix = compute_covariance_matrix(point_cloud).unwrap();
 
     let (eigen_vector, curvature) = solve_plane_parameter(&covariance_matrix);

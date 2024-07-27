@@ -10,8 +10,8 @@ use pasture_core::{
 /// # Panics
 ///
 /// If `attribute` is not part of the point layout of `buffer`, or the attribute within `buffer` is not of type `T`
-pub fn minmax_attribute<'a, T: PrimitiveType + MinMax + Copy, B: BorrowedBuffer<'a>>(
-    buffer: &'a B,
+pub fn minmax_attribute<T: PrimitiveType + MinMax + Copy, B: BorrowedBuffer>(
+    buffer: &B,
     attribute: &PointAttributeDefinition,
 ) -> Option<(T, T)> {
     if !buffer

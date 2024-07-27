@@ -16,13 +16,10 @@ pub struct RawAttributeView<'a> {
 
 impl<'a> RawAttributeView<'a> {
     /// Creates a `RawAttributeView` for the given `attribute_member` from an interleaved point buffer
-    pub(crate) fn from_interleaved_buffer<'b, B: InterleavedBuffer<'b> + ?Sized>(
+    pub(crate) fn from_interleaved_buffer<B: InterleavedBuffer + ?Sized>(
         buffer: &'a B,
         attribute_member: &PointAttributeMember,
-    ) -> Self
-    where
-        'b: 'a,
-    {
+    ) -> Self {
         let stride = buffer.point_layout().size_of_point_entry() as usize;
         Self {
             offset: attribute_member.offset() as usize,
@@ -33,13 +30,10 @@ impl<'a> RawAttributeView<'a> {
     }
 
     /// Creates a `RawAttributeView` for the given `attribute_definition` from a columnar point buffer
-    pub(crate) fn from_columnar_buffer<'b, B: ColumnarBuffer<'b> + ?Sized>(
+    pub(crate) fn from_columnar_buffer<B: ColumnarBuffer + ?Sized>(
         buffer: &'a B,
         attribute_definition: &PointAttributeDefinition,
-    ) -> Self
-    where
-        'b: 'a,
-    {
+    ) -> Self {
         Self {
             offset: 0,
             point_data: buffer.get_attribute_range_ref(attribute_definition, 0..buffer.len()),
@@ -80,13 +74,10 @@ pub struct RawAttributeViewMut<'a> {
 
 impl<'a> RawAttributeViewMut<'a> {
     /// Creates a `RawAttributeView` for the given `attribute_member` from an interleaved point buffer
-    pub(crate) fn from_interleaved_buffer<'b, B: InterleavedBufferMut<'b> + ?Sized>(
+    pub(crate) fn from_interleaved_buffer<B: InterleavedBufferMut + ?Sized>(
         buffer: &'a mut B,
         attribute_member: &PointAttributeMember,
-    ) -> Self
-    where
-        'b: 'a,
-    {
+    ) -> Self {
         let stride = buffer.point_layout().size_of_point_entry() as usize;
         Self {
             offset: attribute_member.offset() as usize,
@@ -97,13 +88,10 @@ impl<'a> RawAttributeViewMut<'a> {
     }
 
     /// Creates a `RawAttributeView` for the given `attribute_definition` from a columnar point buffer
-    pub(crate) fn from_columnar_buffer<'b, B: ColumnarBufferMut<'b> + ?Sized>(
+    pub(crate) fn from_columnar_buffer<B: ColumnarBufferMut + ?Sized>(
         buffer: &'a mut B,
         attribute_definition: &PointAttributeDefinition,
-    ) -> Self
-    where
-        'b: 'a,
-    {
+    ) -> Self {
         Self {
             offset: 0,
             point_data: buffer.get_attribute_range_mut(attribute_definition, 0..buffer.len()),

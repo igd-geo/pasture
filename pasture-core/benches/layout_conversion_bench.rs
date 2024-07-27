@@ -55,9 +55,7 @@ impl Distribution<PointTypeSource> for PointDistribution {
     }
 }
 
-fn gen_random_points<
-    B: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a> + FromIterator<PointTypeSource>,
->(
+fn gen_random_points<B: OwningBuffer + MakeBufferFromLayout + FromIterator<PointTypeSource>>(
     count: usize,
 ) -> B {
     thread_rng()
@@ -66,7 +64,7 @@ fn gen_random_points<
         .collect::<B>()
 }
 
-fn convert_interleaved_to_interleaved<B: for<'a> InterleavedBuffer<'a>>(
+fn convert_interleaved_to_interleaved<B: InterleavedBuffer>(
     buffer: &B,
     converter: &BufferLayoutConverter,
 ) {
@@ -74,7 +72,7 @@ fn convert_interleaved_to_interleaved<B: for<'a> InterleavedBuffer<'a>>(
     criterion::black_box(converted);
 }
 
-fn convert_interleaved_to_columnar<B: for<'a> InterleavedBuffer<'a>>(
+fn convert_interleaved_to_columnar<B: InterleavedBuffer>(
     buffer: &B,
     converter: &BufferLayoutConverter,
 ) {
@@ -82,7 +80,7 @@ fn convert_interleaved_to_columnar<B: for<'a> InterleavedBuffer<'a>>(
     criterion::black_box(converted);
 }
 
-fn convert_columnar_to_interleaved<B: for<'a> ColumnarBuffer<'a>>(
+fn convert_columnar_to_interleaved<B: ColumnarBuffer>(
     buffer: &B,
     converter: &BufferLayoutConverter,
 ) {
@@ -90,15 +88,12 @@ fn convert_columnar_to_interleaved<B: for<'a> ColumnarBuffer<'a>>(
     criterion::black_box(converted);
 }
 
-fn convert_columnar_to_columnar<B: for<'a> ColumnarBuffer<'a>>(
-    buffer: &B,
-    converter: &BufferLayoutConverter,
-) {
+fn convert_columnar_to_columnar<B: ColumnarBuffer>(buffer: &B, converter: &BufferLayoutConverter) {
     let converted = converter.convert::<HashMapBuffer, _>(buffer);
     criterion::black_box(converted);
 }
 
-fn convert_baseline<B: for<'a> InterleavedBuffer<'a>>(buffer: &B) {
+fn convert_baseline<B: InterleavedBuffer>(buffer: &B) {
     let converted = buffer
         .view::<PointTypeSource>()
         .iter()

@@ -102,7 +102,7 @@ impl LASWriter<BufWriter<File>> {
 }
 
 impl<T: Write + Seek + Send + 'static> PointWriter for LASWriter<T> {
-    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
+    fn write<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         match &mut self.writer {
             WriterVariant::LAS(writer) => writer.write(points),
             WriterVariant::LAZ(writer) => writer.write(points),

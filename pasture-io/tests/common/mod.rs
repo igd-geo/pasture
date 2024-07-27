@@ -366,8 +366,8 @@ impl Distribution<LasPointFormat10> for TestLASPointDistribution {
 
 fn compare_attribute<
     T: PrimitiveType + PartialEq + std::fmt::Debug,
-    B1: for<'a> BorrowedBuffer<'a> + std::fmt::Debug,
-    B2: for<'a> BorrowedBuffer<'a> + std::fmt::Debug,
+    B1: BorrowedBuffer + std::fmt::Debug,
+    B2: BorrowedBuffer + std::fmt::Debug,
 >(
     attribute: &PointAttributeDefinition,
     buffer1: &B1,
@@ -395,8 +395,8 @@ fn compare_attribute<
 }
 
 pub fn compare_attributes_dynamically_typed<
-    B1: for<'a> BorrowedBuffer<'a> + std::fmt::Debug,
-    B2: for<'a> BorrowedBuffer<'a> + std::fmt::Debug,
+    B1: BorrowedBuffer + std::fmt::Debug,
+    B2: BorrowedBuffer + std::fmt::Debug,
 >(
     attribute: &PointAttributeDefinition,
     buffer1: &B1,

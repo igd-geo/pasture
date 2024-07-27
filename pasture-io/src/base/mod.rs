@@ -21,9 +21,7 @@ pub use self::io_factory::*;
 /// file type from the file extension of `path`. If this succeeds, an appropriate reader is created and all points are
 /// read into an implementation-defined `PointBuffer` type. If you want to use a specific type of `PointBuffer`, use
 /// `read_all_into` instead!
-pub fn read_all<'a, B: MakeBufferFromLayout<'a> + OwningBuffer<'a> + 'a, P: AsRef<Path>>(
-    path: P,
-) -> Result<B> {
+pub fn read_all<B: MakeBufferFromLayout + OwningBuffer, P: AsRef<Path>>(path: P) -> Result<B> {
     let mut reader = GenericPointReader::open_file(path.as_ref()).context(format!(
         "Could not create appropriate reader for point cloud file {}",
         path.as_ref().display()
@@ -37,10 +35,7 @@ pub fn read_all<'a, B: MakeBufferFromLayout<'a> + OwningBuffer<'a> + 'a, P: AsRe
 
 /// Try to read all points in the given point cloud file into the given `buffer`. All points are appended to the end of
 /// the `buffer`. Otherwise behaves exactly like `read_all`.
-pub fn read_all_into<'a, B: OwningBuffer<'a>, P: AsRef<Path>>(
-    buffer: &'a mut B,
-    path: P,
-) -> Result<usize> {
+pub fn read_all_into<B: OwningBuffer, P: AsRef<Path>>(buffer: &mut B, path: P) -> Result<usize> {
     let mut reader = GenericPointReader::open_file(path.as_ref()).context(format!(
         "Could not create appropriate reader for point cloud file {}",
         path.as_ref().display()
@@ -53,7 +48,7 @@ pub fn read_all_into<'a, B: OwningBuffer<'a>, P: AsRef<Path>>(
 }
 
 /// Writes all points in the given `buffer` into the file at `path`
-pub fn write_all<'a, B: BorrowedBuffer<'a>, P: AsRef<Path>>(buffer: &'a B, path: P) -> Result<()> {
+pub fn write_all<B: BorrowedBuffer, P: AsRef<Path>>(buffer: &B, path: P) -> Result<()> {
     let mut writer =
         GenericPointWriter::open_file(path.as_ref(), buffer.point_layout()).context(format!(
             "Could not create appropriate writer for point cloud file {}",

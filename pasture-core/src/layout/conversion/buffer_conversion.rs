@@ -239,19 +239,10 @@ impl<'a> BufferLayoutConverter<'a> {
     /// # Panics
     ///
     /// If `source_buffer.point_layout()` does not match the source `PointLayout` used to construct this `BufferLayoutConverter`
-    pub fn convert<
-        'b,
-        'c,
-        'd,
-        OutBuffer: OwningBuffer<'c> + MakeBufferFromLayout<'c> + 'c,
-        InBuffer: BorrowedBuffer<'b>,
-    >(
+    pub fn convert<OutBuffer: OwningBuffer + MakeBufferFromLayout, InBuffer: BorrowedBuffer>(
         &self,
-        source_buffer: &'d InBuffer,
-    ) -> OutBuffer
-    where
-        'b: 'd,
-    {
+        source_buffer: &InBuffer,
+    ) -> OutBuffer {
         let mut target_buffer = OutBuffer::new_from_layout(self.to_layout.clone());
         target_buffer.resize(source_buffer.len());
         self.convert_into(source_buffer, &mut target_buffer);
@@ -265,14 +256,11 @@ impl<'a> BufferLayoutConverter<'a> {
     /// If `source_buffer.point_layout()` does not match the source `PointLayout` used to construct this `BufferLayoutConverter`
     /// If `target_buffer.point_layout()` does not match the target `PointLayout` used to construct this `BufferLayoutConverter`
     /// If `target_buffer.len()` is not equal to `source_buffer.len()`
-    pub fn convert_into<'b, 'c, 'd, 'e>(
+    pub fn convert_into(
         &self,
-        source_buffer: &'c impl BorrowedBuffer<'b>,
-        target_buffer: &'e mut impl BorrowedMutBuffer<'d>,
-    ) where
-        'b: 'c,
-        'd: 'e,
-    {
+        source_buffer: &impl BorrowedBuffer,
+        target_buffer: &mut impl BorrowedMutBuffer,
+    ) {
         let source_range = 0..source_buffer.len();
         self.convert_into_range(
             source_buffer,
@@ -289,16 +277,13 @@ impl<'a> BufferLayoutConverter<'a> {
     /// If `source_buffer.point_layout()` does not match the source `PointLayout` used to construct this `BufferLayoutConverter`
     /// If `target_buffer.point_layout()` does not match the target `PointLayout` used to construct this `BufferLayoutConverter`
     /// If `target_buffer.len()` is less than `source_buffer.len()`
-    pub fn convert_into_range<'b, 'c, 'd, 'e>(
+    pub fn convert_into_range(
         &self,
-        source_buffer: &'c impl BorrowedBuffer<'b>,
+        source_buffer: &impl BorrowedBuffer,
         source_range: Range<usize>,
-        target_buffer: &'e mut impl BorrowedMutBuffer<'d>,
+        target_buffer: &mut impl BorrowedMutBuffer,
         target_range: Range<usize>,
-    ) where
-        'b: 'c,
-        'd: 'e,
-    {
+    ) {
         assert_eq!(source_buffer.point_layout(), self.from_layout);
         assert_eq!(target_buffer.point_layout(), self.to_layout);
         assert!(source_range.len() == target_range.len());
@@ -486,7 +471,7 @@ impl<'a> BufferLayoutConverter<'a> {
         }
     }
 
-    fn convert_columnar_to_interleaved<'b, B: InterleavedBufferMut<'b> + ?Sized>(
+    fn convert_columnar_to_interleaved<B: InterleavedBufferMut + ?Sized>(
         &self,
         source_buffer: &dyn ColumnarBuffer,
         source_range: Range<usize>,
@@ -543,7 +528,7 @@ impl<'a> BufferLayoutConverter<'a> {
         }
     }
 
-    fn convert_interleaved_to_columnar<'b, B: InterleavedBuffer<'b> + ?Sized>(
+    fn convert_interleaved_to_columnar<B: InterleavedBuffer + ?Sized>(
         &self,
         source_buffer: &B,
         source_range: Range<usize>,
@@ -604,10 +589,8 @@ impl<'a> BufferLayoutConverter<'a> {
     }
 
     fn convert_interleaved_to_interleaved<
-        'b,
-        'c,
-        InBuffer: InterleavedBuffer<'b> + ?Sized,
-        OutBuffer: InterleavedBufferMut<'c> + ?Sized,
+        InBuffer: InterleavedBuffer + ?Sized,
+        OutBuffer: InterleavedBufferMut + ?Sized,
     >(
         &self,
         source_buffer: &InBuffer,
@@ -682,8 +665,8 @@ mod tests {
     use super::*;
 
     fn buffer_converter_default_generic<
-        TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
-        TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
+        TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
+        TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
         let rng = thread_rng();
         let source_points = rng
@@ -722,8 +705,8 @@ mod tests {
     }
 
     fn buffer_converter_multiple_attributes_from_one_generic<
-        TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
-        TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
+        TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
+        TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
         let rng = thread_rng();
         let source_points = rng
@@ -762,8 +745,8 @@ mod tests {
     }
 
     fn buffer_converter_transformed_target_attribute_generic<
-        TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
-        TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
+        TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
+        TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
         let rng = thread_rng();
         let source_points = rng
@@ -804,8 +787,8 @@ mod tests {
     }
 
     fn buffer_converter_transformed_source_attribute_generic<
-        TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
-        TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
+        TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
+        TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
         let rng = thread_rng();
         let source_points = rng
@@ -846,8 +829,8 @@ mod tests {
     }
 
     fn buffer_converter_identity_generic<
-        TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
-        TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
+        TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
+        TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
         let rng = thread_rng();
         let source_points = rng

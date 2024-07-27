@@ -71,52 +71,44 @@ fn get_dummy_points_custom_format_small_perattribute() -> HashMapBuffer {
     buffer
 }
 
-fn points_iterator_performance_opaque_buffer<'a, T: PointType + Default, B: BorrowedBuffer<'a>>(
-    buffer: &'a B,
+fn points_iterator_performance_opaque_buffer<T: PointType + Default, B: BorrowedBuffer>(
+    buffer: &B,
 ) {
     for point in buffer.view::<T>().into_iter() {
         criterion::black_box(point);
     }
 }
 
-fn points_iterator_performance_interleaved_buffer<
-    'a,
-    T: PointType + Default,
-    B: InterleavedBuffer<'a>,
->(
-    buffer: &'a B,
+fn points_iterator_performance_interleaved_buffer<T: PointType + Default, B: InterleavedBuffer>(
+    buffer: &B,
 ) {
     for point in buffer.view::<T>().iter() {
         criterion::black_box(point);
     }
 }
 
-fn points_iterator_performance_per_attribute_buffer<
-    'a,
-    T: PointType + Default,
-    B: ColumnarBuffer<'a>,
->(
-    buffer: &'a B,
+fn points_iterator_performance_per_attribute_buffer<T: PointType + Default, B: ColumnarBuffer>(
+    buffer: &B,
 ) {
     for point in buffer.view::<T>() {
         criterion::black_box(point);
     }
 }
 
-fn points_ref_iterator_performance_small_type<'a>(buffer: &'a impl InterleavedBuffer<'a>) {
+fn points_ref_iterator_performance_small_type(buffer: &impl InterleavedBuffer) {
     for point in buffer.view::<CustomPointTypeSmall>().iter() {
         criterion::black_box(point.position);
     }
 }
 
-fn points_ref_iterator_performance_with_trait_object<'a>(buffer: &'a dyn InterleavedBuffer<'a>) {
+fn points_ref_iterator_performance_with_trait_object(buffer: &dyn InterleavedBuffer) {
     for point in buffer.view::<CustomPointTypeSmall>().iter() {
         criterion::black_box(point.position);
     }
 }
 
-fn attribute_iterator_performance_opaque_buffer<'a, T: PrimitiveType + Default>(
-    buffer: &'a impl BorrowedBuffer<'a>,
+fn attribute_iterator_performance_opaque_buffer<T: PrimitiveType + Default>(
+    buffer: &impl BorrowedBuffer,
     attribute: &PointAttributeDefinition,
 ) {
     for val in buffer.view_attribute::<T>(attribute) {
@@ -125,11 +117,10 @@ fn attribute_iterator_performance_opaque_buffer<'a, T: PrimitiveType + Default>(
 }
 
 fn attribute_iterator_performance_interleaved_buffer<
-    'a,
     T: PrimitiveType + Default,
-    B: InterleavedBuffer<'a>,
+    B: InterleavedBuffer,
 >(
-    buffer: &'a B,
+    buffer: &B,
     attribute: &PointAttributeDefinition,
 ) {
     for val in buffer.view_attribute::<T>(attribute) {
@@ -138,11 +129,10 @@ fn attribute_iterator_performance_interleaved_buffer<
 }
 
 fn attribute_iterator_performance_perattribute_buffer<
-    'a,
     T: PrimitiveType + Default,
-    B: ColumnarBuffer<'a>,
+    B: ColumnarBuffer,
 >(
-    buffer: &'a B,
+    buffer: &B,
     attribute: &PointAttributeDefinition,
 ) {
     for val in buffer.view_attribute::<T>(attribute).iter() {
@@ -150,7 +140,7 @@ fn attribute_iterator_performance_perattribute_buffer<
     }
 }
 
-fn attribute_ref_iterator_performance_small_type<'a>(buffer: &'a impl ColumnarBuffer<'a>) {
+fn attribute_ref_iterator_performance_small_type(buffer: &impl ColumnarBuffer) {
     for position in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D).iter() {
         criterion::black_box(position);
     }

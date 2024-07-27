@@ -220,7 +220,7 @@ fn main() {
     // which make some code more complicated/less flexible than it could be. In particular we cannot do compile-time dispatch
     // based on the memory layout of a given buffer type. Instead, we have to do that at runtime, like this:
 
-    fn accepts_any_buffer<'a, B: BorrowedBuffer<'a>>(buffer: &'a B) {
+    fn accepts_any_buffer<B: BorrowedBuffer>(buffer: &B) {
         // We can't statically dispatch to an implementation for `B: InterleavedBuffer` or `B: ColumnarBuffer`, but
         // we can use runtime polymorphism for this
         if let Some(interleaved) = buffer.as_interleaved() {

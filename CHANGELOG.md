@@ -1,3 +1,7 @@
+# next
+
+- Simplify lifetimes. The various point buffer traits (`BorrowedBuffer` and friends) now don't require a lifetime parameter anymore. This simplifies generic code working with point buffers a lot.
+
 # 0.5.0
 
 - Allows creating point and attribute views on trait objects, i.e. `dyn BorrowedBuffer` and the likes

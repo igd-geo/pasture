@@ -8,7 +8,7 @@ use pasture_core::{
 
 /// Calculate the bounding box of the points in the given `buffer`. Returns `None` if the buffer contains zero
 /// points, or if the `PointLayout` of the buffer does not contain the `POSITION_3D` attribute
-pub fn calculate_bounds<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Option<AABB<f64>> {
+pub fn calculate_bounds<T: BorrowedBuffer>(buffer: &T) -> Option<AABB<f64>> {
     if buffer.len() == 0 {
         return None;
     }
@@ -27,7 +27,7 @@ pub fn calculate_bounds<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Option<AABB
     }
 }
 
-fn calculate_bounds_from_default_positions<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> AABB<f64> {
+fn calculate_bounds_from_default_positions<T: BorrowedBuffer>(buffer: &T) -> AABB<f64> {
     let mut pos_min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
     let mut pos_max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
     for pos in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D) {
@@ -53,9 +53,7 @@ fn calculate_bounds_from_default_positions<'a, T: BorrowedBuffer<'a>>(buffer: &'
     AABB::from_min_max(pos_min, pos_max)
 }
 
-fn calculate_bounds_from_custom_positions<'a, T: BorrowedBuffer<'a>>(
-    buffer: &'a T,
-) -> Result<AABB<f64>> {
+fn calculate_bounds_from_custom_positions<T: BorrowedBuffer>(buffer: &T) -> Result<AABB<f64>> {
     let mut pos_min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
     let mut pos_max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
     let attribute_view = buffer

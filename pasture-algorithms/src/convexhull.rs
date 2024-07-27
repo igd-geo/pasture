@@ -3,7 +3,6 @@ use pasture_core::containers::{BorrowedBuffer, BorrowedBufferExt};
 use pasture_core::{layout::attributes::POSITION_3D, nalgebra::Vector3};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::usize;
 
 #[derive(Clone, Copy)]
 struct Triangle {
@@ -38,9 +37,7 @@ impl Hash for Edge {
 /// #Panics
 ///
 /// If the PointBuffer doesn't cointain a POSITION_3D attribute.
-pub fn convex_hull_as_triangle_mesh<'a, T: BorrowedBuffer<'a>>(
-    buffer: &'a T,
-) -> Result<Vec<Vector3<usize>>> {
+pub fn convex_hull_as_triangle_mesh<T: BorrowedBuffer>(buffer: &T) -> Result<Vec<Vector3<usize>>> {
     let triangles = create_convex_hull(buffer);
     if triangles.len() < 2 {
         return Err(anyhow!(
@@ -60,7 +57,7 @@ pub fn convex_hull_as_triangle_mesh<'a, T: BorrowedBuffer<'a>>(
 /// #Panics
 ///
 /// If the PointBuffer doesn't cointain a POSITION_3D attribute.
-pub fn convex_hull_as_points<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<usize> {
+pub fn convex_hull_as_points<T: BorrowedBuffer>(buffer: &T) -> Vec<usize> {
     let triangles = create_convex_hull(buffer);
     let mut points = HashSet::new();
     if triangles.len() > 1 {
@@ -81,7 +78,7 @@ pub fn convex_hull_as_points<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<us
     point_indices
 }
 
-fn create_convex_hull<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<Triangle> {
+fn create_convex_hull<T: BorrowedBuffer>(buffer: &T) -> Vec<Triangle> {
     let mut triangles: Vec<Triangle> = Vec::new();
     let position_attribute = match buffer
         .point_layout()
@@ -120,8 +117,8 @@ fn create_convex_hull<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Vec<Triangle>
 /// If the point lies outside of the current convex hull the hull has to be extended to include the current point.
 /// If 'triangles' contain only one entry: no full triangle has been found yet. In case of linearily dependant points no second triangle is added.
 /// If all 'triangles' are in a plane with 'point' a special triangulation procedure is needed to prevent a degenerated triangle mesh.
-fn iteration<'a, T: BorrowedBuffer<'a>>(
-    buffer: &'a T,
+fn iteration<T: BorrowedBuffer>(
+    buffer: &T,
     pointid: usize,
     point: Vector3<f64>,
     triangles: &mut Vec<Triangle>,
@@ -495,8 +492,8 @@ mod tests {
         }
     }
 
-    fn test_all_points_inside_hull<'a, T: BorrowedBuffer<'a>>(
-        buffer: &'a T,
+    fn test_all_points_inside_hull<T: BorrowedBuffer>(
+        buffer: &T,
         triangles: &[convexhull::Triangle],
     ) {
         let position_attribute = buffer

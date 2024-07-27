@@ -95,7 +95,7 @@ impl<T: Write + Seek> AsciiWriter<T> {
 }
 
 impl<T: Write + Seek> PointWriter for AsciiWriter<T> {
-    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
+    fn write<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         self.raw_writer.write(points)
     }
 

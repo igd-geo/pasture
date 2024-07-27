@@ -39,7 +39,7 @@ impl<T: std::io::Write + std::io::Seek> AsciiFormat for RawAsciiWriter<T> {
 }
 
 impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
-    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> anyhow::Result<()> {
+    fn write<B: BorrowedBuffer>(&mut self, points: &B) -> anyhow::Result<()> {
         //let point = UntypedPointBuffer::new(&self.default_layout);
         let buffer_layout = points.point_layout();
 

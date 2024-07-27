@@ -124,14 +124,11 @@ impl<R: BufRead + Read> AsciiReader<R> {
 }
 
 impl<R: BufRead + Read> PointReader for AsciiReader<R> {
-    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'b mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'a: 'b,
-    {
+    ) -> Result<usize> {
         self.raw_reader.read_into(point_buffer, count)
     }
 

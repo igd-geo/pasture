@@ -133,12 +133,12 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         } else {
             None
         };
-        raw_header.min_x = std::f64::MAX;
-        raw_header.min_y = std::f64::MAX;
-        raw_header.min_z = std::f64::MAX;
-        raw_header.max_x = std::f64::MIN;
-        raw_header.max_y = std::f64::MIN;
-        raw_header.max_z = std::f64::MIN;
+        raw_header.min_x = f64::MAX;
+        raw_header.min_y = f64::MAX;
+        raw_header.min_z = f64::MAX;
+        raw_header.max_x = f64::MIN;
+        raw_header.max_y = f64::MIN;
+        raw_header.max_z = f64::MIN;
 
         if raw_header.x_scale_factor == 0.0
             || raw_header.y_scale_factor == 0.0
@@ -200,10 +200,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         Ok(())
     }
 
-    fn write_points_default_layout<'a, B: BorrowedBuffer<'a>>(
-        &mut self,
-        points: &'a B,
-    ) -> Result<()> {
+    fn write_points_default_layout<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -362,10 +359,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         Ok(())
     }
 
-    fn write_points_custom_layout<'a, B: BorrowedBuffer<'a>>(
-        &mut self,
-        points: &'a B,
-    ) -> Result<()> {
+    fn write_points_custom_layout<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -604,7 +598,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
 }
 
 impl<T: std::io::Write + std::io::Seek> PointWriter for RawLASWriter<T> {
-    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
+    fn write<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         if *points.point_layout() == self.default_layout {
             self.write_points_default_layout(points)
         } else {
@@ -662,12 +656,12 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         } else {
             None
         };
-        raw_header.min_x = std::f64::INFINITY;
-        raw_header.min_y = std::f64::INFINITY;
-        raw_header.min_z = std::f64::INFINITY;
-        raw_header.max_x = std::f64::NEG_INFINITY;
-        raw_header.max_y = std::f64::NEG_INFINITY;
-        raw_header.max_z = std::f64::NEG_INFINITY;
+        raw_header.min_x = f64::INFINITY;
+        raw_header.min_y = f64::INFINITY;
+        raw_header.min_z = f64::INFINITY;
+        raw_header.max_x = f64::NEG_INFINITY;
+        raw_header.max_y = f64::NEG_INFINITY;
+        raw_header.max_z = f64::NEG_INFINITY;
 
         if raw_header.x_scale_factor == 0.0
             || raw_header.y_scale_factor == 0.0
@@ -730,10 +724,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         Ok(self.writer.into_inner())
     }
 
-    fn write_points_default_layout<'a, B: BorrowedBuffer<'a>>(
-        &mut self,
-        points: &'a B,
-    ) -> Result<()> {
+    fn write_points_default_layout<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -901,10 +892,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         Ok(())
     }
 
-    fn write_points_custom_layout<'a, B: BorrowedBuffer<'a>>(
-        &mut self,
-        points: &'a B,
-    ) -> Result<()> {
+    fn write_points_custom_layout<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         if points.is_empty() {
             return Ok(());
         }
@@ -1178,7 +1166,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
 }
 
 impl<T: std::io::Write + std::io::Seek + Send + 'static> PointWriter for RawLAZWriter<T> {
-    fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
+    fn write<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         if *points.point_layout() != self.default_layout {
             self.write_points_custom_layout(points)
         } else {

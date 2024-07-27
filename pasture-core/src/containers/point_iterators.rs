@@ -5,19 +5,14 @@ use crate::layout::PointType;
 use super::point_buffer::{BorrowedBuffer, InterleavedBuffer, InterleavedBufferMut};
 
 /// Iterator over strongly typed points by value
-pub struct PointIteratorByValue<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized>
-where
-    'a: 'b,
-{
-    buffer: &'b B,
+pub struct PointIteratorByValue<'a, T: PointType, B: BorrowedBuffer + ?Sized> {
+    buffer: &'a B,
     current_index: usize,
     _phantom: PhantomData<&'a T>,
 }
 
-impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized> From<&'b B>
-    for PointIteratorByValue<'a, 'b, T, B>
-{
-    fn from(value: &'b B) -> Self {
+impl<'a, T: PointType, B: BorrowedBuffer + ?Sized> From<&'a B> for PointIteratorByValue<'a, T, B> {
+    fn from(value: &'a B) -> Self {
         Self {
             buffer: value,
             current_index: 0,
@@ -26,9 +21,7 @@ impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized> From<&'b B>
     }
 }
 
-impl<'a, 'b, T: PointType, B: BorrowedBuffer<'a> + ?Sized> Iterator
-    for PointIteratorByValue<'a, 'b, T, B>
-{
+impl<'a, T: PointType, B: BorrowedBuffer + ?Sized> Iterator for PointIteratorByValue<'a, T, B> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -55,11 +48,7 @@ pub struct PointIteratorByRef<'a, T: PointType> {
     current_index: usize,
 }
 
-impl<'a, 'b, T: PointType, B: InterleavedBuffer<'b> + ?Sized> From<&'a B>
-    for PointIteratorByRef<'a, T>
-where
-    'b: 'a,
-{
+impl<'a, T: PointType, B: InterleavedBuffer + ?Sized> From<&'a B> for PointIteratorByRef<'a, T> {
     fn from(value: &'a B) -> Self {
         let points_memory = value.get_point_range_ref(0..value.len());
         Self {
@@ -95,10 +84,8 @@ pub struct PointIteratorByMut<'a, T: PointType> {
     _phantom: PhantomData<T>,
 }
 
-impl<'a, 'b, T: PointType, B: InterleavedBufferMut<'b> + ?Sized> From<&'a mut B>
+impl<'a, T: PointType, B: InterleavedBufferMut + ?Sized> From<&'a mut B>
     for PointIteratorByMut<'a, T>
-where
-    'b: 'a,
 {
     fn from(value: &'a mut B) -> Self {
         let memory_for_all_points = value.get_point_range_mut(0..value.len());

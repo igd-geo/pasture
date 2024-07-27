@@ -76,14 +76,11 @@ impl GenericPointReader {
 }
 
 impl PointReader for GenericPointReader {
-    fn read_into<'a, 'b, B: BorrowedMutBuffer<'a>>(
+    fn read_into<B: BorrowedMutBuffer>(
         &mut self,
-        point_buffer: &'b mut B,
+        point_buffer: &mut B,
         count: usize,
-    ) -> Result<usize>
-    where
-        'a: 'b,
-    {
+    ) -> Result<usize> {
         match self {
             GenericPointReader::LAS(reader) => reader.read_into(point_buffer, count),
             GenericPointReader::Tiles3D(reader) => reader.read_into(point_buffer, count),
@@ -140,10 +137,7 @@ impl GenericPointWriter {
 }
 
 impl PointWriter for GenericPointWriter {
-    fn write<'a, B: pasture_core::containers::BorrowedBuffer<'a>>(
-        &mut self,
-        points: &'a B,
-    ) -> Result<()> {
+    fn write<B: pasture_core::containers::BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         match self {
             GenericPointWriter::LAS(writer) => writer.write(points),
             GenericPointWriter::Tiles3D(writer) => writer.write(points),
