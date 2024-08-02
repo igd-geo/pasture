@@ -1,7 +1,7 @@
 use std::iter::FromIterator;
 
 use float_ord::FloatOrd;
-use nalgebra::{ClosedSub, Point3, Scalar, Vector3};
+use nalgebra::{ClosedSubAssign, Point3, Scalar, Vector3};
 
 /// 3D axis-aligned bounding box
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -11,7 +11,7 @@ pub struct AABB<T: Scalar + PartialOrd> {
     max: Point3<T>,
 }
 
-impl<T: Scalar + ClosedSub + PartialOrd + Copy> AABB<T> {
+impl<T: Scalar + PartialOrd + Copy + ClosedSubAssign> AABB<T> {
     /// Creates a new AABB from the given minimum and maximum coordinates. Panics if the minimum position is
     /// not less than or equal to the maximum position
     /// ```
