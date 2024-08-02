@@ -131,7 +131,7 @@ fn get_primitive_type_for_ident_type(ident: &Ident) -> Result<PasturePrimitiveTy
 
 fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<PasturePrimitiveType> {
     // Path should have an ident (Vector3, Vector4, ...), as well as one generic argument
-    let valid_idents: HashSet<_> = ["Vector3", "Vector4"].iter().collect();
+    let valid_idents: HashSet<_> = ["Vector3", "Vector4", "Point3", "Point4"].iter().collect();
 
     let path_segment = type_path
         .path
@@ -166,8 +166,9 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
         Some(ident) => {
             // Not ALL primitive types are supported as generic arguments for Vector3
             let type_name = ident.to_string();
-            match path_segment.ident.to_string().as_str() {
-                "Vector3" => match type_name.as_str() {
+            let outer_type_name = path_segment.ident.to_string();
+            match outer_type_name.as_str() {
+                "Vector3" | "Point3" => match type_name.as_str() {
                     "u8" => Ok(PasturePrimitiveType::Vec3u8),
                     "u16" => Ok(PasturePrimitiveType::Vec3u16),
                     "f32" => Ok(PasturePrimitiveType::Vec3f32),
@@ -175,14 +176,14 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
                     "i32" => Ok(PasturePrimitiveType::Vec3i32),
                     _ => Err(Error::new_spanned(
                         ident,
-                        format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic argument(s) u8, u16, i32, f32 or f64", type_name),
+                        format!("{0}<{1}> is no valid Pasture primitive type. {0} is supported, but only for generic argument(s) u8, u16, i32, f32 or f64", outer_type_name, type_name),
                     ))
                 },
-                "Vector4" => match type_name.as_str() {
+                "Vector4" | "Point4" => match type_name.as_str() {
                     "u8" => Ok(PasturePrimitiveType::Vec4u8),
                     _ => Err(Error::new_spanned(
                         ident,
-                        format!("Vector4<{}> is no valid Pasture primitive type. Vector4 is supported, but only for generic argument(s) u8", type_name),
+                        format!("{0}<{1}> is no valid Pasture primitive type. {0} is supported, but only for generic argument(s) u8", outer_type_name, type_name),
                     ))
                 },
                 _ => Err(Error::new_spanned(ident, "Invalid type")),

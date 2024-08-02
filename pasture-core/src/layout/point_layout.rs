@@ -1,7 +1,7 @@
 use std::{alloc::Layout, borrow::Cow, fmt::Display, iter::FromIterator, ops::Range};
 
 use itertools::Itertools;
-use nalgebra::{Vector3, Vector4};
+use nalgebra::{Point3, Point4, Vector3, Vector4};
 use static_assertions::const_assert;
 use uuid::Uuid;
 
@@ -237,8 +237,37 @@ impl PrimitiveType for Vector3<f64> {
         PointAttributeDataType::Vec3f64
     }
 }
-
 impl PrimitiveType for Vector4<u8> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec4u8
+    }
+}
+impl PrimitiveType for Point3<u8> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3u8
+    }
+}
+impl PrimitiveType for Point3<u16> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3u16
+    }
+}
+impl PrimitiveType for Point3<i32> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3i32
+    }
+}
+impl PrimitiveType for Point3<f32> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3f32
+    }
+}
+impl PrimitiveType for Point3<f64> {
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType::Vec3f64
+    }
+}
+impl PrimitiveType for Point4<u8> {
     fn data_type() -> PointAttributeDataType {
         PointAttributeDataType::Vec4u8
     }
@@ -251,6 +280,11 @@ const_assert!(std::mem::size_of::<Vector3<u16>>() == 6);
 const_assert!(std::mem::size_of::<Vector3<f32>>() == 12);
 const_assert!(std::mem::size_of::<Vector3<f64>>() == 24);
 const_assert!(std::mem::size_of::<Vector4<u8>>() == 4);
+const_assert!(std::mem::size_of::<Point3<u8>>() == 3);
+const_assert!(std::mem::size_of::<Point3<u16>>() == 6);
+const_assert!(std::mem::size_of::<Point3<f32>>() == 12);
+const_assert!(std::mem::size_of::<Point3<f64>>() == 24);
+const_assert!(std::mem::size_of::<Point4<u8>>() == 4);
 
 /// A definition for a single point attribute of a point cloud. Point attributes are things like the position,
 /// GPS time, intensity etc. In Pasture, attributes are identified by a unique name together with the data type
