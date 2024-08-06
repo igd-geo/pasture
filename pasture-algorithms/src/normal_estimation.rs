@@ -1,11 +1,10 @@
 // The normal estimation algorithm is inspired by the PCL library (https://pointclouds.org/)
 use core::panic;
-use kd_tree::{self, KdPoint, KdTree};
-use num_traits::{self};
+use kd_tree::{self, KdTree};
 use pasture_core::containers::{
     BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, OwningBuffer,
 };
-use pasture_core::layout::{attributes::POSITION_3D, PointType};
+use pasture_core::layout::attributes::POSITION_3D;
 use pasture_core::nalgebra::{DMatrix, Vector3};
 use std::result::Result;
 
@@ -66,23 +65,20 @@ use std::result::Result;
 ///
 ///     let interleaved = points.into_iter().collect::<VectorBuffer>();
 ///
-///     let solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 4);
-///     for solution in solution_vec {
+///     let solution_vec = compute_normals(&interleaved, 4);
+///     for (index, solution) in solution_vec.into_iter().enumerate() {
 ///    println!(
 ///        "Point: {:?}, n_x: {}, n_y: {}, n_z: {}, curvature: {}",
-///        solution.0, solution.0[0], solution.0[1], solution.0[2], solution.1
+///        index, solution.0[0], solution.0[1], solution.0[2], solution.1
 ///    );
 /// }
 /// }
 /// ```
 
-pub fn compute_normals<T: BorrowedBuffer, P: PointType + KdPoint + Copy>(
+pub fn compute_normals<T: BorrowedBuffer>(
     point_cloud: &T,
     k_nn: usize,
-) -> Vec<(Vector3<f64>, f64)>
-where
-    P::Scalar: num_traits::Float,
-{
+) -> Vec<(Vector3<f64>, f64)> {
     if point_cloud.len() < 3 {
         panic!("The point cloud is too small. Please use a point cloud that has 3 or more points!");
     }
@@ -478,6 +474,7 @@ fn normal_estimation<T: BorrowedBuffer>(point_cloud: &T) -> (Vector3<f64>, f64) 
 #[cfg(test)]
 mod tests {
 
+    use kd_tree::KdPoint;
     use pasture_core::{containers::VectorBuffer, nalgebra::Matrix3, nalgebra::Vector3};
     use pasture_derive::PointType;
 
@@ -600,7 +597,7 @@ mod tests {
 
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        let solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 3);
+        let solution_vec = compute_normals::<VectorBuffer>(&interleaved, 3);
         for solution in solution_vec {
             assert_eq!(solution.0[0], 0.0);
             assert_eq!(solution.0[1], 0.0);
@@ -621,7 +618,7 @@ mod tests {
 
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 3);
+        let _solution_vec = compute_normals::<VectorBuffer>(&interleaved, 3);
     }
     #[test]
     #[should_panic(
@@ -641,7 +638,7 @@ mod tests {
 
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 3);
+        let _solution_vec = compute_normals::<VectorBuffer>(&interleaved, 3);
     }
 
     #[test]
@@ -668,7 +665,7 @@ mod tests {
 
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 1);
+        let _solution_vec = compute_normals::<VectorBuffer>(&interleaved, 1);
     }
     #[test]
     #[should_panic(expected = "The k nearest neigbors attribute is too small!")]
@@ -694,6 +691,6 @@ mod tests {
 
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-        let _solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 2);
+        let _solution_vec = compute_normals::<VectorBuffer>(&interleaved, 2);
     }
 }

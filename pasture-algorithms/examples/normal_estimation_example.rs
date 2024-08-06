@@ -42,7 +42,7 @@ fn main() {
 
     let interleaved = points.into_iter().collect::<VectorBuffer>();
 
-    let solution_vec = compute_normals::<VectorBuffer, SimplePoint>(&interleaved, 4);
+    let solution_vec = compute_normals(&interleaved, 4);
     for solution in solution_vec {
         println!(
             "Normals: n_x: {}, n_y: {}, n_z: {}, curvature: {}",
