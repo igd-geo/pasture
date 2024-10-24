@@ -1,4 +1,7 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    mem,
+    ops::{Index, IndexMut},
+};
 
 use crate::layout::{PointAttributeDefinition, PointAttributeMember};
 
@@ -64,6 +67,23 @@ impl<'a> Index<usize> for RawAttributeView<'a> {
     }
 }
 
+impl<'a> Iterator for RawAttributeView<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((first_point, rest)) = self.point_data.split_at_checked(self.stride) {
+            self.point_data = rest;
+
+            let start = self.offset;
+            let end = start + self.size_of_attribute;
+            let attribute = &first_point[start..end];
+            Some(attribute)
+        } else {
+            None
+        }
+    }
+}
+
 /// Like `RawAttributeView`, but for mutable data
 pub struct RawAttributeViewMut<'a> {
     point_data: &'a mut [u8],
@@ -121,6 +141,24 @@ impl<'a> IndexMut<usize> for RawAttributeViewMut<'a> {
     }
 }
 
+impl<'a> Iterator for RawAttributeViewMut<'a> {
+    type Item = &'a mut [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let point_data = mem::take(&mut self.point_data);
+        if let Some((first_point, rest)) = point_data.split_at_mut_checked(self.stride) {
+            self.point_data = rest;
+
+            let start = self.offset;
+            let end = start + self.size_of_attribute;
+            let attribute = &mut first_point[start..end];
+            Some(attribute)
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +181,11 @@ mod tests {
 
         for attribute in layout.attributes() {
             let mut buffer = vec![0; attribute.size() as usize];
+            let raw_view = RawAttributeView::from_interleaved_buffer(&test_data, attribute);
+            let data_from_iter_view: Vec<Vec<u8>> = raw_view.map(|a| a.to_vec()).collect();
+            let raw_view_mut =
+                RawAttributeViewMut::from_interleaved_buffer(&mut test_data, attribute);
+            let data_mut_from_iter_view: Vec<Vec<u8>> = raw_view_mut.map(|a| a.to_vec()).collect();
 
             for point_idx in 0..COUNT {
                 test_data.get_attribute(
@@ -150,6 +193,9 @@ mod tests {
                     point_idx,
                     &mut buffer[..],
                 );
+
+                assert_eq!(data_from_iter_view[point_idx], buffer);
+                assert_eq!(data_mut_from_iter_view[point_idx], buffer);
 
                 // Creating the RawAttributeViewMut in the inner loop because otherwise we couldn't call `get_attribute`
                 // on `test_data` since RawAttributeViewMut mutably borrows the buffer
@@ -178,6 +224,16 @@ mod tests {
 
         for attribute in layout.attributes() {
             let mut buffer = vec![0; attribute.size() as usize];
+            let raw_view = RawAttributeView::from_columnar_buffer(
+                &test_data,
+                attribute.attribute_definition(),
+            );
+            let data_from_iter_view: Vec<Vec<u8>> = raw_view.map(|a| a.to_vec()).collect();
+            let raw_view_mut = RawAttributeViewMut::from_columnar_buffer(
+                &mut test_data,
+                attribute.attribute_definition(),
+            );
+            let data_mut_from_iter_view: Vec<Vec<u8>> = raw_view_mut.map(|a| a.to_vec()).collect();
 
             for point_idx in 0..COUNT {
                 test_data.get_attribute(
@@ -185,6 +241,9 @@ mod tests {
                     point_idx,
                     &mut buffer[..],
                 );
+
+                assert_eq!(data_from_iter_view[point_idx], buffer);
+                assert_eq!(data_mut_from_iter_view[point_idx], buffer);
 
                 // Creating the RawAttributeViewMut in the inner loop because otherwise we couldn't call `get_attribute`
                 // on `test_data` since RawAttributeViewMut mutably borrows the buffer
