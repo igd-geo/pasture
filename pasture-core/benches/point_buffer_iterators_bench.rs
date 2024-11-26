@@ -21,21 +21,6 @@ struct CustomPointTypeSmall {
     pub classification: u8,
 }
 
-#[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
-#[repr(C, packed)]
-struct CustomPointTypeBig {
-    #[pasture(BUILTIN_GPS_TIME)]
-    pub gps_time: f64,
-    #[pasture(BUILTIN_COLOR_RGB)]
-    pub color: Vector3<u16>,
-    #[pasture(BUILTIN_POSITION_3D)]
-    pub position: Vector3<f64>,
-    #[pasture(BUILTIN_CLASSIFICATION)]
-    pub classification: u8,
-    #[pasture(BUILTIN_INTENSITY)]
-    pub intensity: i16,
-}
-
 fn random_custom_point_small<R: Rng + ?Sized>(rng: &mut R) -> CustomPointTypeSmall {
     CustomPointTypeSmall {
         position: Vector3::new(

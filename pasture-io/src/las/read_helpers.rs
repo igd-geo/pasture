@@ -16,6 +16,7 @@ use pasture_core::{
 /// 1) Source layout contains default PointAttributeDefinition for attribute
 /// 2) Source layout contains PointAttributeDefinition with a different data type
 /// 3) Source layout does not contain PointAttributeDefinition for attribute
+///    
 /// Depending on the scenario, this requires either a regular read, a converted read, or no read at all. To prevent
 /// that we have to handle the three scenarios at every place where we write LAS data, the `ReaderFn` abstraction
 /// is introduced

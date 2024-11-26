@@ -53,7 +53,7 @@ pub const ATTRIBUTE_LOCAL_LAS_POSITION: PointAttributeDefinition = PointAttribut
 ///   the [`POSITION_3D`] attribute
 /// - Bit flag values (e.g. [`RETURN_NUMBER`], [`NUMBER_OF_RETURNS`] etc.) are stored as a single attribute, either using
 ///   [`ATTRIBUTE_BASIC_FLAGS`] for point record types 0-5, or [`ATTRIBUTE_EXTENDED_FLAGS`] for point record types 6-10
-///  that positions will be stored in local space (offset and scale
+///   that positions will be stored in local space (offset and scale
 ///
 /// Otherwise, positions are stored in world-space using the default [`POSITION_3D`] attribute, and bit flag values are
 /// stored as separate attributes
