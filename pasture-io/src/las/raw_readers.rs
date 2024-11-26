@@ -629,12 +629,11 @@ mod tests {
     use pasture_core::layout::PointAttributeDataType;
     use pasture_core::nalgebra::Vector3;
 
-    use crate::las::get_test_las_path_with_extra_bytes;
     use crate::las::{
         compare_to_reference_data, compare_to_reference_data_range, get_test_las_path,
-        get_test_laz_path, test_data_bounds, test_data_classifications, test_data_colors,
-        test_data_point_count, test_data_point_source_ids, test_data_positions,
-        test_data_wavepacket_parameters,
+        get_test_las_path_with_extra_bytes, get_test_laz_path, test_data_bounds,
+        test_data_classifications, test_data_colors, test_data_point_count,
+        test_data_point_source_ids, test_data_positions, test_data_wavepacket_parameters,
     };
 
     use super::*;
@@ -1077,12 +1076,76 @@ mod tests {
     test_read_with_format!(laz_format_4, 4, RawLAZReader, get_test_laz_path);
     test_read_with_format!(laz_format_5, 5, RawLAZReader, get_test_laz_path);
 
-    // There is currently a bug in `laz-rs` when seeking into files with point record format 6 or higher, so they are
-    // still unsupported in pasture. See this issue here: https://github.com/laz-rs/laz-rs/issues/46
+    test_read_with_format!(laz_format_6, 6, RawLAZReader, get_test_laz_path);
+    test_read_with_format!(laz_format_7, 7, RawLAZReader, get_test_laz_path);
+    test_read_with_format!(laz_format_8, 8, RawLAZReader, get_test_laz_path);
 
-    // test_read_with_format!(laz_format_6, 6, RawLAZReader, get_test_laz_path);
-    // test_read_with_format!(laz_format_7, 7, RawLAZReader, get_test_laz_path);
-    // test_read_with_format!(laz_format_8, 8, RawLAZReader, get_test_laz_path);
+    test_read_with_format!(
+        las_format_0_with_extra_bytes,
+        0,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_1_with_extra_bytes,
+        1,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_2_with_extra_bytes,
+        2,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_3_with_extra_bytes,
+        3,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_4_with_extra_bytes,
+        4,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_5_with_extra_bytes,
+        5,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_6_with_extra_bytes,
+        6,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_7_with_extra_bytes,
+        7,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_8_with_extra_bytes,
+        8,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_9_with_extra_bytes,
+        9,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
+    test_read_with_format!(
+        las_format_10_with_extra_bytes,
+        10,
+        RawLASReader,
+        get_test_las_path_with_extra_bytes
+    );
 
     // Formats 9 and 10 seem to parse waveform data differently when using laz-rs, so they are unsupported for now
 }
