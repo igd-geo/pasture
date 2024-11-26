@@ -143,38 +143,29 @@ pub fn point_layout_from_las_metadata(
 
     let extra_byte_attributes = las_metadata
         .extra_bytes_vlr()
-        .map(|vlr| {
-            vlr.entries()
-                .iter()
-                .map(|entry| entry.get_point_attribute())
-                .collect::<Result<Vec<_>>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
+        .into_iter()
+        .flat_map(|vlr| vlr.entries())
+        .map(|entry| entry.get_point_attribute())
+        .collect::<Result<Vec<_>>>()?;
+
     let num_described_bytes = extra_byte_attributes
         .iter()
         .map(|attribute| attribute.size() as usize)
         .sum::<usize>();
 
     // Add the extra bytes attributes with a 1-byte alignment, because the base LAS point types are all tightly packed
-    // Currently, the RawLASReader and RawLAZReader both rely on this fact when reading chunks in the default layout
-
-    // TODO It is debatable if there is much gain with using packed alignment as the default, both for the extra bytes
-    //      as well as the LAS types in `las_types.rs` in general. In the end unaligned I/O might be slower, and we can't
-    //      even memcpy directly because we still use Vector3<f64> as the default type for positions, even though LAS
-    //      uses Vector3<i32>... So it might be worthwhile to change this once we have support for reading positions in
-    //      Vector3<i32> using the LASReader
     for extra_byte_attribute in extra_byte_attributes {
         base_layout.add_attribute(extra_byte_attribute, FieldAlignment::Packed(1));
     }
 
+    // add an UndescribedExtraBytes attribute for the remaining extra bytes
     let num_undescribed_bytes = format.extra_bytes as usize - num_described_bytes;
     if num_undescribed_bytes > 0 {
         // Add a PointAttributeDefinition describing a raw byte array for all undescribed extra bytes
         base_layout.add_attribute(
             PointAttributeDefinition::custom(
                 Cow::Borrowed("UndescribedExtraBytes"),
-                PointAttributeDataType::ByteArray(num_described_bytes as u64),
+                PointAttributeDataType::ByteArray(num_undescribed_bytes as u64),
             ),
             FieldAlignment::Packed(1),
         );
