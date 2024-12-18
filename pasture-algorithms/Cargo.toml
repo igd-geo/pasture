@@ -35,6 +35,3 @@ assert_approx_eq = "1.1.0"
 [[bench]]
 name = "convexhull_bench"
 harness = false
-
-[profile.bench]
-debug = true

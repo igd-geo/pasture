@@ -74,7 +74,6 @@ use std::result::Result;
 /// }
 /// }
 /// ```
-
 pub fn compute_normals<T: BorrowedBuffer>(
     point_cloud: &T,
     k_nn: usize,
@@ -185,9 +184,9 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 ///         intensity: 84,
 ///     },
 /// ];
-
+///
 /// let interleaved = points.into_iter().collect::<VectorBuffer>();
-
+///
 /// let centroid = compute_centroid(&interleaved);
 ///
 /// ```

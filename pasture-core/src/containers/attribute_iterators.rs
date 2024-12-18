@@ -27,9 +27,7 @@ impl<'a, T: PrimitiveType, B: BorrowedBuffer + ?Sized> AttributeIteratorByValue<
     }
 }
 
-impl<'a, T: PrimitiveType, B: BorrowedBuffer + ?Sized> Iterator
-    for AttributeIteratorByValue<'a, T, B>
-{
+impl<T: PrimitiveType, B: BorrowedBuffer + ?Sized> Iterator for AttributeIteratorByValue<'_, T, B> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

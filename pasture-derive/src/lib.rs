@@ -361,8 +361,8 @@ fn calculate_offsets_and_alignment(
     };
     let struct_layout = get_struct_member_layout(type_attributes, struct_data)?;
 
-    let mut current_offset = 0;
-    let mut max_alignment = 1;
+    let mut current_offset = 0_u64;
+    let mut max_alignment = 1_u64;
     let mut offsets = vec![];
     for field in fields {
         let min_alignment = match struct_layout {
@@ -373,7 +373,7 @@ fn calculate_offsets_and_alignment(
         };
         max_alignment = std::cmp::max(min_alignment, max_alignment);
 
-        let aligned_offset = ((current_offset + min_alignment - 1) / min_alignment) * min_alignment;
+        let aligned_offset = current_offset.div_ceil(min_alignment) * min_alignment;
         offsets.push(aligned_offset);
         current_offset = aligned_offset + field.primitive_type.size();
     }

@@ -94,7 +94,7 @@ impl LASReader<'static, BufReader<File>> {
     }
 }
 
-impl<'a, R: Read + Seek + Send> LASReader<'a, R> {
+impl<R: Read + Seek + Send> LASReader<'_, R> {
     /// Creates a new `LASReader` from the given `read`. This method has to know whether
     /// the `read` points to a compressed LAZ file or a regular LAS file. If `point_layout_matches_memory_layout`
     /// is `true`, the reader will return point data with a `PointLayout` that exactly matches the binary

@@ -15,7 +15,7 @@ impl Alignable for u8 {
         if alignment == 0 {
             *self
         } else {
-            ((self + alignment - 1) / alignment) * alignment
+            self.div_ceil(alignment) * alignment
         }
     }
 }
@@ -25,7 +25,7 @@ impl Alignable for u16 {
         if alignment == 0 {
             *self
         } else {
-            ((self + alignment - 1) / alignment) * alignment
+            self.div_ceil(alignment) * alignment
         }
     }
 }
@@ -35,7 +35,7 @@ impl Alignable for u32 {
         if alignment == 0 {
             *self
         } else {
-            ((self + alignment - 1) / alignment) * alignment
+            self.div_ceil(alignment) * alignment
         }
     }
 }
@@ -45,7 +45,7 @@ impl Alignable for u64 {
         if alignment == 0 {
             *self
         } else {
-            ((self + alignment - 1) / alignment) * alignment
+            self.div_ceil(alignment) * alignment
         }
     }
 }
@@ -55,7 +55,7 @@ impl Alignable for u128 {
         if alignment == 0 {
             *self
         } else {
-            ((self + alignment - 1) / alignment) * alignment
+            self.div_ceil(alignment) * alignment
         }
     }
 }
@@ -65,7 +65,7 @@ impl Alignable for usize {
         if alignment == 0 {
             *self
         } else {
-            ((self + alignment - 1) / alignment) * alignment
+            self.div_ceil(alignment) * alignment
         }
     }
 }

@@ -6,3 +6,6 @@ resolver = "2"
 # needed for emscripten fix
 # https://github.com/chronotope/chrono/pull/568
 chrono = { git = 'https://github.com/chronotope/chrono', branch = 'main' }
+
+[profile.bench]
+debug = true

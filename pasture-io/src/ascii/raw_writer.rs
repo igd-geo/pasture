@@ -48,7 +48,7 @@ impl<T: std::io::Write + std::io::Seek> PointWriter for RawAsciiWriter<T> {
 
         let size_of_single_point = buffer_layout.size_of_point_entry() as usize;
         let num_points_in_chunk = 50_000;
-        let num_chunks = (points.len() + (num_points_in_chunk - 1)) / num_points_in_chunk;
+        let num_chunks = points.len().div_ceil(num_points_in_chunk);
         let mut chunk_buffer: Vec<u8> = vec![0; num_points_in_chunk * size_of_single_point];
 
         for chunk_index in 0..num_chunks {

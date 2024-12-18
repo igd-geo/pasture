@@ -264,7 +264,7 @@ impl<T: Read + Seek> RawLASReader<T> {
             // to read all data in a single chunk
             const CHUNK_MEM_SIZE: usize = 1 << 20;
             let num_points_per_chunk = CHUNK_MEM_SIZE / self.size_of_point_in_file as usize;
-            let num_chunks = (num_points_to_read + num_points_per_chunk - 1) / num_points_per_chunk;
+            let num_chunks = num_points_to_read.div_ceil(num_points_per_chunk);
             let mut read_buffer =
                 vec![0; num_points_per_chunk * self.size_of_point_in_file as usize];
             for chunk_idx in 0..num_chunks {
@@ -306,7 +306,7 @@ impl<T: Read + Seek> RawLASReader<T> {
         const CHUNK_BYTES: usize = 1 << 20; // 1 MiB
         let points_per_chunk =
             CHUNK_BYTES / self.las_point_records_layout.size_of_point_entry() as usize;
-        let num_chunks = (num_points_to_read + points_per_chunk - 1) / points_per_chunk;
+        let num_chunks = num_points_to_read.div_ceil(points_per_chunk);
 
         let size_of_chunk = if num_chunks > 1 {
             points_per_chunk
@@ -504,7 +504,7 @@ impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
             // to read all data in a single chunk
             const CHUNK_MEM_SIZE: usize = 1 << 20;
             let num_points_per_chunk = CHUNK_MEM_SIZE / self.size_of_point_in_file as usize;
-            let num_chunks = (num_points_to_read + num_points_per_chunk - 1) / num_points_per_chunk;
+            let num_chunks = num_points_to_read.div_ceil(num_points_per_chunk);
             let mut read_buffer =
                 vec![0; num_points_per_chunk * self.size_of_point_in_file as usize];
             for chunk_idx in 0..num_chunks {

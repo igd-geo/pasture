@@ -21,7 +21,7 @@ impl<'a, T: PointType, B: BorrowedBuffer + ?Sized> From<&'a B> for PointIterator
     }
 }
 
-impl<'a, T: PointType, B: BorrowedBuffer + ?Sized> Iterator for PointIteratorByValue<'a, T, B> {
+impl<T: PointType, B: BorrowedBuffer + ?Sized> Iterator for PointIteratorByValue<'_, T, B> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

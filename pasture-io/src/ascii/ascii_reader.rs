@@ -10,7 +10,6 @@ use crate::ascii::RawAsciiReader;
 use crate::base::PointReader;
 
 /// `PointReader` implementation for ascii files
-
 pub struct AsciiReader<R: BufRead + Read> {
     raw_reader: RawAsciiReader<R>,
 }

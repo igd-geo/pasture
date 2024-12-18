@@ -45,7 +45,7 @@ pub struct AttributeMapping<'a> {
     transformation: Option<Transformation>,
 }
 
-impl<'a> AttributeMapping<'a> {
+impl AttributeMapping<'_> {
     /// Returns the maximum number of bytes required to convert the data for this mapping
     pub(crate) fn required_buffer_size(&self) -> usize {
         self.source_attribute

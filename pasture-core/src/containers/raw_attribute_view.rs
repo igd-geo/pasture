@@ -56,7 +56,7 @@ impl<'a> RawAttributeView<'a> {
     }
 }
 
-impl<'a> Index<usize> for RawAttributeView<'a> {
+impl Index<usize> for RawAttributeView<'_> {
     type Output = [u8];
 
     #[inline]
@@ -121,7 +121,7 @@ impl<'a> RawAttributeViewMut<'a> {
     }
 }
 
-impl<'a> Index<usize> for RawAttributeViewMut<'a> {
+impl Index<usize> for RawAttributeViewMut<'_> {
     type Output = [u8];
 
     #[inline]
@@ -132,7 +132,7 @@ impl<'a> Index<usize> for RawAttributeViewMut<'a> {
     }
 }
 
-impl<'a> IndexMut<usize> for RawAttributeViewMut<'a> {
+impl IndexMut<usize> for RawAttributeViewMut<'_> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let start = self.offset + (self.stride * index);
