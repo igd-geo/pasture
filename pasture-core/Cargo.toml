@@ -2,7 +2,7 @@
 name = "pasture-core"
 version = "0.5.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
-edition = "2018"
+edition = "2021"
 license-file = "LICENSE"
 description = "A framework for working with point cloud data"
 homepage = "https://github.com/Mortano/pasture"

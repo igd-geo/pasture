@@ -2,7 +2,7 @@
 name = "pasture-tools"
 version = "0.5.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
-edition = "2018"
+edition = "2021"
 license-file = "LICENSE"
 description = "Command line utilities for working with point cloud files"
 homepage = "https://github.com/Mortano/pasture"

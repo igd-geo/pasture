@@ -2,7 +2,7 @@
 name = "pasture-derive"
 version = "0.5.0"
 authors = ["Pascal Bormann <pascal.bormann@igd.fraunhofer.de>"]
-edition = "2018"
+edition = "2021"
 license-file = "LICENSE"
 description = "Macro implementations for #[derive(PointType)]"
 homepage = "https://github.com/Mortano/pasture"
