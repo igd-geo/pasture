@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use pasture_algorithms::convexhull;
 use pasture_core::{
     containers::{BorrowedMutBufferExt, HashMapBuffer, VectorBuffer},
@@ -6,7 +6,7 @@ use pasture_core::{
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{distributions::Uniform, thread_rng, Rng};
+use rand::{Rng, distributions::Uniform, thread_rng};
 
 #[derive(PointType, Default, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]

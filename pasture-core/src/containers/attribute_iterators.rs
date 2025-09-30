@@ -138,7 +138,7 @@ impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByMut<'a, T> {
 #[cfg(test)]
 mod tests {
     use nalgebra::Vector3;
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer},

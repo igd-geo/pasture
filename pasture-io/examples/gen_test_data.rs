@@ -6,11 +6,11 @@ use std::{
 
 use anyhow::{Context, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
-use las::{point::Format, raw::header::LargeFile, Builder, Header, Transform, Version};
+use las::{Builder, Header, Transform, Version, point::Format, raw::header::LargeFile};
 use pasture_core::nalgebra::Vector3;
 use pasture_io::las::{
-    write_las_bit_attributes, BitAttributes, BitAttributesExtended, BitAttributesRegular,
-    ExtraBytesDataType, ExtraBytesEntryBuilder, ExtraBytesVlr,
+    BitAttributes, BitAttributesExtended, BitAttributesRegular, ExtraBytesDataType,
+    ExtraBytesEntryBuilder, ExtraBytesVlr, write_las_bit_attributes,
 };
 
 fn position_to_local_space(

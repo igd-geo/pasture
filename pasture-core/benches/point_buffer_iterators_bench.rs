@@ -1,16 +1,16 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use pasture_core::{
     containers::{
         BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, ColumnarBuffer, HashMapBuffer,
         InterleavedBuffer, VectorBuffer,
     },
-    layout::attributes::POSITION_3D,
     layout::PointType,
+    layout::attributes::POSITION_3D,
     layout::{PointAttributeDefinition, PrimitiveType},
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{distributions::Uniform, thread_rng, Rng};
+use rand::{Rng, distributions::Uniform, thread_rng};
 
 #[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]

@@ -59,37 +59,21 @@ impl_minmax_for_primitive_type! {bool}
 
 impl MinMax for f32 {
     fn infimum(&self, other: &Self) -> Self {
-        if *self < *other {
-            *self
-        } else {
-            *other
-        }
+        if *self < *other { *self } else { *other }
     }
 
     fn supremum(&self, other: &Self) -> Self {
-        if *self > *other {
-            *self
-        } else {
-            *other
-        }
+        if *self > *other { *self } else { *other }
     }
 }
 
 impl MinMax for f64 {
     fn infimum(&self, other: &Self) -> Self {
-        if *self < *other {
-            *self
-        } else {
-            *other
-        }
+        if *self < *other { *self } else { *other }
     }
 
     fn supremum(&self, other: &Self) -> Self {
-        if *self > *other {
-            *self
-        } else {
-            *other
-        }
+        if *self > *other { *self } else { *other }
     }
 }
 

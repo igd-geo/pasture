@@ -1,6 +1,6 @@
 use crate::layout::conversion::get_converter_for_attributes;
 use crate::layout::{PointAttributeDefinition, PointLayout, PrimitiveType};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::io::Cursor;
 use std::mem::MaybeUninit;
 
@@ -111,10 +111,17 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
         if T::data_type() != attribute.datatype() {
             let target_attribute_definition =
                 PointAttributeDefinition::with_custom_datatype(attribute, T::data_type());
-            let converter = match get_converter_for_attributes(attribute, &target_attribute_definition ) {
-                        Some(c) => c,
-                        None => bail!("Can't convert from attribute {} to attribute {} because no valid conversion exists", attribute, target_attribute_definition),
-                    };
+            let converter = match get_converter_for_attributes(
+                attribute,
+                &target_attribute_definition,
+            ) {
+                Some(c) => c,
+                None => bail!(
+                    "Can't convert from attribute {} to attribute {} because no valid conversion exists",
+                    attribute,
+                    target_attribute_definition
+                ),
+            };
             unsafe { converter(source_attribute_byte_slice, target_attribute_byte_slice) };
         } else {
             target_attribute_byte_slice.copy_from_slice(source_attribute_byte_slice);
@@ -186,10 +193,17 @@ impl UntypedPoint for UntypedPointSlice<'_> {
         if T::data_type() != attribute.datatype() {
             let target_attribute_definition =
                 PointAttributeDefinition::with_custom_datatype(attribute, T::data_type());
-            let converter = match get_converter_for_attributes(attribute, &target_attribute_definition ) {
-                        Some(c) => c,
-                        None => bail!("Can't convert from attribute {} to attribute {} because no valid conversion exists", attribute, target_attribute_definition),
-                    };
+            let converter = match get_converter_for_attributes(
+                attribute,
+                &target_attribute_definition,
+            ) {
+                Some(c) => c,
+                None => bail!(
+                    "Can't convert from attribute {} to attribute {} because no valid conversion exists",
+                    attribute,
+                    target_attribute_definition
+                ),
+            };
             unsafe { converter(source_attribute_byte_slice, target_attribute_byte_slice) };
         } else {
             target_attribute_byte_slice.copy_from_slice(source_attribute_byte_slice);

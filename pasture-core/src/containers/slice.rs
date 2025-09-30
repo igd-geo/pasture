@@ -127,11 +127,13 @@ impl<T: BorrowedBuffer + ?Sized> BorrowedBuffer for BufferSlice<'_, T> {
         index: usize,
         data: &mut [u8],
     ) {
-        self.buffer.get_attribute_unchecked(
-            attribute_member,
-            get_and_check_global_point_index(index, &self.point_range),
-            data,
-        )
+        unsafe {
+            self.buffer.get_attribute_unchecked(
+                attribute_member,
+                get_and_check_global_point_index(index, &self.point_range),
+                data,
+            )
+        }
     }
 }
 
@@ -254,18 +256,22 @@ impl<T: BorrowedMutBuffer + ?Sized> BorrowedBuffer for BufferSliceMut<'_, T> {
         index: usize,
         data: &mut [u8],
     ) {
-        self.buffer.get_attribute_unchecked(
-            attribute_member,
-            self.get_and_check_global_point_index(index),
-            data,
-        )
+        unsafe {
+            self.buffer.get_attribute_unchecked(
+                attribute_member,
+                self.get_and_check_global_point_index(index),
+                data,
+            )
+        }
     }
 }
 
 impl<T: BorrowedMutBuffer + ?Sized> BorrowedMutBuffer for BufferSliceMut<'_, T> {
     unsafe fn set_point(&mut self, index: usize, point_data: &[u8]) {
-        self.buffer
-            .set_point(self.get_and_check_global_point_index(index), point_data)
+        unsafe {
+            self.buffer
+                .set_point(self.get_and_check_global_point_index(index), point_data)
+        }
     }
 
     unsafe fn set_attribute(
@@ -274,11 +280,13 @@ impl<T: BorrowedMutBuffer + ?Sized> BorrowedMutBuffer for BufferSliceMut<'_, T> 
         index: usize,
         attribute_data: &[u8],
     ) {
-        self.buffer.set_attribute(
-            attribute,
-            self.get_and_check_global_point_index(index),
-            attribute_data,
-        )
+        unsafe {
+            self.buffer.set_attribute(
+                attribute,
+                self.get_and_check_global_point_index(index),
+                attribute_data,
+            )
+        }
     }
 
     fn swap(&mut self, from_index: usize, to_index: usize) {
@@ -289,10 +297,12 @@ impl<T: BorrowedMutBuffer + ?Sized> BorrowedMutBuffer for BufferSliceMut<'_, T> 
     }
 
     unsafe fn set_point_range(&mut self, point_range: Range<usize>, point_data: &[u8]) {
-        self.buffer.set_point_range(
-            self.get_and_check_global_point_range(point_range),
-            point_data,
-        )
+        unsafe {
+            self.buffer.set_point_range(
+                self.get_and_check_global_point_range(point_range),
+                point_data,
+            )
+        }
     }
 
     unsafe fn set_attribute_range(
@@ -301,11 +311,13 @@ impl<T: BorrowedMutBuffer + ?Sized> BorrowedMutBuffer for BufferSliceMut<'_, T> 
         point_range: Range<usize>,
         attribute_data: &[u8],
     ) {
-        self.buffer.set_attribute_range(
-            attribute,
-            self.get_and_check_global_point_range(point_range),
-            attribute_data,
-        )
+        unsafe {
+            self.buffer.set_attribute_range(
+                attribute,
+                self.get_and_check_global_point_range(point_range),
+                attribute_data,
+            )
+        }
     }
 }
 
@@ -449,8 +461,10 @@ impl<T: InterleavedBuffer + ?Sized> BorrowedBuffer for BufferSliceInterleaved<'_
         index: usize,
         data: &mut [u8],
     ) {
-        self.0
-            .get_attribute_unchecked(attribute_member, index, data)
+        unsafe {
+            self.0
+                .get_attribute_unchecked(attribute_member, index, data)
+        }
     }
 
     fn as_interleaved(&self) -> Option<&dyn InterleavedBuffer> {
@@ -511,8 +525,10 @@ impl<T: InterleavedBufferMut + ?Sized> BorrowedBuffer for BufferSliceInterleaved
         index: usize,
         data: &mut [u8],
     ) {
-        self.0
-            .get_attribute_unchecked(attribute_member, index, data)
+        unsafe {
+            self.0
+                .get_attribute_unchecked(attribute_member, index, data)
+        }
     }
 
     fn as_interleaved(&self) -> Option<&dyn InterleavedBuffer> {
@@ -522,11 +538,11 @@ impl<T: InterleavedBufferMut + ?Sized> BorrowedBuffer for BufferSliceInterleaved
 
 impl<T: InterleavedBufferMut + ?Sized> BorrowedMutBuffer for BufferSliceInterleavedMut<'_, T> {
     unsafe fn set_point(&mut self, index: usize, point_data: &[u8]) {
-        self.0.set_point(index, point_data)
+        unsafe { self.0.set_point(index, point_data) }
     }
 
     unsafe fn set_point_range(&mut self, point_range: Range<usize>, point_data: &[u8]) {
-        self.0.set_point_range(point_range, point_data)
+        unsafe { self.0.set_point_range(point_range, point_data) }
     }
 
     unsafe fn set_attribute(
@@ -535,7 +551,7 @@ impl<T: InterleavedBufferMut + ?Sized> BorrowedMutBuffer for BufferSliceInterlea
         index: usize,
         attribute_data: &[u8],
     ) {
-        self.0.set_attribute(attribute, index, attribute_data)
+        unsafe { self.0.set_attribute(attribute, index, attribute_data) }
     }
 
     unsafe fn set_attribute_range(
@@ -544,8 +560,10 @@ impl<T: InterleavedBufferMut + ?Sized> BorrowedMutBuffer for BufferSliceInterlea
         point_range: Range<usize>,
         attribute_data: &[u8],
     ) {
-        self.0
-            .set_attribute_range(attribute, point_range, attribute_data)
+        unsafe {
+            self.0
+                .set_attribute_range(attribute, point_range, attribute_data)
+        }
     }
 
     fn swap(&mut self, from_index: usize, to_index: usize) {
@@ -631,8 +649,10 @@ impl<T: ColumnarBuffer + ?Sized> BorrowedBuffer for BufferSliceColumnar<'_, T> {
         index: usize,
         data: &mut [u8],
     ) {
-        self.0
-            .get_attribute_unchecked(attribute_member, index, data)
+        unsafe {
+            self.0
+                .get_attribute_unchecked(attribute_member, index, data)
+        }
     }
 
     fn as_columnar(&self) -> Option<&dyn ColumnarBuffer> {
@@ -686,8 +706,10 @@ impl<T: ColumnarBufferMut + ?Sized> BorrowedBuffer for BufferSliceColumnarMut<'_
         index: usize,
         data: &mut [u8],
     ) {
-        self.0
-            .get_attribute_unchecked(attribute_member, index, data)
+        unsafe {
+            self.0
+                .get_attribute_unchecked(attribute_member, index, data)
+        }
     }
 
     fn as_columnar(&self) -> Option<&dyn ColumnarBuffer> {
@@ -697,11 +719,11 @@ impl<T: ColumnarBufferMut + ?Sized> BorrowedBuffer for BufferSliceColumnarMut<'_
 
 impl<T: ColumnarBufferMut + ?Sized> BorrowedMutBuffer for BufferSliceColumnarMut<'_, T> {
     unsafe fn set_point(&mut self, index: usize, point_data: &[u8]) {
-        self.0.set_point(index, point_data)
+        unsafe { self.0.set_point(index, point_data) }
     }
 
     unsafe fn set_point_range(&mut self, point_range: Range<usize>, point_data: &[u8]) {
-        self.0.set_point_range(point_range, point_data)
+        unsafe { self.0.set_point_range(point_range, point_data) }
     }
 
     unsafe fn set_attribute(
@@ -710,7 +732,7 @@ impl<T: ColumnarBufferMut + ?Sized> BorrowedMutBuffer for BufferSliceColumnarMut
         index: usize,
         attribute_data: &[u8],
     ) {
-        self.0.set_attribute(attribute, index, attribute_data)
+        unsafe { self.0.set_attribute(attribute, index, attribute_data) }
     }
 
     unsafe fn set_attribute_range(
@@ -719,8 +741,10 @@ impl<T: ColumnarBufferMut + ?Sized> BorrowedMutBuffer for BufferSliceColumnarMut
         point_range: Range<usize>,
         attribute_data: &[u8],
     ) {
-        self.0
-            .set_attribute_range(attribute, point_range, attribute_data)
+        unsafe {
+            self.0
+                .set_attribute_range(attribute, point_range, attribute_data)
+        }
     }
 
     fn swap(&mut self, from_index: usize, to_index: usize) {
@@ -807,7 +831,7 @@ impl_slice_buffer_mut_for_trait_object! {ColumnarBufferMut, BufferSliceColumnarM
 
 #[cfg(test)]
 mod tests {
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
 
     use crate::{
         containers::{HashMapBuffer, VectorBuffer},

@@ -45,51 +45,54 @@ fn arg_is_packed(arg: &NestedMeta) -> bool {
 
 fn get_packing_from_arg(arg: &NestedMeta) -> Result<u64> {
     match arg {
-        NestedMeta::Meta(meta) => {
-            match meta {
-                syn::Meta::Path(_) => Ok(1),
-                syn::Meta::List(list) => {
-                    let packed_value = match list.nested.first() {
+        NestedMeta::Meta(meta) => match meta {
+            syn::Meta::Path(_) => Ok(1),
+            syn::Meta::List(list) => {
+                let packed_value = match list.nested.first() {
                     Some(f) => f,
-                    None => return Err(Error::new_spanned(arg, "Expected #[repr(packed(N))]. packed List attribute has no nested members")),
+                    None => {
+                        return Err(Error::new_spanned(
+                            arg,
+                            "Expected #[repr(packed(N))]. packed List attribute has no nested members",
+                        ));
+                    }
                 };
 
-                    match packed_value {
-                        NestedMeta::Meta(meta) => match meta {
-                            syn::Meta::Path(path) => {
-                                let val_str = path
-                                    .get_ident()
-                                    .map(|ident| ident.to_string())
-                                    .ok_or_else(|| {
-                                        Error::new_spanned(
-                                            arg,
-                                            "Expected #[repr(packed(N))]. Could not get ident",
-                                        )
-                                    })?;
-                                val_str.parse::<u64>().map_err(|_| {
+                match packed_value {
+                    NestedMeta::Meta(meta) => match meta {
+                        syn::Meta::Path(path) => {
+                            let val_str = path
+                                .get_ident()
+                                .map(|ident| ident.to_string())
+                                .ok_or_else(|| {
                                     Error::new_spanned(
                                         arg,
-                                        "Expected #[repr(packed(N))]. Could not parse number",
+                                        "Expected #[repr(packed(N))]. Could not get ident",
                                     )
-                                })
-                            }
-                            _ => Err(Error::new_spanned(
-                                arg,
-                                "Expected #[repr(packed(N))]. Meta is no Path",
-                            )),
-                        },
-                        NestedMeta::Lit(literal) => match literal {
-                            syn::Lit::Int(int_literal) => Ok(int_literal.base10_parse::<u64>()?),
-                            _ => Err(Error::new_spanned(
-                                arg,
-                                "Expected #[repr(packed(N))], but argument N is no integer literal",
-                            )),
-                        },
-                    }
+                                })?;
+                            val_str.parse::<u64>().map_err(|_| {
+                                Error::new_spanned(
+                                    arg,
+                                    "Expected #[repr(packed(N))]. Could not parse number",
+                                )
+                            })
+                        }
+                        _ => Err(Error::new_spanned(
+                            arg,
+                            "Expected #[repr(packed(N))]. Meta is no Path",
+                        )),
+                    },
+                    NestedMeta::Lit(literal) => match literal {
+                        syn::Lit::Int(int_literal) => Ok(int_literal.base10_parse::<u64>()?),
+                        _ => Err(Error::new_spanned(
+                            arg,
+                            "Expected #[repr(packed(N))], but argument N is no integer literal",
+                        )),
+                    },
                 }
-                _ => Err(Error::new_spanned(arg, "Expected #[repr(packed(N))]")),
             }
-        }
+            _ => Err(Error::new_spanned(arg, "Expected #[repr(packed(N))]")),
+        },
         _ => Err(Error::new_spanned(arg, "Expected #[repr(packed(N))]")),
     }
 }
@@ -102,7 +105,10 @@ pub(crate) fn get_struct_member_layout(
     let maybe_repr_attribute = struct_attributes.iter().find(|a| is_repr_attribute(a));
     if maybe_repr_attribute.is_none() {
         //return Ok(StructMemberLayout::Rust);
-        return Err(Error::new_spanned(data_struct.struct_token, "derive(PointType) is only valid for structs that are either #[repr(C)] or #[repr(packed)]"));
+        return Err(Error::new_spanned(
+            data_struct.struct_token,
+            "derive(PointType) is only valid for structs that are either #[repr(C)] or #[repr(packed)]",
+        ));
     }
 
     let repr_attribute = maybe_repr_attribute.unwrap();

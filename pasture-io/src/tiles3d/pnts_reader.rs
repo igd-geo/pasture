@@ -6,25 +6,25 @@ use std::{
     path::Path,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use pasture_core::{
     containers::{BorrowedMutBuffer, BorrowedMutBufferExt},
     layout::{
+        FieldAlignment, PointAttributeDataType, PointLayout,
         attributes::{COLOR_RGB, NORMAL, POSITION_3D},
         conversion::get_converter_for_attributes,
-        FieldAlignment, PointAttributeDataType, PointLayout,
     },
     meta::Metadata,
-    nalgebra::{clamp, Vector3},
+    nalgebra::{Vector3, clamp},
 };
 
-use crate::tiles3d::{deser_feature_table_header, FeatureTableValue, PntsHeader};
+use crate::tiles3d::{FeatureTableValue, PntsHeader, deser_feature_table_header};
 use crate::{
     base::{PointReader, SeekToPoint},
     tiles3d::{attributes::COLOR_RGBA, json_arr_to_vec3f32, json_arr_to_vec4u8},
 };
 
-use super::{json_arr_to_vec3f64, PntsMetadata};
+use super::{PntsMetadata, json_arr_to_vec3f64};
 
 /// Defines how the `PntsReader` reads positions if the `RTC_CENTER` point semantic is present
 #[derive(Copy, Clone, Debug)]
@@ -120,10 +120,17 @@ impl<R: BufRead + Seek> PntsReader<R> {
             let pos_attribute = &header["POSITION"];
             match pos_attribute {
                 FeatureTableValue::DataReference(reference) => {
-                    attribute_offsets.insert(POSITION_3D.name().to_owned(), reference.byte_offset as u64);
-                    layout.add_attribute(POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32), FieldAlignment::Packed(1));
-                },
-                _ => bail!("Found PNTS attribute POSITION ({:?}) but it was not a reference to the feature table binary!", pos_attribute),
+                    attribute_offsets
+                        .insert(POSITION_3D.name().to_owned(), reference.byte_offset as u64);
+                    layout.add_attribute(
+                        POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                        FieldAlignment::Packed(1),
+                    );
+                }
+                _ => bail!(
+                    "Found PNTS attribute POSITION ({:?}) but it was not a reference to the feature table binary!",
+                    pos_attribute
+                ),
             }
             header.remove("POSITION");
         }
@@ -134,10 +141,14 @@ impl<R: BufRead + Seek> PntsReader<R> {
             let color_attribute = &header["RGBA"];
             match color_attribute {
                 FeatureTableValue::DataReference(reference) => {
-                    attribute_offsets.insert(COLOR_RGBA.name().to_owned(), reference.byte_offset as u64);
+                    attribute_offsets
+                        .insert(COLOR_RGBA.name().to_owned(), reference.byte_offset as u64);
                     layout.add_attribute(COLOR_RGBA, FieldAlignment::Packed(1));
-                },
-                _ => bail!("Found PNTS attribute RGBA ({:?}) but it was not a reference to the feature table binary!", color_attribute),
+                }
+                _ => bail!(
+                    "Found PNTS attribute RGBA ({:?}) but it was not a reference to the feature table binary!",
+                    color_attribute
+                ),
             }
             header.remove("RGBA");
         }
@@ -146,10 +157,17 @@ impl<R: BufRead + Seek> PntsReader<R> {
             let color_attribute = &header["RGB"];
             match color_attribute {
                 FeatureTableValue::DataReference(reference) => {
-                    attribute_offsets.insert(COLOR_RGB.name().to_owned(), reference.byte_offset as u64);
-                    layout.add_attribute(COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8), FieldAlignment::Packed(1));
-                },
-                _ => bail!("Found PNTS attribute RGB ({:?}) but it was not a reference to the feature table binary!", color_attribute),
+                    attribute_offsets
+                        .insert(COLOR_RGB.name().to_owned(), reference.byte_offset as u64);
+                    layout.add_attribute(
+                        COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        FieldAlignment::Packed(1),
+                    );
+                }
+                _ => bail!(
+                    "Found PNTS attribute RGB ({:?}) but it was not a reference to the feature table binary!",
+                    color_attribute
+                ),
             }
             header.remove("RGB");
         }
@@ -160,10 +178,14 @@ impl<R: BufRead + Seek> PntsReader<R> {
             let normal_attribute = &header["NORMAL"];
             match normal_attribute {
                 FeatureTableValue::DataReference(reference) => {
-                    attribute_offsets.insert(NORMAL.name().to_owned(), reference.byte_offset as u64);
-                    layout.add_attribute(NORMAL ,FieldAlignment::Packed(1));
-                },
-                _ => bail!("Found PNTS attribute NORMAL ({:?}) but it was not a reference to the feature table binary!", normal_attribute),
+                    attribute_offsets
+                        .insert(NORMAL.name().to_owned(), reference.byte_offset as u64);
+                    layout.add_attribute(NORMAL, FieldAlignment::Packed(1));
+                }
+                _ => bail!(
+                    "Found PNTS attribute NORMAL ({:?}) but it was not a reference to the feature table binary!",
+                    normal_attribute
+                ),
             }
             header.remove("NORMAL");
         }

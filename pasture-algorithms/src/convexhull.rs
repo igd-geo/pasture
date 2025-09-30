@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use pasture_core::containers::{BorrowedBuffer, BorrowedBufferExt};
 use pasture_core::{layout::attributes::POSITION_3D, nalgebra::Vector3};
 use std::collections::{HashMap, HashSet};
@@ -317,19 +317,19 @@ fn iteration<T: BorrowedBuffer>(
                 for facing_edge in edges_facing_point.iter() {
                     let res_a = vertices_on_one_edge_start
                         .insert(facing_edge.a, (facing_edge.b, *facing_edge));
-                    if let Some(res_a) = res_a {
-                        if res_a.0 != facing_edge.b {
-                            vertices_on_one_edge_start.remove(&facing_edge.a);
-                            vertices_on_two_edges.insert(facing_edge.a, (res_a.1, *facing_edge));
-                        }
+                    if let Some(res_a) = res_a
+                        && res_a.0 != facing_edge.b
+                    {
+                        vertices_on_one_edge_start.remove(&facing_edge.a);
+                        vertices_on_two_edges.insert(facing_edge.a, (res_a.1, *facing_edge));
                     }
                     let res_b = vertices_on_one_edge_end
                         .insert(facing_edge.b, (facing_edge.a, *facing_edge));
-                    if let Some(res_b) = res_b {
-                        if res_b.0 != facing_edge.a {
-                            vertices_on_one_edge_end.remove(&facing_edge.b);
-                            vertices_on_two_edges.insert(facing_edge.b, (res_b.1, *facing_edge));
-                        }
+                    if let Some(res_b) = res_b
+                        && res_b.0 != facing_edge.a
+                    {
+                        vertices_on_one_edge_end.remove(&facing_edge.b);
+                        vertices_on_two_edges.insert(facing_edge.b, (res_b.1, *facing_edge));
                     }
                 }
                 let mut triangles_to_remove = Vec::new();
@@ -462,12 +462,12 @@ mod tests {
     use anyhow::Result;
     use pasture_core::{
         containers::{BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer},
-        layout::attributes::POSITION_3D,
         layout::PointType,
+        layout::attributes::POSITION_3D,
         nalgebra::Vector3,
     };
     use pasture_derive::PointType;
-    use rand::{distributions::Uniform, thread_rng, Rng};
+    use rand::{Rng, distributions::Uniform, thread_rng};
 
     #[derive(
         PointType, Default, Copy, Clone, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit,

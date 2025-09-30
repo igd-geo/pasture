@@ -9,14 +9,14 @@ use std::{
     io::{BufWriter, Cursor, Write},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use memmap2::{Advice, MmapOptions};
 use pasture_core::{
     containers::{BorrowedBufferExt, ExternalMemoryBuffer},
-    layout::{attributes::POSITION_3D, PointAttributeDataType},
+    layout::{PointAttributeDataType, attributes::POSITION_3D},
     nalgebra::Vector3,
 };
-use pasture_io::las::{point_layout_from_las_metadata, LASReader};
+use pasture_io::las::{LASReader, point_layout_from_las_metadata};
 
 fn main() -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>();

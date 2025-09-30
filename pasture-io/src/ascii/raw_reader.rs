@@ -1,10 +1,10 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use byteorder::{LittleEndian, WriteBytesExt};
 use itertools::{EitherOrBoth::*, Itertools};
 use pasture_core::containers::BorrowedMutBuffer;
-use pasture_core::layout::attributes;
 use pasture_core::layout::PointAttributeDefinition;
 use pasture_core::layout::PointLayout;
+use pasture_core::layout::attributes;
 use pasture_core::meta::Metadata;
 use std::collections::HashSet;
 use std::io::{BufRead, Read};
@@ -346,7 +346,7 @@ mod tests {
     use pasture_core::containers::{
         BorrowedBufferExt, MakeBufferFromLayout, OwningBuffer, VectorBuffer,
     };
-    use pasture_core::layout::{attributes, PointType};
+    use pasture_core::layout::{PointType, attributes};
     use pasture_core::nalgebra::Vector3;
     use pasture_derive::PointType;
     use std::{fs::File, io::BufReader};

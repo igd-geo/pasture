@@ -4,24 +4,24 @@ use std::{
     io::{Cursor, SeekFrom},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
-use las_rs::{feature::LargeFiles, point::Format, Builder, Vlr};
+use las_rs::{Builder, Vlr, feature::LargeFiles, point::Format};
 use laz::{LasZipCompressor, LazItemRecordBuilder, LazVlr};
 use pasture_core::{containers::BorrowedBuffer, layout::PointLayout, nalgebra::Vector3};
 
 use crate::base::PointWriter;
 
 use super::{
-    get_classification_flags_reader, get_classification_reader, get_color_reader,
-    get_edge_of_flight_line_reader, get_extended_scan_angle_rank_reader, get_gps_time_reader,
-    get_intensity_reader, get_nir_reader, get_number_of_returns_reader, get_point_source_id_reader,
-    get_position_reader, get_return_number_reader, get_return_point_waveform_location_reader,
+    BitAttributes, BitAttributesExtended, BitAttributesRegular, get_classification_flags_reader,
+    get_classification_reader, get_color_reader, get_edge_of_flight_line_reader,
+    get_extended_scan_angle_rank_reader, get_gps_time_reader, get_intensity_reader, get_nir_reader,
+    get_number_of_returns_reader, get_point_source_id_reader, get_position_reader,
+    get_return_number_reader, get_return_point_waveform_location_reader,
     get_scan_angle_rank_reader, get_scan_direction_flag_reader, get_scanner_channel_reader,
     get_user_data_reader, get_wave_packet_descriptor_index_reader, get_waveform_data_offset_reader,
     get_waveform_packet_size_reader, get_waveform_parameters_reader, map_laz_err,
     point_layout_from_las_metadata, write_las_bit_attributes, write_position_as_las_position,
-    BitAttributes, BitAttributesExtended, BitAttributesRegular,
 };
 
 /// Update the bounds in the given `las_header` by including the given `new_position`
@@ -144,13 +144,17 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
             || raw_header.y_scale_factor == 0.0
             || raw_header.z_scale_factor == 0.0
         {
-            return Err(anyhow!("RawLASWriter::from_write_and_header: Scale factors in LAS header must not be zero!"));
+            return Err(anyhow!(
+                "RawLASWriter::from_write_and_header: Scale factors in LAS header must not be zero!"
+            ));
         }
 
         raw_header.write_to(&mut write)?;
         for vlr in header.vlrs().iter() {
             if vlr.has_large_data() {
-                panic!("RawLASWriter::from_write_and_header: Header with large VLRs is currently unsupported! Please add any large VLRs to the 'evlrs' parameter of the header!");
+                panic!(
+                    "RawLASWriter::from_write_and_header: Header with large VLRs is currently unsupported! Please add any large VLRs to the 'evlrs' parameter of the header!"
+                );
             }
             let raw_vlr = vlr.clone().into_raw(false)?;
             raw_vlr.write_to(&mut write)?;
@@ -667,7 +671,9 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
             || raw_header.y_scale_factor == 0.0
             || raw_header.z_scale_factor == 0.0
         {
-            return Err(anyhow!("RawLASWriter::from_write_and_header: Scale factors in LAS header must not be zero!"));
+            return Err(anyhow!(
+                "RawLASWriter::from_write_and_header: Scale factors in LAS header must not be zero!"
+            ));
         }
 
         // Create LAZ VLR in addition to the other VLRs in the header
@@ -1194,10 +1200,10 @@ mod tests {
     use crate::{
         base::PointReader,
         las::{
-            epsilon_compare_point3f64, epsilon_compare_vec3f64, get_test_points_in_las_format,
-            point_layout_from_las_point_format, test_data_bounds, LASReader, LasPointFormat0,
-            LasPointFormat1, LasPointFormat10, LasPointFormat2, LasPointFormat3, LasPointFormat4,
-            LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8, LasPointFormat9,
+            LASReader, LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3,
+            LasPointFormat4, LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8,
+            LasPointFormat9, LasPointFormat10, epsilon_compare_point3f64, epsilon_compare_vec3f64,
+            get_test_points_in_las_format, point_layout_from_las_point_format, test_data_bounds,
         },
     };
     use pasture_core::containers::*;

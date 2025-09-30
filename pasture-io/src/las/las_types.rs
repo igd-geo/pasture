@@ -1,6 +1,6 @@
 //! Contains types for each of the LAS point formats
 
-use las::{point::ScanDirection, Point};
+use las::{Point, point::ScanDirection};
 use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;
 use static_assertions::const_assert_eq;

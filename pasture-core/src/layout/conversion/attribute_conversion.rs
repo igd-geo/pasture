@@ -51,10 +51,12 @@ impl RawAttributeConverter {
 
     /// Performs the conversion
     unsafe fn convert(&self, source_point: &[u8], target_point: &mut [u8]) {
-        let source_slice = &source_point[self.source_range.clone()];
-        let target_slice = &mut target_point[self.target_range.clone()];
+        unsafe {
+            let source_slice = &source_point[self.source_range.clone()];
+            let target_slice = &mut target_point[self.target_range.clone()];
 
-        (self.conversion_fn)(source_slice, target_slice);
+            (self.conversion_fn)(source_slice, target_slice);
+        }
     }
 }
 
@@ -102,8 +104,10 @@ impl RawPointConverter {
     /// `source_point` must contain memory for an initialized `PointType` `T` that has the exact same
     /// `PointLayout` as the one passed to [`Self::from_to`] as its first argument!
     pub unsafe fn convert(&self, source_point: &[u8], target_point: &mut [u8]) {
-        for converter in self.attribute_converters.iter() {
-            converter.convert(source_point, target_point);
+        unsafe {
+            for converter in self.attribute_converters.iter() {
+                converter.convert(source_point, target_point);
+            }
         }
     }
 }
@@ -134,48 +138,56 @@ pub fn get_converter_for_attributes(
 macro_rules! insert_scalar_converter_using_as {
     ($prim_from:ident, $prim_to:ident, $type_from:ident, $type_to:ident, $map:expr) => {
         // Insert symmetric conversion function from<->to and assert that they are unique
-        assert!(($map)
-            .insert(
-                (
-                    PointAttributeDataType::$type_from,
-                    PointAttributeDataType::$type_to,
-                ),
-                convert_scalar_using_as::<$prim_from, $prim_to>,
-            )
-            .is_none());
-        assert!(($map)
-            .insert(
-                (
-                    PointAttributeDataType::$type_to,
-                    PointAttributeDataType::$type_from,
-                ),
-                convert_scalar_using_as::<$prim_to, $prim_from>,
-            )
-            .is_none());
+        assert!(
+            ($map)
+                .insert(
+                    (
+                        PointAttributeDataType::$type_from,
+                        PointAttributeDataType::$type_to,
+                    ),
+                    convert_scalar_using_as::<$prim_from, $prim_to>,
+                )
+                .is_none()
+        );
+        assert!(
+            ($map)
+                .insert(
+                    (
+                        PointAttributeDataType::$type_to,
+                        PointAttributeDataType::$type_from,
+                    ),
+                    convert_scalar_using_as::<$prim_to, $prim_from>,
+                )
+                .is_none()
+        );
     };
 }
 
 macro_rules! insert_vec3_converter_using_as {
     ($prim_from:ident, $prim_to:ident, $type_from:ident, $type_to:ident, $map:expr) => {
         // Insert symmetric conversion function from<->to and assert that they are unique
-        assert!(($map)
-            .insert(
-                (
-                    PointAttributeDataType::$type_from,
-                    PointAttributeDataType::$type_to,
-                ),
-                convert_vec3_using_as::<$prim_from, $prim_to>,
-            )
-            .is_none());
-        assert!(($map)
-            .insert(
-                (
-                    PointAttributeDataType::$type_to,
-                    PointAttributeDataType::$type_from,
-                ),
-                convert_vec3_using_as::<$prim_to, $prim_from>,
-            )
-            .is_none());
+        assert!(
+            ($map)
+                .insert(
+                    (
+                        PointAttributeDataType::$type_from,
+                        PointAttributeDataType::$type_to,
+                    ),
+                    convert_vec3_using_as::<$prim_from, $prim_to>,
+                )
+                .is_none()
+        );
+        assert!(
+            ($map)
+                .insert(
+                    (
+                        PointAttributeDataType::$type_to,
+                        PointAttributeDataType::$type_from,
+                    ),
+                    convert_vec3_using_as::<$prim_to, $prim_from>,
+                )
+                .is_none()
+        );
     };
 }
 
@@ -312,12 +324,14 @@ where
     From: AsPrimitive<To> + Copy,
     To: Copy + 'static,
 {
-    let from_ptr = from.as_ptr() as *const From;
-    let to_ptr = to.as_mut_ptr() as *mut To;
+    unsafe {
+        let from_ptr = from.as_ptr() as *const From;
+        let to_ptr = to.as_mut_ptr() as *mut To;
 
-    let from_value = from_ptr.read_unaligned();
-    let to_value = from_value.as_();
-    to_ptr.write_unaligned(to_value);
+        let from_value = from_ptr.read_unaligned();
+        let to_value = from_value.as_();
+        to_ptr.write_unaligned(to_value);
+    }
 }
 
 /// Generic conversion function from a `Vector3<From>` into a `Vector3<To>`. Assumes that `From` and `To`
@@ -334,10 +348,12 @@ where
     From: AsPrimitive<To> + Copy,
     To: Copy + 'static,
 {
-    let from_ptr = from.as_ptr() as *const Vector3<From>;
-    let to_ptr = to.as_mut_ptr() as *mut Vector3<To>;
+    unsafe {
+        let from_ptr = from.as_ptr() as *const Vector3<From>;
+        let to_ptr = to.as_mut_ptr() as *mut Vector3<To>;
 
-    let from_vec = from_ptr.read_unaligned();
-    let to_vec = Vector3::<To>::new(from_vec[0].as_(), from_vec[1].as_(), from_vec[2].as_());
-    to_ptr.write_unaligned(to_vec);
+        let from_vec = from_ptr.read_unaligned();
+        let to_vec = Vector3::<To>::new(from_vec[0].as_(), from_vec[1].as_(), from_vec[2].as_());
+        to_ptr.write_unaligned(to_vec);
+    }
 }

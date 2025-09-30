@@ -1,11 +1,11 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
 use nalgebra::Vector3;
 use pasture_core::containers::{
     BorrowedBuffer, HashMapBuffer, InterleavedBufferMut, OwningBuffer, VectorBuffer,
 };
 use pasture_derive::PointType;
-use rand::{distributions::Standard, prelude::Distribution, thread_rng, Rng};
+use rand::{Rng, distributions::Standard, prelude::Distribution, thread_rng};
 
 #[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]
@@ -27,11 +27,11 @@ struct DefaultPointDistribution;
 impl Distribution<CustomPointTypeBig> for DefaultPointDistribution {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> CustomPointTypeBig {
         CustomPointTypeBig {
-            classification: rng.gen(),
-            position: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
-            color: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
-            gps_time: rng.gen(),
-            intensity: rng.gen(),
+            classification: rng.r#gen(),
+            position: Vector3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
+            color: Vector3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
+            gps_time: rng.r#gen(),
+            intensity: rng.r#gen(),
         }
     }
 }

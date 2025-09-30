@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 pub mod attributes {
@@ -52,7 +52,10 @@ impl PntsHeader {
     /// Returns an Err if the magic bytes in this header are not correct
     pub fn verify_magic(&self) -> Result<()> {
         if self.magic != [b'p', b'n', b't', b's'] {
-            bail!("No valid PNTS file, expected first four bytes to be equal to 'pnts', but was '{:?}' instead", self.magic);
+            bail!(
+                "No valid PNTS file, expected first four bytes to be equal to 'pnts', but was '{:?}' instead",
+                self.magic
+            );
         }
         Ok(())
     }

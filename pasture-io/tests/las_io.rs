@@ -6,8 +6,8 @@ use itertools::Itertools;
 use pasture_core::{
     containers::{BorrowedBuffer, BorrowedBufferExt, HashMapBuffer, VectorBuffer},
     layout::{
-        attributes::{CLASSIFICATION, NORMAL, POSITION_3D},
         PointType,
+        attributes::{CLASSIFICATION, NORMAL, POSITION_3D},
     },
     nalgebra::Vector3,
 };
@@ -15,12 +15,12 @@ use pasture_derive::PointType;
 use pasture_io::{
     base::{PointReader, PointWriter},
     las::{
-        is_known_las_attribute, LASReader, LASWriter, LasPointFormat0, LasPointFormat1,
-        LasPointFormat10, LasPointFormat2, LasPointFormat3, LasPointFormat4, LasPointFormat5,
-        LasPointFormat6, LasPointFormat7, LasPointFormat8, LasPointFormat9,
+        LASReader, LASWriter, LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3,
+        LasPointFormat4, LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8,
+        LasPointFormat9, LasPointFormat10, is_known_las_attribute,
     },
 };
-use rand::{prelude::Distribution, thread_rng, Rng};
+use rand::{Rng, prelude::Distribution, thread_rng};
 
 use crate::common::compare_attributes_dynamically_typed;
 
@@ -94,7 +94,7 @@ impl Distribution<PointTypeWithUnsupportedAttribute> for TestLASPointDistributio
                 rng.gen_range(-1.0..1.0),
                 rng.gen_range(-1.0..1.0),
             ),
-            classification: rng.gen(),
+            classification: rng.r#gen(),
         }
     }
 }
@@ -187,7 +187,7 @@ impl Distribution<ComplexPointTypeWithConversions> for TestLASPointDistribution 
                 rng.gen_range(0..32000) as f64,
                 rng.gen_range(0..32000) as f64,
             ),
-            gps_time: rng.gen(),
+            gps_time: rng.r#gen(),
             intensity: rng.gen_range(0..32000) as i64,
             user_data: rng.gen_range(0..=255),
         }

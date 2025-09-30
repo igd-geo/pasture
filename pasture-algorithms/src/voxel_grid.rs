@@ -5,8 +5,8 @@ use pasture_core::{
         BorrowedBuffer, BorrowedBufferExt, OwningBuffer, UntypedPoint, UntypedPointBuffer,
     },
     layout::{
-        attributes::{self, POSITION_3D},
         PointAttributeDataType, PointAttributeDefinition, PointLayout,
+        attributes::{self, POSITION_3D},
     },
     nalgebra::Vector3,
 };
@@ -117,7 +117,9 @@ pub fn voxelgrid_filter<PB: BorrowedBuffer, PBW: OwningBuffer>(
         .point_layout()
         .has_attribute(&attributes::POSITION_3D)
     {
-        panic!("The PointBuffer does not have the attribute attributes::POSITION_3D which is needed for the creation of the voxel grid.");
+        panic!(
+            "The PointBuffer does not have the attribute attributes::POSITION_3D which is needed for the creation of the voxel grid."
+        );
     }
 
     // get the bounding box of the pointcloud
@@ -698,7 +700,7 @@ mod tests {
         nalgebra::Vector3,
     };
     use pasture_derive::PointType;
-    use rand::{prelude::ThreadRng, Rng};
+    use rand::{Rng, prelude::ThreadRng};
 
     #[repr(C, packed)]
     #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]

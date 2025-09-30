@@ -10,7 +10,7 @@ use las_rs::Header;
 use crate::base::{PointReader, SeekToPoint};
 use pasture_core::{containers::BorrowedMutBuffer, layout::PointLayout, meta::Metadata};
 
-use super::{path_is_compressed_las_file, LASMetadata, LASReaderBase, RawLASReader, RawLAZReader};
+use super::{LASMetadata, LASReaderBase, RawLASReader, RawLAZReader, path_is_compressed_las_file};
 
 pub enum LASReaderFlavor<'a, T: Read + Seek + Send + 'a> {
     LAS(RawLASReader<T>),

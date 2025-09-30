@@ -2,7 +2,7 @@ use super::PointDataType;
 use crate::base::PointWriter;
 use anyhow::{Context, Result};
 use pasture_core::containers::{BorrowedBuffer, UntypedPoint, UntypedPointSlice};
-use pasture_core::layout::{attributes, PointLayout};
+use pasture_core::layout::{PointLayout, attributes};
 use pasture_core::nalgebra::Vector3;
 
 pub(crate) struct RawAsciiWriter<T: std::io::Write + std::io::Seek> {

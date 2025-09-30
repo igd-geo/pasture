@@ -289,7 +289,9 @@ fn compute_covariance_matrix<T: BorrowedBuffer>(
     }
 
     if point_count < 3 {
-        return Err("The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!");
+        return Err(
+            "The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!",
+        );
     }
 
     covariance_matrix[(1, 0)] = covariance_matrix[(0, 1)];
@@ -571,7 +573,9 @@ mod tests {
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
         let result = compute_covariance_matrix(&interleaved);
-        let expected_result = Err("The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!");
+        let expected_result = Err(
+            "The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!",
+        );
         assert_eq!(result, expected_result);
     }
 

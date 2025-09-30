@@ -163,7 +163,7 @@ impl<'a> Iterator for RawAttributeViewMut<'a> {
 mod tests {
     use super::*;
 
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
 
     use crate::containers::{BorrowedBuffer, HashMapBuffer, VectorBuffer};
     use crate::layout::PointType;

@@ -1,12 +1,13 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::{cell::RefCell, marker::PhantomData};
 
 use crate::layout::{
-    conversion::{convert_unit, get_converter_for_attributes, AttributeConversionFn},
     PointAttributeDefinition, PointAttributeMember, PointType, PrimitiveType,
+    conversion::{AttributeConversionFn, convert_unit, get_converter_for_attributes},
 };
 
 use super::{
+    OwningBuffer,
     attribute_iterators::{
         AttributeIteratorByMut, AttributeIteratorByRef, AttributeIteratorByValue,
     },
@@ -15,7 +16,6 @@ use super::{
         InterleavedBufferMut,
     },
     point_iterators::{PointIteratorByMut, PointIteratorByRef, PointIteratorByValue},
-    OwningBuffer,
 };
 
 /// A strongly typed view over the point data of a buffer. This allows accessing the point data in
@@ -199,12 +199,8 @@ impl<B: OwningBuffer + ?Sized, T: PointType> PointViewMut<'_, B, T> {
     }
 }
 
-impl<
-        'a,
-        B1: BorrowedMutBuffer + ?Sized,
-        B2: BorrowedMutBuffer + ?Sized,
-        T: PointType + PartialEq,
-    > PartialEq<PointViewMut<'a, B2, T>> for PointViewMut<'_, B1, T>
+impl<'a, B1: BorrowedMutBuffer + ?Sized, B2: BorrowedMutBuffer + ?Sized, T: PointType + PartialEq>
+    PartialEq<PointViewMut<'a, B2, T>> for PointViewMut<'_, B1, T>
 {
     fn eq(&self, other: &PointViewMut<'a, B2, T>) -> bool {
         if self.buffer.len() != other.buffer.len() {
@@ -292,12 +288,8 @@ impl<'a, B: BorrowedBuffer + ?Sized + 'a, T: PrimitiveType> IntoIterator
     }
 }
 
-impl<
-        'a,
-        B1: BorrowedBuffer + ?Sized,
-        B2: BorrowedBuffer + ?Sized,
-        T: PrimitiveType + PartialEq,
-    > PartialEq<AttributeView<'a, B2, T>> for AttributeView<'_, B1, T>
+impl<'a, B1: BorrowedBuffer + ?Sized, B2: BorrowedBuffer + ?Sized, T: PrimitiveType + PartialEq>
+    PartialEq<AttributeView<'a, B2, T>> for AttributeView<'_, B1, T>
 {
     fn eq(&self, other: &AttributeView<'a, B2, T>) -> bool {
         self.buffer.len() == other.buffer.len()
@@ -406,11 +398,11 @@ impl<B: ColumnarBufferMut + BorrowedMutBuffer + ?Sized, T: PrimitiveType>
 }
 
 impl<
-        'a,
-        B1: BorrowedMutBuffer + ?Sized,
-        B2: BorrowedMutBuffer + ?Sized,
-        T: PrimitiveType + PartialEq,
-    > PartialEq<AttributeViewMut<'a, B2, T>> for AttributeViewMut<'_, B1, T>
+    'a,
+    B1: BorrowedMutBuffer + ?Sized,
+    B2: BorrowedMutBuffer + ?Sized,
+    T: PrimitiveType + PartialEq,
+> PartialEq<AttributeViewMut<'a, B2, T>> for AttributeViewMut<'_, B1, T>
 {
     fn eq(&self, other: &AttributeViewMut<'a, B2, T>) -> bool {
         self.buffer.len() == other.buffer.len()
@@ -494,12 +486,8 @@ impl<'a, B: BorrowedBuffer + ?Sized, T: PrimitiveType> IntoIterator
     }
 }
 
-impl<
-        'a,
-        B1: BorrowedBuffer + ?Sized,
-        B2: BorrowedBuffer + ?Sized,
-        T: PrimitiveType + PartialEq,
-    > PartialEq<AttributeViewConverting<'a, B2, T>> for AttributeViewConverting<'_, B1, T>
+impl<'a, B1: BorrowedBuffer + ?Sized, B2: BorrowedBuffer + ?Sized, T: PrimitiveType + PartialEq>
+    PartialEq<AttributeViewConverting<'a, B2, T>> for AttributeViewConverting<'_, B1, T>
 {
     fn eq(&self, other: &AttributeViewConverting<'a, B2, T>) -> bool {
         self.buffer.len() == other.buffer.len()
@@ -536,11 +524,11 @@ impl<B: BorrowedBuffer + ?Sized, T: PrimitiveType> Iterator
 #[cfg(test)]
 mod tests {
     use nalgebra::Vector3;
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, VectorBuffer},
-        layout::{attributes::POSITION_3D, PointAttributeDataType},
+        layout::{PointAttributeDataType, attributes::POSITION_3D},
         test_utils::*,
     };
 

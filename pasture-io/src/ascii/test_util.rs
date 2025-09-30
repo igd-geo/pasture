@@ -1,7 +1,7 @@
 use anyhow::Result;
 use pasture_core::{
     containers::HashMapBuffer,
-    layout::{attributes, PointLayout},
+    layout::{PointLayout, attributes},
     nalgebra::Vector3,
 };
 use std::path::PathBuf;

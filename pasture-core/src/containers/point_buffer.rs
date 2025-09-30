@@ -6,9 +6,9 @@ use crate::layout::{
 };
 
 use super::{
-    buffer_views::{AttributeView, AttributeViewMut, PointView, PointViewMut},
     AttributeViewConverting, BufferSliceColumnar, BufferSliceColumnarMut, BufferSliceInterleaved,
     BufferSliceInterleavedMut, RawAttributeView, RawAttributeViewMut, SliceBuffer, SliceBufferMut,
+    buffer_views::{AttributeView, AttributeViewMut, PointView, PointViewMut},
 };
 
 /// Base trait for all point buffers in pasture. The only assumption this trait makes is that the
@@ -918,10 +918,11 @@ impl<'a> HashMapBufferAttributePusher<'a> {
 
         // Check that all attributes are complete! We don't have to check the exact size of the vectors,
         // as this is checked in `push_attribute_range`, it is sufficient to verify that no vector is empty
-        assert!(self
-            .attributes_storage
-            .values()
-            .all(|vector| !vector.is_empty()));
+        assert!(
+            self.attributes_storage
+                .values()
+                .all(|vector| !vector.is_empty())
+        );
 
         for (attribute, mut data) in self.attributes_storage {
             // Can safely unwrap, because self.attributes_storage was initialized from the `PointLayout` of the buffer!
@@ -1562,9 +1563,9 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> SliceBufferMut for ExternalMemoryBuffer<T> {
 mod tests {
     use itertools::Itertools;
     use nalgebra::Vector3;
-    use rand::{prelude::Distribution, thread_rng, Rng};
+    use rand::{Rng, prelude::Distribution, thread_rng};
 
-    use crate::layout::{attributes::POSITION_3D, PointAttributeDataType};
+    use crate::layout::{PointAttributeDataType, attributes::POSITION_3D};
     use crate::test_utils::*;
 
     use super::*;
@@ -2088,27 +2089,35 @@ mod tests {
         assert!(hashmap_buffer.slice(0..0).as_interleaved().is_none());
         assert!(hashmap_buffer.slice_mut(0..0).as_interleaved().is_none());
         assert!(external_memory_buffer.as_interleaved().is_some());
-        assert!(external_memory_buffer
-            .slice(0..0)
-            .as_interleaved()
-            .is_some());
-        assert!(external_memory_buffer
-            .slice_mut(0..0)
-            .as_interleaved()
-            .is_some());
+        assert!(
+            external_memory_buffer
+                .slice(0..0)
+                .as_interleaved()
+                .is_some()
+        );
+        assert!(
+            external_memory_buffer
+                .slice_mut(0..0)
+                .as_interleaved()
+                .is_some()
+        );
 
         assert!(vector_buffer.as_interleaved_mut().is_some());
         assert!(vector_buffer.slice_mut(0..0).as_interleaved_mut().is_some());
         assert!(hashmap_buffer.as_interleaved_mut().is_none());
-        assert!(hashmap_buffer
-            .slice_mut(0..0)
-            .as_interleaved_mut()
-            .is_none());
+        assert!(
+            hashmap_buffer
+                .slice_mut(0..0)
+                .as_interleaved_mut()
+                .is_none()
+        );
         assert!(external_memory_buffer.as_interleaved_mut().is_some());
-        assert!(external_memory_buffer
-            .slice_mut(0..0)
-            .as_interleaved_mut()
-            .is_some());
+        assert!(
+            external_memory_buffer
+                .slice_mut(0..0)
+                .as_interleaved_mut()
+                .is_some()
+        );
 
         assert!(vector_buffer.as_columnar().is_none());
         assert!(vector_buffer.slice(0..0).as_columnar().is_none());
@@ -2118,20 +2127,24 @@ mod tests {
         assert!(hashmap_buffer.slice_mut(0..0).as_columnar().is_some());
         assert!(external_memory_buffer.as_columnar().is_none());
         assert!(external_memory_buffer.slice(0..0).as_columnar().is_none());
-        assert!(external_memory_buffer
-            .slice_mut(0..0)
-            .as_columnar()
-            .is_none());
+        assert!(
+            external_memory_buffer
+                .slice_mut(0..0)
+                .as_columnar()
+                .is_none()
+        );
 
         assert!(vector_buffer.as_columnar_mut().is_none());
         assert!(vector_buffer.slice_mut(0..0).as_columnar_mut().is_none());
         assert!(hashmap_buffer.as_columnar_mut().is_some());
         assert!(hashmap_buffer.slice_mut(0..0).as_columnar_mut().is_some());
         assert!(external_memory_buffer.as_columnar_mut().is_none());
-        assert!(external_memory_buffer
-            .slice_mut(0..0)
-            .as_columnar_mut()
-            .is_none());
+        assert!(
+            external_memory_buffer
+                .slice_mut(0..0)
+                .as_columnar_mut()
+                .is_none()
+        );
     }
 
     #[test]
@@ -2146,11 +2159,7 @@ mod tests {
             .enumerate()
             .filter_map(
                 |(idx, point)| {
-                    if idx % 2 == 0 {
-                        Some(*point)
-                    } else {
-                        None
-                    }
+                    if idx % 2 == 0 { Some(*point) } else { None }
                 },
             )
             .collect_vec();

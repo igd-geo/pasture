@@ -7,7 +7,7 @@ use pasture_core::{containers::BorrowedBuffer, layout::PointLayout};
 
 use crate::{base::PointWriter, las::las_point_format_from_point_layout};
 
-use super::{path_is_compressed_las_file, RawLASWriter, RawLAZWriter};
+use super::{RawLASWriter, RawLAZWriter, path_is_compressed_las_file};
 
 enum WriterVariant<T: Write + Seek + Send + 'static> {
     LAS(RawLASWriter<T>),
@@ -128,7 +128,7 @@ impl<T: Write + Seek + Send + 'static> PointWriter for LASWriter<T> {
 mod tests {
     use std::{io::Cursor, path::PathBuf};
 
-    use las::{point::Format, Builder};
+    use las::{Builder, point::Format};
     use pasture_core::{
         containers::{BorrowedBufferExt, MakeBufferFromLayout, OwningBuffer, VectorBuffer},
         layout::PointType,

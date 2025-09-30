@@ -8,7 +8,7 @@ use crate::{
     layout::{PointAttributeDefinition, PointAttributeMember, PointLayout, PrimitiveType},
 };
 
-use super::{get_generic_converter, AttributeConversionFn};
+use super::{AttributeConversionFn, get_generic_converter};
 
 /// Function that transform a single point attribute in its raw, untyped form
 type AttributeTransformFn = Box<dyn Fn(&mut [u8])>;
@@ -651,13 +651,13 @@ mod tests {
 
     use itertools::Itertools;
     use nalgebra::Vector3;
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
 
     use crate::{
         containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},
         layout::{
-            attributes::{CLASSIFICATION, POSITION_3D, RETURN_NUMBER},
             PointType,
+            attributes::{CLASSIFICATION, POSITION_3D, RETURN_NUMBER},
         },
         test_utils::{CustomPointTypeBig, CustomPointTypeSmall, DefaultPointDistribution},
     };

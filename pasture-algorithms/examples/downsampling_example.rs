@@ -4,7 +4,7 @@ use pasture_core::{
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{prelude::ThreadRng, Rng};
+use rand::{Rng, prelude::ThreadRng};
 
 #[repr(C, packed)]
 #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]

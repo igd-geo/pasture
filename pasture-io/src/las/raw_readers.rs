@@ -1,22 +1,22 @@
 use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use las_rs::Header;
-use las_rs::{raw, Builder, Vlr};
+use las_rs::{Builder, Vlr, raw};
 use laz::LasZipDecompressor;
 use pasture_core::containers::{BorrowedMutBuffer, OwningBuffer, VectorBuffer};
+use pasture_core::layout::PointAttributeDataType;
 use pasture_core::layout::attributes::{
     CLASSIFICATION_FLAGS, EDGE_OF_FLIGHT_LINE, NUMBER_OF_RETURNS, POSITION_3D, RETURN_NUMBER,
-    SCANNER_CHANNEL, SCAN_DIRECTION_FLAG,
+    SCAN_DIRECTION_FLAG, SCANNER_CHANNEL,
 };
 use pasture_core::layout::conversion::BufferLayoutConverter;
-use pasture_core::layout::PointAttributeDataType;
 use pasture_core::nalgebra::Vector3;
 use pasture_core::{layout::PointLayout, meta::Metadata};
 
 use super::{
-    map_laz_err, point_layout_from_las_metadata, LASMetadata, ATTRIBUTE_LOCAL_LAS_POSITION,
+    ATTRIBUTE_LOCAL_LAS_POSITION, LASMetadata, map_laz_err, point_layout_from_las_metadata,
 };
 use crate::base::{PointReader, SeekToPoint};
 use crate::las::{ATTRIBUTE_BASIC_FLAGS, ATTRIBUTE_EXTENDED_FLAGS};
@@ -39,21 +39,33 @@ fn get_default_las_converter<'a>(
     if let Some(position_attribute) = target_layout.get_attribute_by_name(POSITION_3D.name()) {
         let transforms = *las_header.transforms();
         match position_attribute.datatype() {
-            PointAttributeDataType::Vec3f64 => converter.set_custom_mapping_with_transformation(&ATTRIBUTE_LOCAL_LAS_POSITION, position_attribute.attribute_definition(), move |pos: Vector3<f64>| -> Vector3<f64> {
-                Vector3::new(
-                    (pos.x * transforms.x.scale) + transforms.x.offset,
-                    (pos.y * transforms.y.scale) + transforms.y.offset,
-                    (pos.z * transforms.z.scale) + transforms.z.offset,
-                )
-            }, false),
-            PointAttributeDataType::Vec3f32 => converter.set_custom_mapping_with_transformation(&ATTRIBUTE_LOCAL_LAS_POSITION, position_attribute.attribute_definition(), move |pos: Vector3<f32>| -> Vector3<f32> {
-                Vector3::new(
-                    ((pos.x as f64 * transforms.x.scale) + transforms.x.offset) as f32,
-                    ((pos.y as f64 * transforms.y.scale) + transforms.y.offset) as f32,
-                    ((pos.z as f64 * transforms.z.scale) + transforms.z.offset) as f32,
-                )
-            }, false),
-            other => bail!("Invalid datatype {other} for POSITION_3D attribute. Only Vec3f64 and Vec3f32 are supported!"),
+            PointAttributeDataType::Vec3f64 => converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_LOCAL_LAS_POSITION,
+                position_attribute.attribute_definition(),
+                move |pos: Vector3<f64>| -> Vector3<f64> {
+                    Vector3::new(
+                        (pos.x * transforms.x.scale) + transforms.x.offset,
+                        (pos.y * transforms.y.scale) + transforms.y.offset,
+                        (pos.z * transforms.z.scale) + transforms.z.offset,
+                    )
+                },
+                false,
+            ),
+            PointAttributeDataType::Vec3f32 => converter.set_custom_mapping_with_transformation(
+                &ATTRIBUTE_LOCAL_LAS_POSITION,
+                position_attribute.attribute_definition(),
+                move |pos: Vector3<f32>| -> Vector3<f32> {
+                    Vector3::new(
+                        ((pos.x as f64 * transforms.x.scale) + transforms.x.offset) as f32,
+                        ((pos.y as f64 * transforms.y.scale) + transforms.y.offset) as f32,
+                        ((pos.z as f64 * transforms.z.scale) + transforms.z.offset) as f32,
+                    )
+                },
+                false,
+            ),
+            other => bail!(
+                "Invalid datatype {other} for POSITION_3D attribute. Only Vec3f64 and Vec3f32 are supported!"
+            ),
         }
     }
 
@@ -393,7 +405,9 @@ impl<T: Read + Seek> SeekToPoint for RawLASReader<T> {
             SeekFrom::Current(from_current) => self.current_point_index as i64 + from_current,
         };
         if new_position < 0 {
-            panic!("RawLASReader::seek_point: It is an error to seek to a point position smaller than zero!");
+            panic!(
+                "RawLASReader::seek_point: It is an error to seek to a point position smaller than zero!"
+            );
         }
         let clamped_position =
             std::cmp::min(self.metadata.point_count() as i64, new_position) as usize;
@@ -605,7 +619,9 @@ impl<'a, T: Read + Seek + Send + 'a> SeekToPoint for RawLAZReader<'a, T> {
             SeekFrom::Current(from_current) => self.current_point_index as i64 + from_current,
         };
         if new_position < 0 {
-            panic!("RawLAZReader::seek_point: It is an error to seek to a point position smaller than zero!");
+            panic!(
+                "RawLAZReader::seek_point: It is an error to seek to a point position smaller than zero!"
+            );
         }
         let clamped_position =
             std::cmp::min(self.metadata.point_count() as i64, new_position) as usize;
@@ -625,8 +641,8 @@ mod tests {
 
     use las_rs::point::Format;
     use pasture_core::containers::BorrowedBuffer;
-    use pasture_core::layout::attributes;
     use pasture_core::layout::PointAttributeDataType;
+    use pasture_core::layout::attributes;
     use pasture_core::nalgebra::Vector3;
 
     use crate::las::{
@@ -895,8 +911,8 @@ mod tests {
                 }
 
                 #[test]
-                fn test_raw_las_reader_read_into_different_layout_interleaved_in_multiple_chunks(
-                ) -> Result<()> {
+                fn test_raw_las_reader_read_into_different_layout_interleaved_in_multiple_chunks()
+                -> Result<()> {
                     let read = BufReader::new(File::open(get_test_file_path())?);
                     let mut reader = $reader::from_read(read, false)?;
 
