@@ -72,7 +72,7 @@ impl<B: InterleavedBuffer + ?Sized, T: PointType> PointView<'_, B, T> {
     }
 
     /// Return an iterator over strongly typed point data by reference
-    pub fn iter(&self) -> PointIteratorByRef<T> {
+    pub fn iter(&self) -> PointIteratorByRef<'_, T> {
         self.buffer.into()
     }
 }
@@ -160,7 +160,7 @@ impl<B: InterleavedBuffer + BorrowedMutBuffer + ?Sized, T: PointType> PointViewM
     }
 
     /// Return an iterator over point data by immutable reference
-    pub fn iter(&self) -> PointIteratorByRef<T> {
+    pub fn iter(&self) -> PointIteratorByRef<'_, T> {
         (&*self.buffer).into()
     }
 }
@@ -176,7 +176,7 @@ impl<B: InterleavedBufferMut + ?Sized, T: PointType> PointViewMut<'_, B, T> {
     }
 
     /// Returns an iterator over point data by mutable reference
-    pub fn iter_mut(&mut self) -> PointIteratorByMut<T> {
+    pub fn iter_mut(&mut self) -> PointIteratorByMut<'_, T> {
         self.buffer.into()
     }
 
@@ -276,7 +276,7 @@ impl<B: ColumnarBuffer + ?Sized, T: PrimitiveType> AttributeView<'_, B, T> {
     }
 
     /// Returns an iterator over attribute values by immutable reference
-    pub fn iter(&self) -> AttributeIteratorByRef<T> {
+    pub fn iter(&self) -> AttributeIteratorByRef<'_, T> {
         AttributeIteratorByRef::new(self.buffer, self.attribute.attribute_definition())
     }
 }
@@ -379,7 +379,7 @@ impl<B: ColumnarBuffer + BorrowedMutBuffer + ?Sized, T: PrimitiveType> Attribute
     }
 
     /// Returns an iterator over attribute values as immutable borrows
-    pub fn iter(&self) -> AttributeIteratorByRef<T> {
+    pub fn iter(&self) -> AttributeIteratorByRef<'_, T> {
         AttributeIteratorByRef::new(self.buffer, self.attribute.attribute_definition())
     }
 }
@@ -400,7 +400,7 @@ impl<B: ColumnarBufferMut + BorrowedMutBuffer + ?Sized, T: PrimitiveType>
     }
 
     /// Returns an iterator over attribute values as mutable borrows
-    pub fn iter_mut(&mut self) -> AttributeIteratorByMut<T> {
+    pub fn iter_mut(&mut self) -> AttributeIteratorByMut<'_, T> {
         AttributeIteratorByMut::new(self.buffer, self.attribute.attribute_definition())
     }
 }

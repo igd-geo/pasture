@@ -477,7 +477,9 @@ mod tests {
     use pasture_core::{containers::VectorBuffer, nalgebra::Matrix3, nalgebra::Vector3};
     use pasture_derive::PointType;
 
-    use super::*;
+    use super::{
+        compute_centroid, compute_covariance_matrix, compute_normals, solve_plane_parameter,
+    };
 
     #[repr(C, packed)]
     #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]

@@ -766,9 +766,9 @@ impl<T: ColumnarBufferMut + ?Sized> ColumnarBufferMut for BufferSliceColumnarMut
 
 macro_rules! impl_slice_buffer_for_trait_object {
     ($buffer_trait:ident, $slice_type:ident) => {
-        impl<'a> SliceBuffer for (dyn $buffer_trait + 'a) {
+        impl<'a> SliceBuffer for dyn $buffer_trait + 'a {
             type SliceType<'b>
-                = $slice_type<'b, (dyn $buffer_trait + 'a)>
+                = $slice_type<'b, dyn $buffer_trait + 'a>
             where
                 Self: 'b;
 
@@ -788,9 +788,9 @@ impl_slice_buffer_for_trait_object! {ColumnarBufferMut, BufferSliceColumnar}
 
 macro_rules! impl_slice_buffer_mut_for_trait_object {
     ($buffer_trait:ident, $slice_type:ident) => {
-        impl<'a> SliceBufferMut for (dyn $buffer_trait + 'a) {
+        impl<'a> SliceBufferMut for dyn $buffer_trait + 'a {
             type SliceTypeMut<'b>
-                = $slice_type<'b, (dyn $buffer_trait + 'a)>
+                = $slice_type<'b, dyn $buffer_trait + 'a>
             where
                 Self: 'b;
 

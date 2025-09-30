@@ -1,6 +1,5 @@
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
-use static_assertions::const_assert;
 
 pub mod attributes {
     use std::borrow::Cow;
@@ -15,7 +14,6 @@ pub mod attributes {
 }
 
 /// Header of .pnts files
-#[repr(packed)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PntsHeader {
     pub magic: [u8; 4],
@@ -29,6 +27,7 @@ pub struct PntsHeader {
 
 impl PntsHeader {
     /// Length of a .pnts header in bytes
+    /// (Header has 7 fields, each field has a length of 4 bytes -> 7*4=28.)
     pub const BYTE_LENGTH: usize = 28;
 
     pub fn new(
@@ -58,5 +57,3 @@ impl PntsHeader {
         Ok(())
     }
 }
-
-const_assert!(PntsHeader::BYTE_LENGTH == std::mem::size_of::<PntsHeader>());

@@ -57,11 +57,12 @@ pub(crate) fn write_rust_string_into_las_ascii_array<const N: usize>(
     rust_str: &str,
     las_array: &mut [u8; N],
 ) {
-    if rust_str.as_bytes().len() >= N {
-        let dst_slice = &rust_str.as_bytes()[..N];
+    let utf8_bytes = rust_str.as_bytes();
+    if utf8_bytes.len() >= N {
+        let dst_slice = &utf8_bytes[..N];
         las_array.copy_from_slice(dst_slice);
     } else {
-        let src_slice = &mut las_array[..rust_str.as_bytes().len()];
-        src_slice.copy_from_slice(rust_str.as_bytes());
+        let src_slice = &mut las_array[..utf8_bytes.len()];
+        src_slice.copy_from_slice(utf8_bytes);
     }
 }

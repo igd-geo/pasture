@@ -290,7 +290,7 @@ pub trait BorrowedBufferExt: BorrowedBuffer {
     /// # Panics
     ///
     /// Panics if `T::layout()` does not match the `PointLayout` of this buffer
-    fn view<T: PointType>(&self) -> PointView<Self, T> {
+    fn view<T: PointType>(&self) -> PointView<'_, Self, T> {
         PointView::new(self)
     }
 
@@ -303,7 +303,7 @@ pub trait BorrowedBufferExt: BorrowedBuffer {
     fn view_attribute<T: PrimitiveType>(
         &self,
         attribute: &PointAttributeDefinition,
-    ) -> AttributeView<Self, T> {
+    ) -> AttributeView<'_, Self, T> {
         AttributeView::new(self, attribute)
     }
 
@@ -316,7 +316,7 @@ pub trait BorrowedBufferExt: BorrowedBuffer {
     fn view_attribute_with_conversion<T: PrimitiveType>(
         &self,
         attribute: &PointAttributeDefinition,
-    ) -> Result<AttributeViewConverting<Self, T>> {
+    ) -> Result<AttributeViewConverting<'_, Self, T>> {
         AttributeViewConverting::new(self, attribute)
     }
 }
@@ -331,7 +331,7 @@ pub trait BorrowedMutBufferExt: BorrowedMutBuffer {
     /// # Panics
     ///
     /// If `T::point_layout()` does not match `self.point_layout()`
-    fn view_mut<T: PointType>(&mut self) -> PointViewMut<Self, T> {
+    fn view_mut<T: PointType>(&mut self) -> PointViewMut<'_, Self, T> {
         PointViewMut::new(self)
     }
 
@@ -345,7 +345,7 @@ pub trait BorrowedMutBufferExt: BorrowedMutBuffer {
     fn view_attribute_mut<T: PrimitiveType>(
         &mut self,
         attribute: &PointAttributeDefinition,
-    ) -> AttributeViewMut<Self, T> {
+    ) -> AttributeViewMut<'_, Self, T> {
         AttributeViewMut::new(self, attribute)
     }
 
@@ -551,7 +551,7 @@ pub trait ColumnarBuffer: BorrowedBuffer {
     /// Get a raw view over the given `attribute` from this point buffer. Unlike the typed view that `view_attribute`
     /// returns, this view dereferences to byte slices, but it is potentially more efficient to use than calling
     /// `get_attribute` repeatedly
-    fn view_raw_attribute(&self, attribute: &PointAttributeMember) -> RawAttributeView {
+    fn view_raw_attribute(&self, attribute: &PointAttributeMember) -> RawAttributeView<'_> {
         RawAttributeView::from_columnar_buffer(self, attribute.attribute_definition())
     }
 }
@@ -586,7 +586,10 @@ pub trait ColumnarBufferMut: ColumnarBuffer + BorrowedMutBuffer {
     ) -> &mut [u8];
 
     /// Like `view_raw_attribute`, but returns mutable byte slices of the attribute data
-    fn view_raw_attribute_mut(&mut self, attribute: &PointAttributeMember) -> RawAttributeViewMut {
+    fn view_raw_attribute_mut(
+        &mut self,
+        attribute: &PointAttributeMember,
+    ) -> RawAttributeViewMut<'_> {
         RawAttributeViewMut::from_columnar_buffer(self, attribute.attribute_definition())
     }
 }
@@ -1534,7 +1537,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> InterleavedBufferMut for ExternalMemoryBuffer
 }
 
 impl<T: AsRef<[u8]>> SliceBuffer for ExternalMemoryBuffer<T> {
-    type SliceType<'a> = BufferSliceInterleaved<'a, Self> where Self: 'a;
+    type SliceType<'a>
+        = BufferSliceInterleaved<'a, Self>
+    where
+        Self: 'a;
 
     fn slice(&self, range: Range<usize>) -> Self::SliceType<'_> {
         BufferSliceInterleaved::new(self, range)
@@ -1542,7 +1548,10 @@ impl<T: AsRef<[u8]>> SliceBuffer for ExternalMemoryBuffer<T> {
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>> SliceBufferMut for ExternalMemoryBuffer<T> {
-    type SliceTypeMut<'a> = BufferSliceInterleavedMut<'a, Self> where Self: 'a;
+    type SliceTypeMut<'a>
+        = BufferSliceInterleavedMut<'a, Self>
+    where
+        Self: 'a;
 
     fn slice_mut(&mut self, range: Range<usize>) -> Self::SliceTypeMut<'_> {
         BufferSliceInterleavedMut::new(self, range)

@@ -12,13 +12,9 @@ pub fn calculate_bounds<T: BorrowedBuffer>(buffer: &T) -> Option<AABB<f64>> {
     if buffer.len() == 0 {
         return None;
     }
-    let position_attribute = match buffer
+    let position_attribute = buffer
         .point_layout()
-        .get_attribute_by_name(POSITION_3D.name())
-    {
-        Some(a) => a,
-        None => return None,
-    };
+        .get_attribute_by_name(POSITION_3D.name())?;
 
     if position_attribute.datatype() == POSITION_3D.datatype() {
         Some(calculate_bounds_from_default_positions(buffer))
