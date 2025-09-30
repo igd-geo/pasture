@@ -120,7 +120,7 @@ impl<'a, T: PointType> Iterator for PointIteratorByMut<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, thread_rng};
+    use rand::{Rng, rng};
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, VectorBuffer},
@@ -131,7 +131,7 @@ mod tests {
     #[allow(clippy::iter_nth_zero)]
     fn point_iterator_nth() {
         const COUNT: usize = 16;
-        let mut points = thread_rng()
+        let mut points = rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(COUNT)
             .collect::<VectorBuffer>();

@@ -831,7 +831,7 @@ impl_slice_buffer_mut_for_trait_object! {ColumnarBufferMut, BufferSliceColumnarM
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, thread_rng};
+    use rand::{Rng, rng};
 
     use crate::{
         containers::{HashMapBuffer, VectorBuffer},
@@ -843,7 +843,7 @@ mod tests {
     #[test]
     fn slices_on_trait_objects() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();

@@ -1,3 +1,5 @@
+use std::hint::black_box;
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use pasture_core::{
     containers::{
@@ -10,7 +12,7 @@ use pasture_core::{
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{Rng, distributions::Uniform, thread_rng};
+use rand::{Rng, distr::Uniform, rng};
 
 #[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]
@@ -22,20 +24,22 @@ struct CustomPointTypeSmall {
 }
 
 fn random_custom_point_small<R: Rng + ?Sized>(rng: &mut R) -> CustomPointTypeSmall {
+    let distribution_xyz = Uniform::new(-100.0, 100.0).unwrap();
+    let distribution_classification = Uniform::new(0u8, 8).unwrap();
     CustomPointTypeSmall {
         position: Vector3::new(
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
+            rng.sample(distribution_xyz),
+            rng.sample(distribution_xyz),
+            rng.sample(distribution_xyz),
         ),
-        classification: rng.sample(Uniform::new(0u8, 8)),
+        classification: rng.sample(distribution_classification),
     }
 }
 
 fn get_dummy_points_custom_format_small_interleaved() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000;
     let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
-    let mut rng = thread_rng();
+    let mut rng = rng();
     for _ in 0..NUM_POINTS {
         buffer
             .view_mut()
@@ -47,7 +51,7 @@ fn get_dummy_points_custom_format_small_interleaved() -> VectorBuffer {
 fn get_dummy_points_custom_format_small_perattribute() -> HashMapBuffer {
     const NUM_POINTS: usize = 1_000;
     let mut buffer = HashMapBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
-    let mut rng = thread_rng();
+    let mut rng = rng();
     for _ in 0..NUM_POINTS {
         buffer
             .view_mut()
@@ -60,7 +64,7 @@ fn points_iterator_performance_opaque_buffer<T: PointType + Default, B: Borrowed
     buffer: &B,
 ) {
     for point in buffer.view::<T>().into_iter() {
-        criterion::black_box(point);
+        black_box(point);
     }
 }
 
@@ -68,7 +72,7 @@ fn points_iterator_performance_interleaved_buffer<T: PointType + Default, B: Int
     buffer: &B,
 ) {
     for point in buffer.view::<T>().iter() {
-        criterion::black_box(point);
+        black_box(point);
     }
 }
 
@@ -76,19 +80,19 @@ fn points_iterator_performance_per_attribute_buffer<T: PointType + Default, B: C
     buffer: &B,
 ) {
     for point in buffer.view::<T>() {
-        criterion::black_box(point);
+        black_box(point);
     }
 }
 
 fn points_ref_iterator_performance_small_type(buffer: &impl InterleavedBuffer) {
     for point in buffer.view::<CustomPointTypeSmall>().iter() {
-        criterion::black_box(point.position);
+        black_box(point.position);
     }
 }
 
 fn points_ref_iterator_performance_with_trait_object(buffer: &dyn InterleavedBuffer) {
     for point in buffer.view::<CustomPointTypeSmall>().iter() {
-        criterion::black_box(point.position);
+        black_box(point.position);
     }
 }
 
@@ -97,7 +101,7 @@ fn attribute_iterator_performance_opaque_buffer<T: PrimitiveType + Default>(
     attribute: &PointAttributeDefinition,
 ) {
     for val in buffer.view_attribute::<T>(attribute) {
-        criterion::black_box(val);
+        black_box(val);
     }
 }
 
@@ -109,7 +113,7 @@ fn attribute_iterator_performance_interleaved_buffer<
     attribute: &PointAttributeDefinition,
 ) {
     for val in buffer.view_attribute::<T>(attribute) {
-        criterion::black_box(val);
+        black_box(val);
     }
 }
 
@@ -121,13 +125,13 @@ fn attribute_iterator_performance_perattribute_buffer<
     attribute: &PointAttributeDefinition,
 ) {
     for val in buffer.view_attribute::<T>(attribute).iter() {
-        criterion::black_box(val);
+        black_box(val);
     }
 }
 
 fn attribute_ref_iterator_performance_small_type(buffer: &impl ColumnarBuffer) {
     for position in buffer.view_attribute::<Vector3<f64>>(&POSITION_3D).iter() {
-        criterion::black_box(position);
+        black_box(position);
     }
 }
 

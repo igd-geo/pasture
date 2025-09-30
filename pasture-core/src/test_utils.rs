@@ -35,8 +35,8 @@ pub(crate) struct DefaultPointDistribution;
 impl Distribution<CustomPointTypeSmall> for DefaultPointDistribution {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> CustomPointTypeSmall {
         CustomPointTypeSmall {
-            classification: rng.r#gen(),
-            position: Vector3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
+            classification: rng.random(),
+            position: Vector3::new(rng.random(), rng.random(), rng.random()),
         }
     }
 }
@@ -44,11 +44,11 @@ impl Distribution<CustomPointTypeSmall> for DefaultPointDistribution {
 impl Distribution<CustomPointTypeBig> for DefaultPointDistribution {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> CustomPointTypeBig {
         CustomPointTypeBig {
-            classification: rng.r#gen(),
-            position: Vector3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
-            color: Vector3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
-            gps_time: rng.r#gen(),
-            intensity: rng.r#gen(),
+            classification: rng.random(),
+            position: Vector3::new(rng.random(), rng.random(), rng.random()),
+            color: Vector3::new(rng.random(), rng.random(), rng.random()),
+            gps_time: rng.random(),
+            intensity: rng.random(),
         }
     }
 }

@@ -138,7 +138,7 @@ impl<'a, T: PrimitiveType> Iterator for AttributeIteratorByMut<'a, T> {
 #[cfg(test)]
 mod tests {
     use nalgebra::Vector3;
-    use rand::{Rng, thread_rng};
+    use rand::{Rng, rng};
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer},
@@ -150,7 +150,7 @@ mod tests {
     #[allow(clippy::iter_nth_zero)]
     fn attribute_iterator_nth() {
         const COUNT: usize = 16;
-        let mut points = thread_rng()
+        let mut points = rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(COUNT)
             .collect::<HashMapBuffer>();

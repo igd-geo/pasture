@@ -524,7 +524,7 @@ impl<B: BorrowedBuffer + ?Sized, T: PrimitiveType> Iterator
 #[cfg(test)]
 mod tests {
     use nalgebra::Vector3;
-    use rand::{Rng, thread_rng};
+    use rand::{Rng, rng};
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, VectorBuffer},
@@ -534,7 +534,7 @@ mod tests {
 
     #[test]
     fn test_sort_buffer() {
-        let rng = thread_rng();
+        let rng = rng();
         let mut test_points = rng
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
@@ -557,8 +557,7 @@ mod tests {
 
     #[test]
     fn test_point_views_eq() {
-        let rng = thread_rng();
-        let test_points = rng
+        let test_points = rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
             .collect::<Vec<_>>();
@@ -575,7 +574,7 @@ mod tests {
             buffer2.view_mut::<CustomPointTypeSmall>()
         );
 
-        buffer2 = thread_rng()
+        buffer2 = rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
             .collect();
@@ -591,8 +590,7 @@ mod tests {
 
     #[test]
     fn test_attribute_views_eq() {
-        let rng = thread_rng();
-        let test_points = rng
+        let test_points = rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
             .collect::<Vec<_>>();
@@ -618,7 +616,7 @@ mod tests {
                 .expect("Invalid attribute conversion"),
         );
 
-        buffer2 = thread_rng()
+        buffer2 = rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
             .collect();

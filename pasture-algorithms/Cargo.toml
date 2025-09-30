@@ -14,7 +14,7 @@ readme = "README.md"
 [dependencies]
 pasture-core = { version = "=0.5.0", path = "../pasture-core" }
 pasture-derive = { version = "=0.5.0", path = "../pasture-derive" }
-anyhow = "1.0.34"
+anyhow = { workspace = true }
 rand = "0.8.3"
 rayon = "1.5"
 typenum = "1.13.0"

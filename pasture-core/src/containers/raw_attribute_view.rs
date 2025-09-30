@@ -163,7 +163,7 @@ impl<'a> Iterator for RawAttributeViewMut<'a> {
 mod tests {
     use super::*;
 
-    use rand::{Rng, thread_rng};
+    use rand::{Rng, rng};
 
     use crate::containers::{BorrowedBuffer, HashMapBuffer, VectorBuffer};
     use crate::layout::PointType;
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn attribute_view_from_interleaved() {
         const COUNT: usize = 64;
-        let mut test_data: VectorBuffer = thread_rng()
+        let mut test_data: VectorBuffer = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn attribute_view_from_columnar() {
         const COUNT: usize = 64;
-        let mut test_data: HashMapBuffer = thread_rng()
+        let mut test_data: HashMapBuffer = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(COUNT)
             .collect();

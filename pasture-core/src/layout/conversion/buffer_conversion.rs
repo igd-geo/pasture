@@ -651,7 +651,7 @@ mod tests {
 
     use itertools::Itertools;
     use nalgebra::Vector3;
-    use rand::{Rng, thread_rng};
+    use rand::{Rng, rng};
 
     use crate::{
         containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},
@@ -668,8 +668,7 @@ mod tests {
         TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
         TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
-        let rng = thread_rng();
-        let source_points = rng
+        let source_points = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
             .collect::<TFrom>();
@@ -708,8 +707,7 @@ mod tests {
         TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
         TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
-        let rng = thread_rng();
-        let source_points = rng
+        let source_points = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
             .collect::<TFrom>();
@@ -748,8 +746,7 @@ mod tests {
         TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
         TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
-        let rng = thread_rng();
-        let source_points = rng
+        let source_points = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
             .collect::<TFrom>();
@@ -790,8 +787,7 @@ mod tests {
         TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
         TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
-        let rng = thread_rng();
-        let source_points = rng
+        let source_points = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
             .collect::<TFrom>();
@@ -832,8 +828,7 @@ mod tests {
         TFrom: BorrowedBuffer + FromIterator<CustomPointTypeBig>,
         TTo: OwningBuffer + MakeBufferFromLayout,
     >() {
-        let rng = thread_rng();
-        let source_points = rng
+        let source_points = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
             .collect::<TFrom>();
@@ -896,8 +891,7 @@ mod tests {
     #[should_panic]
     fn test_buffer_converter_mismatched_len() {
         const COUNT: usize = 16;
-        let rng = thread_rng();
-        let source_points = rng
+        let source_points = rng()
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(COUNT)
             .collect::<VectorBuffer>();

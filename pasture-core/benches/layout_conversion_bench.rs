@@ -1,4 +1,4 @@
-use std::iter::FromIterator;
+use std::{hint::black_box, iter::FromIterator};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use nalgebra::Vector3;
@@ -10,7 +10,7 @@ use pasture_core::{
     layout::{PointType, conversion::BufferLayoutConverter},
 };
 use pasture_derive::PointType;
-use rand::{Rng, prelude::Distribution, thread_rng};
+use rand::{Rng, prelude::Distribution, rng};
 
 #[derive(Debug, Copy, Clone, bytemuck::Zeroable, bytemuck::Pod, PointType)]
 #[repr(C, packed)]
@@ -44,13 +44,13 @@ impl Distribution<PointTypeSource> for PointDistribution {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PointTypeSource {
         PointTypeSource {
             position: Vector3::new(
-                rng.gen_range(0.0..1000.0),
-                rng.gen_range(0.0..1000.0),
-                rng.gen_range(0.0..1000.0),
+                rng.random_range(0.0..1000.0),
+                rng.random_range(0.0..1000.0),
+                rng.random_range(0.0..1000.0),
             ),
-            classification: rng.r#gen(),
-            intensity: rng.r#gen(),
-            gps_time: rng.gen_range(0.0..1000.0),
+            classification: rng.random(),
+            intensity: rng.random(),
+            gps_time: rng.random_range(0.0..1000.0),
         }
     }
 }
@@ -58,7 +58,7 @@ impl Distribution<PointTypeSource> for PointDistribution {
 fn gen_random_points<B: OwningBuffer + MakeBufferFromLayout + FromIterator<PointTypeSource>>(
     count: usize,
 ) -> B {
-    thread_rng()
+    rng()
         .sample_iter::<PointTypeSource, _>(PointDistribution)
         .take(count)
         .collect::<B>()
@@ -69,7 +69,7 @@ fn convert_interleaved_to_interleaved<B: InterleavedBuffer>(
     converter: &BufferLayoutConverter,
 ) {
     let converted = converter.convert::<VectorBuffer, _>(buffer);
-    criterion::black_box(converted);
+    black_box(converted);
 }
 
 fn convert_interleaved_to_columnar<B: InterleavedBuffer>(
@@ -77,7 +77,7 @@ fn convert_interleaved_to_columnar<B: InterleavedBuffer>(
     converter: &BufferLayoutConverter,
 ) {
     let converted = converter.convert::<HashMapBuffer, _>(buffer);
-    criterion::black_box(converted);
+    black_box(converted);
 }
 
 fn convert_columnar_to_interleaved<B: ColumnarBuffer>(
@@ -85,12 +85,12 @@ fn convert_columnar_to_interleaved<B: ColumnarBuffer>(
     converter: &BufferLayoutConverter,
 ) {
     let converted = converter.convert::<VectorBuffer, _>(buffer);
-    criterion::black_box(converted);
+    black_box(converted);
 }
 
 fn convert_columnar_to_columnar<B: ColumnarBuffer>(buffer: &B, converter: &BufferLayoutConverter) {
     let converted = converter.convert::<HashMapBuffer, _>(buffer);
-    criterion::black_box(converted);
+    black_box(converted);
 }
 
 fn convert_baseline<B: InterleavedBuffer>(buffer: &B) {
@@ -107,7 +107,7 @@ fn convert_baseline<B: InterleavedBuffer>(buffer: &B) {
             }
         })
         .collect::<VectorBuffer>();
-    criterion::black_box(converted);
+    black_box(converted);
 }
 
 fn bench(c: &mut Criterion) {

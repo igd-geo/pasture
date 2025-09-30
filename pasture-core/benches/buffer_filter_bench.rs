@@ -1,11 +1,13 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{Criterion, criterion_group, criterion_main};
 use itertools::Itertools;
 use nalgebra::Vector3;
 use pasture_core::containers::{
     BorrowedBuffer, HashMapBuffer, InterleavedBufferMut, OwningBuffer, VectorBuffer,
 };
 use pasture_derive::PointType;
-use rand::{Rng, distributions::Standard, prelude::Distribution, thread_rng};
+use rand::{Rng, distr::StandardUniform, prelude::Distribution, rng};
 
 #[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]
@@ -27,17 +29,17 @@ struct DefaultPointDistribution;
 impl Distribution<CustomPointTypeBig> for DefaultPointDistribution {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> CustomPointTypeBig {
         CustomPointTypeBig {
-            classification: rng.r#gen(),
-            position: Vector3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
-            color: Vector3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
-            gps_time: rng.r#gen(),
-            intensity: rng.r#gen(),
+            classification: rng.random(),
+            position: Vector3::new(rng.random(), rng.random(), rng.random()),
+            color: Vector3::new(rng.random(), rng.random(), rng.random()),
+            gps_time: rng.random(),
+            intensity: rng.random(),
         }
     }
 }
 
 fn gen_random_points(count: usize) -> HashMapBuffer {
-    thread_rng()
+    rng()
         .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
         .take(count)
         .collect()
@@ -66,7 +68,7 @@ fn filter_with_filter_function(buffer: &HashMapBuffer, random_matches: &[bool]) 
 
 fn bench(c: &mut Criterion) {
     let random_points = gen_random_points(4096);
-    let random_matches = thread_rng().sample_iter(Standard).take(4096).collect_vec();
+    let random_matches = rng().sample_iter(StandardUniform).take(4096).collect_vec();
 
     c.bench_function("filter_with_get_point", |b| {
         b.iter(|| filter_with_get_point(&random_points, &random_matches));

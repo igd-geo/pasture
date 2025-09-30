@@ -1563,7 +1563,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> SliceBufferMut for ExternalMemoryBuffer<T> {
 mod tests {
     use itertools::Itertools;
     use nalgebra::Vector3;
-    use rand::{Rng, prelude::Distribution, thread_rng};
+    use rand::rng;
+    use rand::{Rng, prelude::Distribution};
 
     use crate::layout::{PointAttributeDataType, attributes::POSITION_3D};
     use crate::test_utils::*;
@@ -1647,11 +1648,11 @@ mod tests {
         DefaultPointDistribution: Distribution<T>,
     {
         const COUNT: usize = 16;
-        let test_data: Vec<T> = thread_rng()
+        let test_data: Vec<T> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
-        let overwrite_data: Vec<T> = thread_rng()
+        let overwrite_data: Vec<T> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -1700,11 +1701,11 @@ mod tests {
         DefaultPointDistribution: Distribution<T>,
     {
         const COUNT: usize = 16;
-        let test_data: Vec<T> = thread_rng()
+        let test_data: Vec<T> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
-        let overwrite_data: Vec<T> = thread_rng()
+        let overwrite_data: Vec<T> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -1752,11 +1753,11 @@ mod tests {
         DefaultPointDistribution: Distribution<T>,
     {
         const COUNT: usize = 16;
-        let test_data: Vec<T> = thread_rng()
+        let test_data: Vec<T> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
-        let overwrite_data: Vec<T> = thread_rng()
+        let overwrite_data: Vec<T> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -1820,11 +1821,11 @@ mod tests {
     #[test]
     fn test_hash_map_buffer_mutate_attribute() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
-        let overwrite_data: Vec<CustomPointTypeBig> = thread_rng()
+        let overwrite_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -1858,11 +1859,11 @@ mod tests {
 
     fn test_transform_attribute_generic<B: BorrowedMutBuffer + FromIterator<CustomPointTypeBig>>() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
-        let overwrite_data: Vec<CustomPointTypeBig> = thread_rng()
+        let overwrite_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -1893,7 +1894,7 @@ mod tests {
     #[test]
     fn test_append() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -1946,11 +1947,11 @@ mod tests {
         B: BorrowedMutBuffer + FromIterator<CustomPointTypeBig> + SliceBufferMut,
     >() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
-        let overwrite_data: Vec<CustomPointTypeBig> = thread_rng()
+        let overwrite_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -1993,7 +1994,7 @@ mod tests {
         B: BorrowedMutBuffer + FromIterator<CustomPointTypeBig> + SliceBufferMut,
     >() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -2026,11 +2027,11 @@ mod tests {
         B: BorrowedMutBuffer + FromIterator<CustomPointTypeBig> + SliceBufferMut,
     >() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
-        let overwrite_data: Vec<CustomPointTypeBig> = thread_rng()
+        let overwrite_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
@@ -2150,7 +2151,7 @@ mod tests {
     #[test]
     fn test_hash_map_buffer_filter() {
         const COUNT: usize = 16;
-        let test_data: Vec<CustomPointTypeBig> = thread_rng()
+        let test_data: Vec<CustomPointTypeBig> = rng()
             .sample_iter(DefaultPointDistribution)
             .take(COUNT)
             .collect();
