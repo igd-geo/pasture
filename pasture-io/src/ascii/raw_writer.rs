@@ -2,13 +2,8 @@ use super::PointDataType;
 use crate::base::PointWriter;
 use anyhow::{Context, Result};
 use pasture_core::containers::{BorrowedBuffer, UntypedPoint, UntypedPointSlice};
-use pasture_core::layout::{attributes, PointLayout};
+use pasture_core::layout::{PointLayout, attributes};
 use pasture_core::nalgebra::Vector3;
-
-pub trait AsciiFormat {
-    fn set_delimiter(&mut self, delimiter: &str);
-    fn set_precision(&mut self, precision: usize);
-}
 
 pub(crate) struct RawAsciiWriter<T: std::io::Write + std::io::Seek> {
     writer: T,
@@ -27,15 +22,6 @@ impl<T: std::io::Write + std::io::Seek> RawAsciiWriter<T> {
             parse_layout: PointDataType::get_parse_layout(format)?,
             default_layout: PointLayout::default(),
         })
-    }
-}
-
-impl<T: std::io::Write + std::io::Seek> AsciiFormat for RawAsciiWriter<T> {
-    fn set_delimiter(&mut self, delimiter: &str) {
-        self.delimiter = String::from(delimiter);
-    }
-    fn set_precision(&mut self, precision: usize) {
-        self.precision = precision;
     }
 }
 

@@ -9,7 +9,7 @@ use pasture_core::{containers::BorrowedBuffer, layout::PointLayout};
 
 use crate::base::PointWriter;
 
-use super::{AsciiFormat, RawAsciiWriter};
+use super::RawAsciiWriter;
 
 /// `PointWriterFormatting` implementation for Ascii files
 pub struct AsciiWriter<T: Write + Seek> {
@@ -105,15 +105,5 @@ impl<T: Write + Seek> PointWriter for AsciiWriter<T> {
 
     fn get_default_point_layout(&self) -> &PointLayout {
         self.raw_writer.get_default_point_layout()
-    }
-}
-
-impl<T: Write + Seek> AsciiFormat for AsciiWriter<T> {
-    fn set_delimiter(&mut self, delimiter: &str) {
-        self.raw_writer.set_delimiter(delimiter);
-    }
-
-    fn set_precision(&mut self, precision: usize) {
-        self.raw_writer.set_precision(precision);
     }
 }
