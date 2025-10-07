@@ -67,7 +67,7 @@ pub fn pasture_bounds_to_las_bounds(bounds: &AABB<f64>) -> Bounds {
 pub fn path_is_compressed_las_file<P: AsRef<Path>>(path: P) -> Result<bool> {
     path.as_ref()
         .extension()
-        .map(|extension| extension == "laz")
+        .map(|extension| extension.eq_ignore_ascii_case("laz"))
         .ok_or(anyhow!(
             "Could not determine file extension of file {}",
             path.as_ref().display()
