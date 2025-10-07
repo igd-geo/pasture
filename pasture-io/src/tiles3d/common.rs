@@ -39,7 +39,7 @@ pub fn write_json_header<W: Write>(
         .write_all(header_json.as_bytes())
         .context("Could not write JSON header to writer")?;
 
-    let current_position_in_file = position_in_file + header_json.as_bytes().len();
+    let current_position_in_file = position_in_file + header_json.len();
 
     let next_8_byte_boundary = current_position_in_file.align_to(8);
     let num_padding_bytes = next_8_byte_boundary - current_position_in_file;

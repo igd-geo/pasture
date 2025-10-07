@@ -8,7 +8,7 @@ use crate::{
     layout::{PointAttributeDefinition, PointAttributeMember, PointLayout, PrimitiveType},
 };
 
-use super::{get_generic_converter, AttributeConversionFn};
+use super::{AttributeConversionFn, get_generic_converter};
 
 /// Function that transform a single point attribute in its raw, untyped form
 type AttributeTransformFn = Box<dyn Fn(&mut [u8])>;
@@ -668,13 +668,13 @@ mod tests {
 
     use itertools::Itertools;
     use nalgebra::Vector3;
-    use rand::{thread_rng, Rng};
+    use rand::Rng;
 
     use crate::{
         containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},
         layout::{
-            attributes::{CLASSIFICATION, POSITION_3D, RETURN_NUMBER},
             PointType,
+            attributes::{CLASSIFICATION, POSITION_3D, RETURN_NUMBER},
         },
         test_utils::{CustomPointTypeBig, CustomPointTypeSmall, DefaultPointDistribution},
     };
@@ -685,7 +685,7 @@ mod tests {
         TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
         TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
     >() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let source_points = rng
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
@@ -725,7 +725,7 @@ mod tests {
         TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
         TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
     >() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let source_points = rng
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
@@ -765,7 +765,7 @@ mod tests {
         TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
         TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
     >() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let source_points = rng
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
@@ -807,7 +807,7 @@ mod tests {
         TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
         TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
     >() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let source_points = rng
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
@@ -849,7 +849,7 @@ mod tests {
         TFrom: for<'a> BorrowedBuffer<'a> + FromIterator<CustomPointTypeBig>,
         TTo: for<'a> OwningBuffer<'a> + for<'a> MakeBufferFromLayout<'a>,
     >() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let source_points = rng
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(16)
@@ -913,7 +913,7 @@ mod tests {
     #[should_panic]
     fn test_buffer_converter_mismatched_len() {
         const COUNT: usize = 16;
-        let rng = thread_rng();
+        let rng = rand::rng();
         let source_points = rng
             .sample_iter::<CustomPointTypeBig, _>(DefaultPointDistribution)
             .take(COUNT)

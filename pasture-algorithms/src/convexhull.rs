@@ -1,9 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use pasture_core::containers::{BorrowedBuffer, BorrowedBufferExt};
 use pasture_core::{layout::attributes::POSITION_3D, nalgebra::Vector3};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::usize;
 
 #[derive(Clone, Copy)]
 struct Triangle {
@@ -320,19 +319,19 @@ fn iteration<'a, T: BorrowedBuffer<'a>>(
                 for facing_edge in edges_facing_point.iter() {
                     let res_a = vertices_on_one_edge_start
                         .insert(facing_edge.a, (facing_edge.b, *facing_edge));
-                    if let Some(res_a) = res_a {
-                        if res_a.0 != facing_edge.b {
-                            vertices_on_one_edge_start.remove(&facing_edge.a);
-                            vertices_on_two_edges.insert(facing_edge.a, (res_a.1, *facing_edge));
-                        }
+                    if let Some(res_a) = res_a
+                        && res_a.0 != facing_edge.b
+                    {
+                        vertices_on_one_edge_start.remove(&facing_edge.a);
+                        vertices_on_two_edges.insert(facing_edge.a, (res_a.1, *facing_edge));
                     }
                     let res_b = vertices_on_one_edge_end
                         .insert(facing_edge.b, (facing_edge.a, *facing_edge));
-                    if let Some(res_b) = res_b {
-                        if res_b.0 != facing_edge.a {
-                            vertices_on_one_edge_end.remove(&facing_edge.b);
-                            vertices_on_two_edges.insert(facing_edge.b, (res_b.1, *facing_edge));
-                        }
+                    if let Some(res_b) = res_b
+                        && res_b.0 != facing_edge.a
+                    {
+                        vertices_on_one_edge_end.remove(&facing_edge.b);
+                        vertices_on_two_edges.insert(facing_edge.b, (res_b.1, *facing_edge));
                     }
                 }
                 let mut triangles_to_remove = Vec::new();
@@ -465,12 +464,12 @@ mod tests {
     use anyhow::Result;
     use pasture_core::{
         containers::{BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer},
-        layout::attributes::POSITION_3D,
         layout::PointType,
+        layout::attributes::POSITION_3D,
         nalgebra::Vector3,
     };
     use pasture_derive::PointType;
-    use rand::{distributions::Uniform, thread_rng, Rng};
+    use rand::{Rng as _, distr::Uniform};
 
     #[derive(
         PointType, Default, Copy, Clone, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit,
@@ -861,10 +860,10 @@ mod tests {
         buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
-                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0),
+                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9).unwrap()), 0.0, 0.0),
             });
         }
         let result = convexhull::convex_hull_as_points(&buffer);
@@ -879,10 +878,10 @@ mod tests {
     #[test]
     fn test_convex_random_1d_points_in_box_create_box_last() -> Result<()> {
         let mut buffer = HashMapBuffer::with_capacity(22, TestPointTypeSmall::layout());
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
-                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0),
+                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9).unwrap()), 0.0, 0.0),
             });
         }
         buffer.view_mut().push_point(TestPointTypeSmall {
@@ -915,12 +914,12 @@ mod tests {
         buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
                     0.0,
                 ),
             });
@@ -1058,13 +1057,13 @@ mod tests {
         buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 1.0),
         });
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
                 ),
             });
         }
@@ -1088,13 +1087,13 @@ mod tests {
     #[test]
     fn test_convex_random_points_in_box_create_box_last() -> Result<()> {
         let mut buffer = HashMapBuffer::with_capacity(28, TestPointTypeSmall::layout());
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
                 ),
             });
         }
@@ -1142,13 +1141,13 @@ mod tests {
     #[test]
     fn test_convex_random_points() -> Result<()> {
         let mut buffer = HashMapBuffer::with_capacity(100, TestPointTypeSmall::layout());
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..100 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-100.0, 100.0)),
-                    rng.sample(Uniform::new(-100.0, 100.0)),
-                    rng.sample(Uniform::new(-100.0, 100.0)),
+                    rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+                    rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+                    rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
                 ),
             });
         }

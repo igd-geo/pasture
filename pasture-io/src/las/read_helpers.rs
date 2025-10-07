@@ -13,9 +13,11 @@ use pasture_core::{
 /// buffer, applying all necessary conversions or falling back to default values if required. This abstraction is
 /// necessary to deal with the general case of an arbitrary source point layout in the LASWriter that has to be
 /// converted into a specific LAS point layout. For any mandatory LAS attribute, there are three cases:
+///
 /// 1) Source layout contains default PointAttributeDefinition for attribute
 /// 2) Source layout contains PointAttributeDefinition with a different data type
 /// 3) Source layout does not contain PointAttributeDefinition for attribute
+///
 /// Depending on the scenario, this requires either a regular read, a converted read, or no read at all. To prevent
 /// that we have to handle the three scenarios at every place where we write LAS data, the `ReaderFn` abstraction
 /// is introduced

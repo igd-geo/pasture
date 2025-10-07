@@ -86,7 +86,6 @@ impl Drop for Projection {
 /// # use pasture_core::layout::PointType;
 /// # use pasture_core::nalgebra::Vector3;
 /// # use pasture_derive::PointType;
-
 /// #[repr(C, packed)]
 /// #[derive(PointType, Debug, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 /// struct SimplePoint {
@@ -95,7 +94,6 @@ impl Drop for Projection {
 ///     #[pasture(BUILTIN_INTENSITY)]
 ///     pub intensity: u16,
 /// }
-
 /// fn main() {
 ///     let points = vec![
 ///         SimplePoint {
@@ -115,15 +113,12 @@ impl Drop for Projection {
 ///             intensity: 84,
 ///         },
 ///     ];
-
 ///     let mut interleaved = points.into_iter().collect::<VectorBuffer>();
-
 ///     reproject_point_cloud_within(
 ///         &mut interleaved,
 ///         "EPSG:4326",
 ///         "EPSG:3309",
 ///     );
-
 ///     for point in interleaved.view::<SimplePoint>() {
 ///         println!("{:?}", point);
 ///     }

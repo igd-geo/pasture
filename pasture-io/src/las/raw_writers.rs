@@ -133,12 +133,12 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
         } else {
             None
         };
-        raw_header.min_x = std::f64::MAX;
-        raw_header.min_y = std::f64::MAX;
-        raw_header.min_z = std::f64::MAX;
-        raw_header.max_x = std::f64::MIN;
-        raw_header.max_y = std::f64::MIN;
-        raw_header.max_z = std::f64::MIN;
+        raw_header.min_x = f64::MAX;
+        raw_header.min_y = f64::MAX;
+        raw_header.min_z = f64::MAX;
+        raw_header.max_x = f64::MIN;
+        raw_header.max_y = f64::MIN;
+        raw_header.max_z = f64::MIN;
 
         if raw_header.x_scale_factor == 0.0
             || raw_header.y_scale_factor == 0.0
@@ -213,7 +213,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
 
         let size_of_single_point = self.default_layout.size_of_point_entry() as usize;
         let num_points_in_chunk = 50_000;
-        let num_chunks = (points.len() + (num_points_in_chunk - 1)) / num_points_in_chunk;
+        let num_chunks = points.len().div_ceil(num_points_in_chunk);
         let mut chunk_buffer: Vec<u8> = vec![0; num_points_in_chunk * size_of_single_point];
 
         let source_format = Format::new(self.current_header.point_data_record_format)?;
@@ -372,7 +372,7 @@ impl<T: std::io::Write + std::io::Seek> RawLASWriter<T> {
 
         let size_of_single_point = points.point_layout().size_of_point_entry() as usize;
         let num_points_in_chunk = 50_000;
-        let num_chunks = (points.len() + (num_points_in_chunk - 1)) / num_points_in_chunk;
+        let num_chunks = points.len().div_ceil(num_points_in_chunk);
         let mut chunk_buffer: Vec<u8> = vec![0; num_points_in_chunk * size_of_single_point];
 
         let target_format = Format::new(self.current_header.point_data_record_format)?;
@@ -662,12 +662,12 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
         } else {
             None
         };
-        raw_header.min_x = std::f64::INFINITY;
-        raw_header.min_y = std::f64::INFINITY;
-        raw_header.min_z = std::f64::INFINITY;
-        raw_header.max_x = std::f64::NEG_INFINITY;
-        raw_header.max_y = std::f64::NEG_INFINITY;
-        raw_header.max_z = std::f64::NEG_INFINITY;
+        raw_header.min_x = f64::INFINITY;
+        raw_header.min_y = f64::INFINITY;
+        raw_header.min_z = f64::INFINITY;
+        raw_header.max_x = f64::NEG_INFINITY;
+        raw_header.max_y = f64::NEG_INFINITY;
+        raw_header.max_z = f64::NEG_INFINITY;
 
         if raw_header.x_scale_factor == 0.0
             || raw_header.y_scale_factor == 0.0
@@ -743,7 +743,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
 
         let size_of_single_point = self.default_layout.size_of_point_entry() as usize;
         let num_points_in_chunk = 50_000;
-        let num_chunks = (points.len() + (num_points_in_chunk - 1)) / num_points_in_chunk;
+        let num_chunks = points.len().div_ceil(num_points_in_chunk);
         let mut chunk_buffer: Vec<u8> = vec![0; num_points_in_chunk * size_of_single_point];
         let mut las_point_buffer: Vec<u8> =
             vec![0; num_points_in_chunk * self.current_header.point_data_record_length as usize];
@@ -911,7 +911,7 @@ impl<T: std::io::Write + std::io::Seek + Send + 'static> RawLAZWriter<T> {
 
         let size_of_single_point = points.point_layout().size_of_point_entry() as usize;
         let num_points_in_chunk = 50_000;
-        let num_chunks = (points.len() + (num_points_in_chunk - 1)) / num_points_in_chunk;
+        let num_chunks = points.len().div_ceil(num_points_in_chunk);
         let mut chunk_buffer: Vec<u8> = vec![0; num_points_in_chunk * size_of_single_point];
         let mut las_point_buffer: Vec<u8> =
             vec![0; num_points_in_chunk * self.current_header.point_data_record_length as usize];

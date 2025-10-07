@@ -1,16 +1,16 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use pasture_core::{
     containers::{
         BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, ColumnarBuffer, HashMapBuffer,
         InterleavedBuffer, VectorBuffer,
     },
-    layout::attributes::POSITION_3D,
     layout::PointType,
+    layout::attributes::POSITION_3D,
     layout::{PointAttributeDefinition, PrimitiveType},
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{distributions::Uniform, thread_rng, Rng};
+use rand::{Rng, distr::Uniform};
 
 #[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]
@@ -39,18 +39,18 @@ struct CustomPointTypeBig {
 fn random_custom_point_small<R: Rng + ?Sized>(rng: &mut R) -> CustomPointTypeSmall {
     CustomPointTypeSmall {
         position: Vector3::new(
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
         ),
-        classification: rng.sample(Uniform::new(0u8, 8)),
+        classification: rng.sample(Uniform::new(0u8, 8).unwrap()),
     }
 }
 
 fn get_dummy_points_custom_format_small_interleaved() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000;
     let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..NUM_POINTS {
         buffer
             .view_mut()
@@ -62,7 +62,7 @@ fn get_dummy_points_custom_format_small_interleaved() -> VectorBuffer {
 fn get_dummy_points_custom_format_small_perattribute() -> HashMapBuffer {
     const NUM_POINTS: usize = 1_000;
     let mut buffer = HashMapBuffer::with_capacity(NUM_POINTS, CustomPointTypeSmall::layout());
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..NUM_POINTS {
         buffer
             .view_mut()

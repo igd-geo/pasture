@@ -1,8 +1,9 @@
 use std::vec;
 
 use pasture_core::{
+    containers::{BorrowedBuffer, BorrowedBufferExt},
     layout::attributes::POSITION_3D,
-    nalgebra::Vector3, containers::{BorrowedBuffer, BorrowedBufferExt},
+    nalgebra::Vector3,
 };
 use rand::Rng;
 use rayon::prelude::*;
@@ -46,16 +47,16 @@ fn distance_point_line(point: &Vector3<f64>, line: &Line) -> f64 {
 /// generates a random plane from three points of the buffer
 fn generate_rng_plane<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Plane {
     // choose three random points from the pointcloud
-    let mut rng = rand::thread_rng();
-    let rand1 = rng.gen_range(0..buffer.len());
-    let mut rand2 = rng.gen_range(0..buffer.len());
+    let mut rng = rand::rng();
+    let rand1 = rng.random_range(0..buffer.len());
+    let mut rand2 = rng.random_range(0..buffer.len());
     while rand1 == rand2 {
-        rand2 = rng.gen_range(0..buffer.len());
+        rand2 = rng.random_range(0..buffer.len());
     }
-    let mut rand3 = rng.gen_range(0..buffer.len());
+    let mut rand3 = rng.random_range(0..buffer.len());
     // make sure we have 3 unique random numbers to generate the plane model
     while rand2 == rand3 || rand1 == rand3 {
-        rand3 = rng.gen_range(0..buffer.len());
+        rand3 = rng.random_range(0..buffer.len());
     }
     let p_a: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(rand1);
     let p_b: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(rand2);
@@ -78,12 +79,12 @@ fn generate_rng_plane<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Plane {
 /// generates a random line from two points of the buffer
 fn generate_rng_line<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Line {
     // choose two random points from the pointcloud
-    let mut rng = rand::thread_rng();
-    let rand1 = rng.gen_range(0..buffer.len());
-    let mut rand2 = rng.gen_range(0..buffer.len());
+    let mut rng = rand::rng();
+    let rand1 = rng.random_range(0..buffer.len());
+    let mut rand2 = rng.random_range(0..buffer.len());
     // make sure we have two unique points
     while rand1 == rand2 {
-        rand2 = rng.gen_range(0..buffer.len());
+        rand2 = rng.random_range(0..buffer.len());
     }
     // generate line from the two points
     Line {
@@ -93,7 +94,10 @@ fn generate_rng_line<'a, T: BorrowedBuffer<'a>>(buffer: &'a T) -> Line {
     }
 }
 
-fn generate_line_model<'a, T: BorrowedBuffer<'a>>(buffer: &'a T, distance_threshold: f64) -> (Line, Vec<usize>) {
+fn generate_line_model<'a, T: BorrowedBuffer<'a>>(
+    buffer: &'a T,
+    distance_threshold: f64,
+) -> (Line, Vec<usize>) {
     // generate random line from three points in the buffer
     let mut curr_hypo = generate_rng_line(buffer);
     let mut curr_positions = vec![];
@@ -114,7 +118,8 @@ fn generate_line_model<'a, T: BorrowedBuffer<'a>>(buffer: &'a T, distance_thresh
     (curr_hypo, curr_positions)
 }
 
-fn generate_plane_model<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
+fn generate_plane_model<'a, T: BorrowedBuffer<'a>>(
+    buffer: &'a T,
     distance_threshold: f64,
 ) -> (Plane, Vec<usize>) {
     // generate random plane from three points in the buffer
@@ -177,7 +182,8 @@ fn generate_plane_model<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
 /// # Panics
 ///
 /// If the size of the buffer is < 3.
-pub fn ransac_plane_par<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
+pub fn ransac_plane_par<'a, T: BorrowedBuffer<'a> + Sync>(
+    buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Plane, Vec<usize>) {
@@ -236,7 +242,8 @@ pub fn ransac_plane_par<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
 /// # Panics
 ///
 /// If the size of the buffer is < 3.
-pub fn ransac_plane_serial<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
+pub fn ransac_plane_serial<'a, T: BorrowedBuffer<'a> + Sync>(
+    buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Plane, Vec<usize>) {
@@ -244,7 +251,7 @@ pub fn ransac_plane_serial<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
         panic!("buffer needs to include at least 3 points to generate a plane.");
     }
     (0..num_of_iterations)
-        .map(|_x| 
+        .map(|_x|
             // generate one model for the current iteration
             generate_plane_model(buffer, distance_threshold))
         // get the best plane-model from all iterations (highest ranking)
@@ -292,7 +299,8 @@ pub fn ransac_plane_serial<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
 /// # Panics
 ///
 /// If the size of the buffer is < 2.
-pub fn ransac_line_par<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
+pub fn ransac_line_par<'a, T: BorrowedBuffer<'a> + Sync>(
+    buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Line, Vec<usize>) {
@@ -302,7 +310,7 @@ pub fn ransac_line_par<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
     // iterate num_of_iterations in parallel
     (0..num_of_iterations)
         .into_par_iter()
-        .map(|_x| 
+        .map(|_x|
             // generate one model for the current iteration
             generate_line_model(buffer, distance_threshold))
         // get the best line-model from all iterations (highest ranking)
@@ -350,7 +358,8 @@ pub fn ransac_line_par<'a, T: BorrowedBuffer<'a> + Sync>(buffer: &'a T,
 /// # Panics
 ///
 /// If the size of the buffer is < 2.
-pub fn ransac_line_serial<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
+pub fn ransac_line_serial<'a, T: BorrowedBuffer<'a>>(
+    buffer: &'a T,
     distance_threshold: f64,
     num_of_iterations: usize,
 ) -> (Line, Vec<usize>) {
@@ -360,8 +369,7 @@ pub fn ransac_line_serial<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
 
     // iterate num_of_iterations in parallel
     (0..num_of_iterations)
-        
-        .map(|_x| 
+        .map(|_x|
             // generate one model for the current iteration
             generate_line_model(buffer, distance_threshold))
         // get the best line-model from all iterations (highest ranking)
@@ -372,8 +380,7 @@ pub fn ransac_line_serial<'a, T: BorrowedBuffer<'a>>(buffer: &'a T,
 #[cfg(test)]
 mod tests {
 
-    use pasture_core::{nalgebra::Vector3, containers::HashMapBuffer,
-    };
+    use pasture_core::{containers::HashMapBuffer, nalgebra::Vector3};
     use pasture_derive::PointType;
 
     use super::*;
@@ -388,7 +395,6 @@ mod tests {
     fn setup_point_cloud() -> HashMapBuffer {
         // generate random points for the pointcloud
         (2..2002)
-            
             .map(|p| {
                 // let mut rng = rand::thread_rng();
                 // generate plane points (along x- and y-axis)

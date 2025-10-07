@@ -1,12 +1,13 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::{cell::RefCell, marker::PhantomData};
 
 use crate::layout::{
-    conversion::{convert_unit, get_converter_for_attributes, AttributeConversionFn},
     PointAttributeDefinition, PointAttributeMember, PointType, PrimitiveType,
+    conversion::{AttributeConversionFn, convert_unit, get_converter_for_attributes},
 };
 
 use super::{
+    OwningBuffer,
     attribute_iterators::{
         AttributeIteratorByMut, AttributeIteratorByRef, AttributeIteratorByValue,
     },
@@ -15,7 +16,6 @@ use super::{
         InterleavedBufferMut,
     },
     point_iterators::{PointIteratorByMut, PointIteratorByRef, PointIteratorByValue},
-    OwningBuffer,
 };
 
 /// A strongly typed view over the point data of a buffer. This allows accessing the point data in
@@ -118,14 +118,14 @@ where
 }
 
 impl<
-        'a,
-        'b,
-        'c,
-        'd,
-        B1: BorrowedBuffer<'a> + ?Sized + 'a,
-        B2: BorrowedBuffer<'c> + ?Sized + 'c,
-        T: PointType + PartialEq,
-    > PartialEq<PointView<'c, 'd, B2, T>> for PointView<'a, 'b, B1, T>
+    'a,
+    'b,
+    'c,
+    'd,
+    B1: BorrowedBuffer<'a> + ?Sized + 'a,
+    B2: BorrowedBuffer<'c> + ?Sized + 'c,
+    T: PointType + PartialEq,
+> PartialEq<PointView<'c, 'd, B2, T>> for PointView<'a, 'b, B1, T>
 {
     fn eq(&self, other: &PointView<'c, 'd, B2, T>) -> bool {
         if self.buffer.len() != other.buffer.len() {
@@ -258,14 +258,14 @@ impl<'a, 'b, B: OwningBuffer<'a> + ?Sized, T: PointType> PointViewMut<'a, 'b, B,
 }
 
 impl<
-        'a,
-        'b,
-        'c,
-        'd,
-        B1: BorrowedMutBuffer<'a> + ?Sized + 'a,
-        B2: BorrowedMutBuffer<'c> + ?Sized + 'c,
-        T: PointType + PartialEq,
-    > PartialEq<PointViewMut<'c, 'd, B2, T>> for PointViewMut<'a, 'b, B1, T>
+    'a,
+    'b,
+    'c,
+    'd,
+    B1: BorrowedMutBuffer<'a> + ?Sized + 'a,
+    B2: BorrowedMutBuffer<'c> + ?Sized + 'c,
+    T: PointType + PartialEq,
+> PartialEq<PointViewMut<'c, 'd, B2, T>> for PointViewMut<'a, 'b, B1, T>
 {
     fn eq(&self, other: &PointViewMut<'c, 'd, B2, T>) -> bool {
         if self.buffer.len() != other.buffer.len() {
@@ -369,14 +369,14 @@ impl<'a, 'b, B: BorrowedBuffer<'a> + ?Sized + 'a, T: PrimitiveType> IntoIterator
 }
 
 impl<
-        'a,
-        'b,
-        'c,
-        'd,
-        B1: BorrowedBuffer<'a> + ?Sized + 'a,
-        B2: BorrowedBuffer<'c> + ?Sized + 'c,
-        T: PrimitiveType + PartialEq,
-    > PartialEq<AttributeView<'c, 'd, B2, T>> for AttributeView<'a, 'b, B1, T>
+    'a,
+    'b,
+    'c,
+    'd,
+    B1: BorrowedBuffer<'a> + ?Sized + 'a,
+    B2: BorrowedBuffer<'c> + ?Sized + 'c,
+    T: PrimitiveType + PartialEq,
+> PartialEq<AttributeView<'c, 'd, B2, T>> for AttributeView<'a, 'b, B1, T>
 {
     fn eq(&self, other: &AttributeView<'c, 'd, B2, T>) -> bool {
         self.buffer.len() == other.buffer.len()
@@ -504,14 +504,14 @@ impl<'a, 'b, B: ColumnarBufferMut<'a> + BorrowedMutBuffer<'a> + ?Sized, T: Primi
 }
 
 impl<
-        'a,
-        'b,
-        'c,
-        'd,
-        B1: BorrowedMutBuffer<'a> + ?Sized + 'a,
-        B2: BorrowedMutBuffer<'c> + ?Sized + 'c,
-        T: PrimitiveType + PartialEq,
-    > PartialEq<AttributeViewMut<'c, 'd, B2, T>> for AttributeViewMut<'a, 'b, B1, T>
+    'a,
+    'b,
+    'c,
+    'd,
+    B1: BorrowedMutBuffer<'a> + ?Sized + 'a,
+    B2: BorrowedMutBuffer<'c> + ?Sized + 'c,
+    T: PrimitiveType + PartialEq,
+> PartialEq<AttributeViewMut<'c, 'd, B2, T>> for AttributeViewMut<'a, 'b, B1, T>
 {
     fn eq(&self, other: &AttributeViewMut<'c, 'd, B2, T>) -> bool {
         self.buffer.len() == other.buffer.len()
@@ -604,14 +604,14 @@ impl<'a, 'b, B: BorrowedBuffer<'a> + ?Sized, T: PrimitiveType> IntoIterator
 }
 
 impl<
-        'a,
-        'b,
-        'c,
-        'd,
-        B1: BorrowedBuffer<'a> + ?Sized + 'a,
-        B2: BorrowedBuffer<'c> + ?Sized + 'c,
-        T: PrimitiveType + PartialEq,
-    > PartialEq<AttributeViewConverting<'c, 'd, B2, T>> for AttributeViewConverting<'a, 'b, B1, T>
+    'a,
+    'b,
+    'c,
+    'd,
+    B1: BorrowedBuffer<'a> + ?Sized + 'a,
+    B2: BorrowedBuffer<'c> + ?Sized + 'c,
+    T: PrimitiveType + PartialEq,
+> PartialEq<AttributeViewConverting<'c, 'd, B2, T>> for AttributeViewConverting<'a, 'b, B1, T>
 {
     fn eq(&self, other: &AttributeViewConverting<'c, 'd, B2, T>) -> bool {
         self.buffer.len() == other.buffer.len()
@@ -652,17 +652,17 @@ impl<'a, 'b, B: BorrowedBuffer<'a> + ?Sized, T: PrimitiveType> Iterator
 #[cfg(test)]
 mod tests {
     use nalgebra::Vector3;
-    use rand::{thread_rng, Rng};
+    use rand::Rng;
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, VectorBuffer},
-        layout::{attributes::POSITION_3D, PointAttributeDataType},
+        layout::{PointAttributeDataType, attributes::POSITION_3D},
         test_utils::*,
     };
 
     #[test]
     fn test_sort_buffer() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let mut test_points = rng
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     fn test_point_views_eq() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let test_points = rng
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
@@ -703,7 +703,7 @@ mod tests {
             buffer2.view_mut::<CustomPointTypeSmall>()
         );
 
-        buffer2 = thread_rng()
+        buffer2 = rand::rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
             .collect();
@@ -719,7 +719,7 @@ mod tests {
 
     #[test]
     fn test_attribute_views_eq() {
-        let rng = thread_rng();
+        let rng = rand::rng();
         let test_points = rng
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
@@ -746,7 +746,7 @@ mod tests {
                 .expect("Invalid attribute conversion"),
         );
 
-        buffer2 = thread_rng()
+        buffer2 = rand::rng()
             .sample_iter::<CustomPointTypeSmall, _>(DefaultPointDistribution)
             .take(10)
             .collect();

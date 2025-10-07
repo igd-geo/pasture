@@ -1,12 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use nalgebra::Vector3;
 use pasture_core::math::AABB;
-use rand::{thread_rng, Rng};
+use rand::Rng as _;
 
 fn gen_random_positions(count: usize) -> Vec<Vector3<f64>> {
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     (0..count)
-        .map(|_| Vector3::new(rng.gen(), rng.gen(), rng.gen()))
+        .map(|_| Vector3::new(rng.random(), rng.random(), rng.random()))
         .collect()
 }
 

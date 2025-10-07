@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufWriter};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use las::Builder;
 use pasture_core::{
     containers::{
@@ -15,7 +15,7 @@ use pasture_io::{
     base::{PointReader, PointWriter},
     las::{LASReader, LASWriter, LasPointFormat0},
 };
-use rand::{distributions::Uniform, thread_rng, Rng};
+use rand::{Rng, distr::Uniform};
 use scopeguard::defer;
 
 const LAS_PATH: &str = "las_bench_file.las";
@@ -33,19 +33,19 @@ struct CustomPointType {
 
 fn random_las_point<R: Rng + ?Sized>(rng: &mut R) -> LasPointFormat0 {
     LasPointFormat0 {
-        classification: rng.sample(Uniform::new(0u8, 8)),
-        edge_of_flight_line: rng.gen(),
-        intensity: rng.gen::<u16>(),
-        number_of_returns: rng.sample(Uniform::new(0u8, 5)),
+        classification: rng.sample(Uniform::new(0u8, 8).unwrap()),
+        edge_of_flight_line: rng.random(),
+        intensity: rng.random(),
+        number_of_returns: rng.sample(Uniform::new(0u8, 5).unwrap()),
         point_source_id: 0,
-        return_number: rng.sample(Uniform::new(0u8, 5)),
+        return_number: rng.sample(Uniform::new(0u8, 5).unwrap()),
         position: Vector3::new(
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
         ),
-        scan_angle_rank: rng.gen::<i8>(),
-        scan_direction_flag: rng.gen(),
+        scan_angle_rank: rng.random(),
+        scan_direction_flag: rng.random(),
         user_data: 0,
     }
 }
@@ -53,18 +53,18 @@ fn random_las_point<R: Rng + ?Sized>(rng: &mut R) -> LasPointFormat0 {
 fn random_custom_point<R: Rng + ?Sized>(rng: &mut R) -> CustomPointType {
     CustomPointType {
         position: Vector3::new(
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
         ),
-        classification: rng.sample(Uniform::new(0u8, 8)),
+        classification: rng.sample(Uniform::new(0u8, 8).unwrap()),
     }
 }
 
 fn get_dummy_points() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000_000;
     let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, LasPointFormat0::layout());
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..NUM_POINTS {
         buffer.view_mut().push_point(random_las_point(&mut rng));
     }
@@ -74,7 +74,7 @@ fn get_dummy_points() -> VectorBuffer {
 fn get_dummy_points_custom_format() -> VectorBuffer {
     const NUM_POINTS: usize = 1_000_000;
     let mut buffer = VectorBuffer::with_capacity(NUM_POINTS, CustomPointType::layout());
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..NUM_POINTS {
         buffer.view_mut().push_point(random_custom_point(&mut rng));
     }

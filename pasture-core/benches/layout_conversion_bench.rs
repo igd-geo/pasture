@@ -1,16 +1,16 @@
 use std::iter::FromIterator;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use nalgebra::Vector3;
 use pasture_core::{
     containers::{
         BorrowedBufferExt, ColumnarBuffer, HashMapBuffer, InterleavedBuffer, MakeBufferFromLayout,
         OwningBuffer, VectorBuffer,
     },
-    layout::{conversion::BufferLayoutConverter, PointType},
+    layout::{PointType, conversion::BufferLayoutConverter},
 };
 use pasture_derive::PointType;
-use rand::{prelude::Distribution, thread_rng, Rng};
+use rand::{Rng, prelude::Distribution};
 
 #[derive(Debug, Copy, Clone, bytemuck::Zeroable, bytemuck::Pod, PointType)]
 #[repr(C, packed)]
@@ -44,13 +44,13 @@ impl Distribution<PointTypeSource> for PointDistribution {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PointTypeSource {
         PointTypeSource {
             position: Vector3::new(
-                rng.gen_range(0.0..1000.0),
-                rng.gen_range(0.0..1000.0),
-                rng.gen_range(0.0..1000.0),
+                rng.random_range(0.0..1000.0),
+                rng.random_range(0.0..1000.0),
+                rng.random_range(0.0..1000.0),
             ),
-            classification: rng.gen(),
-            intensity: rng.gen(),
-            gps_time: rng.gen_range(0.0..1000.0),
+            classification: rng.random(),
+            intensity: rng.random(),
+            gps_time: rng.random_range(0.0..1000.0),
         }
     }
 }
@@ -60,7 +60,7 @@ fn gen_random_points<
 >(
     count: usize,
 ) -> B {
-    thread_rng()
+    rand::rng()
         .sample_iter::<PointTypeSource, _>(PointDistribution)
         .take(count)
         .collect::<B>()

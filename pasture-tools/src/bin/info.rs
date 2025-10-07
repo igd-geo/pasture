@@ -98,7 +98,7 @@ fn analyze_file<R: PointReader + SeekToPoint>(reader: &mut R) -> Result<()> {
     let chunk_size = 1_000_000;
     let mut buffer =
         VectorBuffer::with_capacity(chunk_size, reader.get_default_point_layout().clone());
-    let num_chunks = (total_points + chunk_size - 1) / chunk_size;
+    let num_chunks = total_points.div_ceil(chunk_size);
     //let num_chunks = 4;
 
     // We investigate all builtin attributes, even though not all might be present in the file

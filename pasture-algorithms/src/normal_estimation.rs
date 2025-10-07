@@ -1,5 +1,4 @@
 // The normal estimation algorithm is inspired by the PCL library (https://pointclouds.org/)
-use core::panic;
 use kd_tree::{self, KdPoint, KdTree};
 use num_traits::{self};
 use pasture_core::containers::{
@@ -75,7 +74,6 @@ use std::result::Result;
 /// }
 /// }
 /// ```
-
 pub fn compute_normals<'a, T: BorrowedBuffer<'a>, P: PointType + KdPoint + Copy>(
     point_cloud: &'a T,
     k_nn: usize,
@@ -189,9 +187,7 @@ fn is_finite(point: &Vector3<f64>) -> bool {
 ///         intensity: 84,
 ///     },
 /// ];
-
 /// let interleaved = points.into_iter().collect::<VectorBuffer>();
-
 /// let centroid = compute_centroid(&interleaved);
 ///
 /// ```
@@ -343,7 +339,7 @@ fn solve_polynomial(covariance_matrix: &DMatrix<f64>) -> Vector3<f64> {
         covariance_matrix[(0, 0)] + covariance_matrix[(1, 1)] + covariance_matrix[(2, 2)];
 
     // check if one eigen value solution is zero
-    if coefficient_0.abs() < std::f64::EPSILON {
+    if coefficient_0.abs() < f64::EPSILON {
         solve_polynomial_quadratic(coefficient_2, coefficient_1)
     } else {
         let mut eigen_values = Vector3::<f64>::zeros();

@@ -2,13 +2,13 @@ extern crate proc_macro;
 use std::collections::HashSet;
 
 //use anyhow::{anyhow, bail, Result};
-use layout::{get_struct_member_layout, StructMemberLayout};
+use layout::{StructMemberLayout, get_struct_member_layout};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
 use syn::{
-    parse_macro_input, Attribute, Data, Error, Field, Fields, GenericArgument, Ident, Lit,
-    NestedMeta, PathArguments, Result, Type, TypePath,
+    Attribute, Data, Error, Field, Fields, GenericArgument, Ident, Lit, NestedMeta, PathArguments,
+    Result, Type, TypePath, parse_macro_input,
 };
 
 mod layout;
@@ -175,15 +175,21 @@ fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<Pasture
                     "i32" => Ok(PasturePrimitiveType::Vec3i32),
                     _ => Err(Error::new_spanned(
                         ident,
-                        format!("Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic argument(s) u8, u16, i32, f32 or f64", type_name),
-                    ))
+                        format!(
+                            "Vector3<{}> is no valid Pasture primitive type. Vector3 is supported, but only for generic argument(s) u8, u16, i32, f32 or f64",
+                            type_name
+                        ),
+                    )),
                 },
                 "Vector4" => match type_name.as_str() {
                     "u8" => Ok(PasturePrimitiveType::Vec4u8),
                     _ => Err(Error::new_spanned(
                         ident,
-                        format!("Vector4<{}> is no valid Pasture primitive type. Vector4 is supported, but only for generic argument(s) u8", type_name),
-                    ))
+                        format!(
+                            "Vector4<{}> is no valid Pasture primitive type. Vector4 is supported, but only for generic argument(s) u8",
+                            type_name
+                        ),
+                    )),
                 },
                 _ => Err(Error::new_spanned(ident, "Invalid type")),
             }
@@ -355,12 +361,12 @@ fn calculate_offsets_and_alignment(
             return Err(Error::new_spanned(
                 ident,
                 "#[derive(PointType)] is only valid for structs",
-            ))
+            ));
         }
     };
     let struct_layout = get_struct_member_layout(type_attributes, struct_data)?;
 
-    let mut current_offset = 0;
+    let mut current_offset = 0u64;
     let mut max_alignment = 1;
     let mut offsets = vec![];
     for field in fields {
@@ -372,7 +378,7 @@ fn calculate_offsets_and_alignment(
         };
         max_alignment = std::cmp::max(min_alignment, max_alignment);
 
-        let aligned_offset = ((current_offset + min_alignment - 1) / min_alignment) * min_alignment;
+        let aligned_offset = current_offset.div_ceil(min_alignment) * min_alignment;
         offsets.push(aligned_offset);
         current_offset = aligned_offset + field.primitive_type.size();
     }
@@ -461,7 +467,7 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
         }
     });
 
-    let gen = quote! {
+    let res = quote! {
         impl pasture_core::layout::PointType for #name {
             fn layout() -> pasture_core::layout::PointLayout {
                 pasture_core::layout::PointLayout::from_members_and_alignment(&[
@@ -471,5 +477,5 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
         }
     };
 
-    gen.into()
+    res.into()
 }

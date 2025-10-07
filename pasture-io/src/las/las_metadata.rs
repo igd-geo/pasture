@@ -707,7 +707,7 @@ impl TryFrom<&'_ Vlr> for ExtraBytesVlr {
             ));
         }
 
-        if value.data.len() % RAW_EXTRA_BYTES_ENTRY_SIZE != 0 {
+        if !value.data.len().is_multiple_of(RAW_EXTRA_BYTES_ENTRY_SIZE) {
             bail!("VLR data size ({} bytes) is not a multiple of the size of an EXTRA_BYTES entry ({} bytes)", value.data.len(), RAW_EXTRA_BYTES_ENTRY_SIZE);
         }
 
@@ -733,7 +733,7 @@ impl TryInto<Vlr> for &ExtraBytesVlr {
                 bytemuck::bytes_of(&raw_entry).to_owned()
             })
             .collect::<Vec<_>>();
-        assert!(entries.len() % RAW_EXTRA_BYTES_ENTRY_SIZE == 0);
+        assert!(entries.len().is_multiple_of(RAW_EXTRA_BYTES_ENTRY_SIZE));
 
         let mut raw_vlr = las_rs::raw::Vlr::default();
         write_rust_string_into_las_ascii_array("LASF_Spec", &mut raw_vlr.user_id);

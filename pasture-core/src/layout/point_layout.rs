@@ -731,7 +731,7 @@ impl PointLayout {
 
         let mut unaligned_ranges = attributes
             .iter()
-            .map(|a| (a.offset()..(a.offset() + a.size())))
+            .map(|a| a.offset()..(a.offset() + a.size()))
             .collect::<Vec<_>>();
         unaligned_ranges.sort_by(|a, b| a.start.cmp(&b.start));
         for next_idx in 1..unaligned_ranges.len() {
@@ -1077,7 +1077,7 @@ mod tests {
             memory_layout: Layout::from_size_align(20, 4).unwrap(),
         };
         let serialized = serde_json::to_value(original_value.clone()).unwrap();
-        let expected = json!({
+        let expected = serde_json::json!({
             "attributes": [],
             "memory_layout": {
                 "align": 4,

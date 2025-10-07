@@ -4,8 +4,8 @@ use pasture_core::layout::conversion::BufferLayoutConverter;
 use pasture_core::layout::{PointAttributeDataType, PointType};
 use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;
+use rand::Rng;
 use rand::prelude::Distribution;
-use rand::{thread_rng, Rng};
 
 #[derive(Copy, Clone, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]
@@ -23,15 +23,15 @@ struct PointDistribution;
 impl Distribution<SourcePointType> for PointDistribution {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SourcePointType {
         SourcePointType {
-            position: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
-            classification: rng.gen(),
-            color: Vector3::new(rng.gen(), rng.gen(), rng.gen()),
+            position: Vector3::new(rng.random(), rng.random(), rng.random()),
+            classification: rng.random(),
+            color: Vector3::new(rng.random(), rng.random(), rng.random()),
         }
     }
 }
 
 fn gen_random_source_points(count: usize) -> impl Iterator<Item = SourcePointType> {
-    let rng = thread_rng();
+    let rng = rand::rng();
     rng.sample_iter::<SourcePointType, _>(PointDistribution)
         .take(count)
 }

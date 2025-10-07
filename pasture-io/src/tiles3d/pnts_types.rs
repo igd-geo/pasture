@@ -15,7 +15,7 @@ pub mod attributes {
 }
 
 /// Header of .pnts files
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PntsHeader {
     pub magic: [u8; 4],
