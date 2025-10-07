@@ -6,7 +6,7 @@ use pasture_core::{
     containers::{
         BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, OwningBuffer,
     },
-    layout::{attributes, FieldAlignment, PointAttributeDataType, PointAttributeDefinition},
+    layout::{FieldAlignment, PointAttributeDataType, PointAttributeDefinition, attributes},
     math::AABB,
     nalgebra::{Point3, Vector3},
 };

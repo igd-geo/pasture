@@ -4,7 +4,7 @@ use num_traits::{self};
 use pasture_core::containers::{
     BorrowedBuffer, BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, OwningBuffer,
 };
-use pasture_core::layout::{attributes::POSITION_3D, PointType};
+use pasture_core::layout::{PointType, attributes::POSITION_3D};
 use pasture_core::nalgebra::{DMatrix, Vector3};
 use std::result::Result;
 
@@ -290,7 +290,9 @@ fn compute_covariance_matrix<'a, T: BorrowedBuffer<'a>>(
     }
 
     if point_count < 3 {
-        return Err("The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!");
+        return Err(
+            "The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!",
+        );
     }
 
     covariance_matrix[(1, 0)] = covariance_matrix[(0, 1)];
@@ -569,7 +571,9 @@ mod tests {
         let interleaved = points.into_iter().collect::<VectorBuffer>();
 
         let result = compute_covariance_matrix(&interleaved);
-        let expected_result = Err("The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!");
+        let expected_result = Err(
+            "The number of valid (finite and non-NaN values) points in a k nearest neighborhood is not enough to span a plane!",
+        );
         assert_eq!(result, expected_result);
     }
 

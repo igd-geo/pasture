@@ -12,9 +12,9 @@ use pasture_core::{
         OwningBuffer, OwningBufferExt,
     },
     layout::{
-        attributes::{COLOR_RGB, NORMAL, POSITION_3D},
-        conversion::{get_converter_for_attributes, AttributeConversionFn},
         FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout,
+        attributes::{COLOR_RGB, NORMAL, POSITION_3D},
+        conversion::{AttributeConversionFn, get_converter_for_attributes},
     },
     math::Alignable,
     nalgebra::Vector3,
@@ -24,7 +24,7 @@ use serde_json::json;
 use crate::{
     base::PointWriter,
     tiles3d::{
-        attributes::COLOR_RGBA, ser_batch_table_header, ser_feature_table_header, PntsHeader,
+        PntsHeader, attributes::COLOR_RGBA, ser_batch_table_header, ser_feature_table_header,
     },
 };
 
@@ -335,7 +335,9 @@ impl<W: Write + Seek> PntsWriter<W> {
 impl<W: Write + Seek> PointWriter for PntsWriter<W> {
     fn write<'a, B: BorrowedBuffer<'a>>(&mut self, points: &'a B) -> Result<()> {
         if points.point_layout() != &self.expected_layout {
-            panic!("PointLayout of buffer does not match the PointLayout that this PntsReader was constructed with! Make sure that you only pass PointBuffers with the same layout as the one you used to create this PntsWriter!");
+            panic!(
+                "PointLayout of buffer does not match the PointLayout that this PntsReader was constructed with! Make sure that you only pass PointBuffers with the same layout as the one you used to create this PntsWriter!"
+            );
         }
 
         if points.point_layout() == self.cached_points.point_layout() {

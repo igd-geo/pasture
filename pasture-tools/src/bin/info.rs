@@ -5,6 +5,7 @@ use clap::{App, Arg};
 use pasture_algorithms::minmax::minmax_attribute;
 use pasture_core::{
     containers::{BorrowedBuffer, OwningBuffer, VectorBuffer},
+    layout::PointLayout,
     layout::attributes::NIR,
     layout::attributes::NUMBER_OF_RETURNS,
     layout::attributes::POINT_SOURCE_ID,
@@ -15,7 +16,6 @@ use pasture_core::{
     layout::attributes::{
         CLASSIFICATION, COLOR_RGB, EDGE_OF_FLIGHT_LINE, GPS_TIME, INTENSITY, POSITION_3D,
     },
-    layout::PointLayout,
     math::MinMax,
     nalgebra::Vector3,
 };

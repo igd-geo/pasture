@@ -6,8 +6,8 @@ use pasture_core::{
         InterleavedBufferMut, OwningBuffer, VectorBuffer,
     },
     layout::{
-        attributes::{INTENSITY, POSITION_3D},
         PointType,
+        attributes::{INTENSITY, POSITION_3D},
     },
 };
 use pasture_derive::PointType;

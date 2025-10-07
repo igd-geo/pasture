@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use pasture_core::{
     containers::{BorrowedBuffer, BorrowedBufferExt, VectorBuffer},
     layout::attributes::POSITION_3D,

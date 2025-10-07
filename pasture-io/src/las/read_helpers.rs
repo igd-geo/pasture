@@ -5,7 +5,7 @@ use byteorder::{NativeEndian, ReadBytesExt};
 use pasture_core::{
     layout::attributes,
     layout::conversion::get_converter_for_attributes,
-    layout::{conversion::AttributeConversionFn, PointAttributeMember, PointLayout, PrimitiveType},
+    layout::{PointAttributeMember, PointLayout, PrimitiveType, conversion::AttributeConversionFn},
     nalgebra::Vector3,
 };
 

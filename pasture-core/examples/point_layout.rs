@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use pasture_core::containers::{BorrowedMutBufferExt, MakeBufferFromLayout, VectorBuffer};
 use pasture_core::layout::{
-    attributes, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
+    PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType, attributes,
 };
 use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;

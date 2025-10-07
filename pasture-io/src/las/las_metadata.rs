@@ -7,11 +7,11 @@ use std::{
     path::Path,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use bitfield::bitfield;
 use chrono::Datelike;
 use las::{Bounds, Header};
-use las_rs::{point::Format, raw::vlr::RecordLength, Vector, Vlr};
+use las_rs::{Vector, Vlr, point::Format, raw::vlr::RecordLength};
 use pasture_core::{
     layout::{PointAttributeDataType, PointAttributeDefinition},
     math::AABB,
@@ -115,7 +115,10 @@ impl TryFrom<&Vlr> for ClassificationLookup {
         }
         let expected_length: usize = 256 * 16;
         if value.data.len() != expected_length {
-            return Err(anyhow!("Classification lookup VLR is defined to have a size of {expected_length} bytes, but got {} bytes instead", value.data.len()));
+            return Err(anyhow!(
+                "Classification lookup VLR is defined to have a size of {expected_length} bytes, but got {} bytes instead",
+                value.data.len()
+            ));
         }
 
         #[repr(C)]
@@ -708,7 +711,11 @@ impl TryFrom<&'_ Vlr> for ExtraBytesVlr {
         }
 
         if !value.data.len().is_multiple_of(RAW_EXTRA_BYTES_ENTRY_SIZE) {
-            bail!("VLR data size ({} bytes) is not a multiple of the size of an EXTRA_BYTES entry ({} bytes)", value.data.len(), RAW_EXTRA_BYTES_ENTRY_SIZE);
+            bail!(
+                "VLR data size ({} bytes) is not a multiple of the size of an EXTRA_BYTES entry ({} bytes)",
+                value.data.len(),
+                RAW_EXTRA_BYTES_ENTRY_SIZE
+            );
         }
 
         let raw_entries: &[RawExtraBytesEntry] = bytemuck::cast_slice(&value.data);

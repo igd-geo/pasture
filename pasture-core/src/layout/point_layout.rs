@@ -738,7 +738,9 @@ impl PointLayout {
             let this_range = &unaligned_ranges[next_idx - 1];
             let next_range = &unaligned_ranges[next_idx];
             if this_range.end > next_range.start {
-                panic!("PointLayout::from_attributes_and_offsets: All attributes must span non-overlapping memory regions!")
+                panic!(
+                    "PointLayout::from_attributes_and_offsets: All attributes must span non-overlapping memory regions!"
+                )
             }
         }
 
@@ -1037,8 +1039,8 @@ impl FromIterator<PointAttributeDefinition> for PointLayout {
 mod tests {
     use super::*;
     use crate::layout::{
-        attributes::{COLOR_RGB, INTENSITY, POSITION_3D},
         PointType,
+        attributes::{COLOR_RGB, INTENSITY, POSITION_3D},
     };
     use pasture_derive::PointType;
 

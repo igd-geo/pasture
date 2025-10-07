@@ -394,3 +394,14 @@ fn test_las_laz_readers_are_equivalent() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_read_weird_laz_file() {
+    let file = include_bytes!("../resources/test/failing.laz");
+    let cursor = Cursor::new(file.as_ref());
+    let mut reader = LASReader::from_read(cursor, true, false).unwrap();
+    let points = reader
+        .read::<VectorBuffer>(reader.remaining_points())
+        .unwrap();
+    assert_eq!(!points.is_empty());
+}

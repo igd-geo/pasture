@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use pasture_core::math::Alignable;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -44,7 +44,9 @@ impl TryFrom<Value> for BatchTableEntry {
             return Ok(BatchTableEntry::DataReference(data_reference));
         }
 
-        bail!("JSON value cannot be converted to BatchTableEntry because it is neither an array nor an object")
+        bail!(
+            "JSON value cannot be converted to BatchTableEntry because it is neither an array nor an object"
+        )
     }
 }
 
@@ -61,7 +63,9 @@ impl TryFrom<&Value> for BatchTableEntry {
             return Ok(BatchTableEntry::DataReference(data_reference));
         }
 
-        bail!("JSON value cannot be converted to BatchTableEntry because it is neither an array nor an object")
+        bail!(
+            "JSON value cannot be converted to BatchTableEntry because it is neither an array nor an object"
+        )
     }
 }
 

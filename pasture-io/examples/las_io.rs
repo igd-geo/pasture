@@ -1,12 +1,12 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use pasture_core::{
     containers::{BorrowedBuffer, BorrowedBufferExt, HashMapBuffer, VectorBuffer},
-    layout::{attributes::POSITION_3D, PointLayout},
+    layout::{PointLayout, attributes::POSITION_3D},
     nalgebra::Vector3,
 };
 use pasture_io::{
     base::PointReader,
-    las::{LASReader, ATTRIBUTE_LOCAL_LAS_POSITION},
+    las::{ATTRIBUTE_LOCAL_LAS_POSITION, LASReader},
 };
 
 fn main() -> Result<()> {

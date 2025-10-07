@@ -1,26 +1,26 @@
 use std::{borrow::Cow, collections::HashSet};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use las::point::Format;
 use lazy_static::lazy_static;
 use pasture_core::{
     layout::attributes,
     layout::{
+        FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
         attributes::{
             CLASSIFICATION, CLASSIFICATION_FLAGS, COLOR_RGB, EDGE_OF_FLIGHT_LINE, GPS_TIME,
             INTENSITY, NIR, NUMBER_OF_RETURNS, POINT_SOURCE_ID, POSITION_3D, RETURN_NUMBER,
-            RETURN_POINT_WAVEFORM_LOCATION, SCANNER_CHANNEL, SCAN_ANGLE, SCAN_ANGLE_RANK,
-            SCAN_DIRECTION_FLAG, USER_DATA, WAVEFORM_DATA_OFFSET, WAVEFORM_PACKET_SIZE,
-            WAVEFORM_PARAMETERS, WAVE_PACKET_DESCRIPTOR_INDEX,
+            RETURN_POINT_WAVEFORM_LOCATION, SCAN_ANGLE, SCAN_ANGLE_RANK, SCAN_DIRECTION_FLAG,
+            SCANNER_CHANNEL, USER_DATA, WAVE_PACKET_DESCRIPTOR_INDEX, WAVEFORM_DATA_OFFSET,
+            WAVEFORM_PACKET_SIZE, WAVEFORM_PARAMETERS,
         },
-        FieldAlignment, PointAttributeDataType, PointAttributeDefinition, PointLayout, PointType,
     },
 };
 
 use super::{
-    LASMetadata, LasPointFormat0, LasPointFormat1, LasPointFormat10, LasPointFormat2,
-    LasPointFormat3, LasPointFormat4, LasPointFormat5, LasPointFormat6, LasPointFormat7,
-    LasPointFormat8, LasPointFormat9,
+    LASMetadata, LasPointFormat0, LasPointFormat1, LasPointFormat2, LasPointFormat3,
+    LasPointFormat4, LasPointFormat5, LasPointFormat6, LasPointFormat7, LasPointFormat8,
+    LasPointFormat9, LasPointFormat10,
 };
 
 /// Returns the offset to the first extra byte in the given LAS point format. Returns `None` if the format

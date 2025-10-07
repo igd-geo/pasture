@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use pasture_core::{containers::BorrowedMutBuffer, layout::PointLayout};
 
 // use crate::las::{LASReader, LASWriter};

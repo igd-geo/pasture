@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 // This enum maps the different entrys on an ascii file to later map these entries to the corresponding attribute.
 #[derive(Debug)]
 pub(crate) enum PointDataType {
