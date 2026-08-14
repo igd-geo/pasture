@@ -380,11 +380,7 @@ fn compare_attribute<
         .view_attribute_with_conversion::<T>(attribute)
         .expect("Invalid attribute type");
     assert_eq!(buffer1.len(), buffer2.len());
-    for (idx, (a1, a2)) in attributes1
-        .into_iter()
-        .zip(attributes2.into_iter())
-        .enumerate()
-    {
+    for (idx, (a1, a2)) in attributes1.into_iter().zip(attributes2).enumerate() {
         assert_eq!(
             a1,
             a2,

@@ -60,7 +60,7 @@ where
         for (idx, (expected_point, actual_point)) in expected_points
             .view::<T>()
             .into_iter()
-            .zip(actual_data.view::<T>().into_iter())
+            .zip(actual_data.view::<T>())
             .enumerate()
         {
             assert_eq!(expected_point, actual_point, "Point {idx} does not match");

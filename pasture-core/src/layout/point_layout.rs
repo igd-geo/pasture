@@ -767,7 +767,7 @@ impl PointLayout {
             .iter()
             .map(|a| a.offset()..(a.offset() + a.size()))
             .collect::<Vec<_>>();
-        unaligned_ranges.sort_by(|a, b| a.start.cmp(&b.start));
+        unaligned_ranges.sort_by_key(|a| a.start);
         for next_idx in 1..unaligned_ranges.len() {
             let this_range = &unaligned_ranges[next_idx - 1];
             let next_range = &unaligned_ranges[next_idx];

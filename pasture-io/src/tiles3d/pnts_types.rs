@@ -39,7 +39,7 @@ impl PntsHeader {
         batch_table_binary_byte_length: u32,
     ) -> Self {
         Self {
-            magic: [b'p', b'n', b't', b's'],
+            magic: *b"pnts",
             version,
             byte_length,
             feature_table_json_byte_length,
@@ -51,7 +51,7 @@ impl PntsHeader {
 
     /// Returns an Err if the magic bytes in this header are not correct
     pub fn verify_magic(&self) -> Result<()> {
-        if self.magic != [b'p', b'n', b't', b's'] {
+        if self.magic != *b"pnts" {
             bail!(
                 "No valid PNTS file, expected first four bytes to be equal to 'pnts', but was '{:?}' instead",
                 self.magic
