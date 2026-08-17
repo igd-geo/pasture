@@ -1,4 +1,7 @@
+use std::io::{Read, Write};
+
 use anyhow::{Result, bail};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 
 pub mod attributes {
@@ -58,5 +61,37 @@ impl PntsHeader {
             );
         }
         Ok(())
+    }
+
+    pub fn write_to(&self, write: &mut impl Write) -> Result<()> {
+        write.write_all(&self.magic)?;
+        write.write_u32::<LittleEndian>(self.version)?;
+        write.write_u32::<LittleEndian>(self.byte_length)?;
+        write.write_u32::<LittleEndian>(self.feature_table_json_byte_length)?;
+        write.write_u32::<LittleEndian>(self.feature_table_binary_byte_length)?;
+        write.write_u32::<LittleEndian>(self.batch_table_json_byte_length)?;
+        write.write_u32::<LittleEndian>(self.batch_table_binary_byte_length)?;
+        Ok(())
+    }
+
+    pub fn read_from(read: &mut impl Read) -> Result<Self> {
+        let mut magic: [u8; 4] = [0; 4];
+        read.read_exact(&mut magic)?;
+        let version = read.read_u32::<LittleEndian>()?;
+        let byte_length = read.read_u32::<LittleEndian>()?;
+        let feature_table_json_byte_length = read.read_u32::<LittleEndian>()?;
+        let feature_table_binary_byte_length = read.read_u32::<LittleEndian>()?;
+        let batch_table_json_byte_length = read.read_u32::<LittleEndian>()?;
+        let batch_table_binary_byte_length = read.read_u32::<LittleEndian>()?;
+
+        Ok(PntsHeader {
+            magic,
+            version,
+            byte_length,
+            feature_table_binary_byte_length,
+            feature_table_json_byte_length,
+            batch_table_json_byte_length,
+            batch_table_binary_byte_length,
+        })
     }
 }

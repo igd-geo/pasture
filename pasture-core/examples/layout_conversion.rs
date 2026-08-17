@@ -5,7 +5,7 @@ use pasture_core::layout::{PointAttributeDataType, PointType};
 use pasture_core::nalgebra::Vector3;
 use pasture_derive::PointType;
 use rand::prelude::Distribution;
-use rand::{Rng, rng};
+use rand::{Rng, RngExt, rng};
 
 #[derive(Copy, Clone, PointType, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]

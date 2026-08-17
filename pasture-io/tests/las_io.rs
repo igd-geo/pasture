@@ -20,7 +20,7 @@ use pasture_io::{
         LasPointFormat9, LasPointFormat10, is_known_las_attribute,
     },
 };
-use rand::{Rng, prelude::Distribution, thread_rng};
+use rand::{Rng, RngExt, prelude::Distribution};
 
 use crate::common::compare_attributes_dynamically_typed;
 
@@ -33,7 +33,7 @@ fn write_large_file<T: PointType + PartialEq + std::fmt::Debug>(
 where
     TestLASPointDistribution: Distribution<T>,
 {
-    let rng = thread_rng();
+    let rng = rand::rng();
     let expected_points = rng
         .sample_iter::<T, _>(TestLASPointDistribution)
         .take(count)
@@ -85,22 +85,22 @@ impl Distribution<PointTypeWithUnsupportedAttribute> for TestLASPointDistributio
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PointTypeWithUnsupportedAttribute {
         PointTypeWithUnsupportedAttribute {
             position: Vector3::new(
-                rng.gen_range(-1000..1000) as f64,
-                rng.gen_range(-1000..1000) as f64,
-                rng.gen_range(-1000..1000) as f64,
+                rng.random_range(-1000..1000) as f64,
+                rng.random_range(-1000..1000) as f64,
+                rng.random_range(-1000..1000) as f64,
             ),
             normal: Vector3::new(
-                rng.gen_range(-1.0..1.0),
-                rng.gen_range(-1.0..1.0),
-                rng.gen_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
             ),
-            classification: rng.r#gen(),
+            classification: rng.random(),
         }
     }
 }
 
 fn write_large_file_with_unsupported_attribute(count: usize, compressed: bool) -> Result<()> {
-    let rng = thread_rng();
+    let rng = rand::rng();
     let expected_points = rng
         .sample_iter::<PointTypeWithUnsupportedAttribute, _>(TestLASPointDistribution)
         .take(count)
@@ -177,19 +177,19 @@ impl Distribution<ComplexPointTypeWithConversions> for TestLASPointDistribution 
         // can perform comparisons on the data after reading it from LAS without any precision loss
         ComplexPointTypeWithConversions {
             position: Vector3::new(
-                rng.gen_range(-1000..1000) as f32,
-                rng.gen_range(-1000..1000) as f32,
-                rng.gen_range(-1000..1000) as f32,
+                rng.random_range(-1000..1000) as f32,
+                rng.random_range(-1000..1000) as f32,
+                rng.random_range(-1000..1000) as f32,
             ),
-            classification: rng.gen_range(0..=255) as u16,
+            classification: rng.random_range(0..=255) as u16,
             color: Vector3::new(
-                rng.gen_range(0..32000) as f64,
-                rng.gen_range(0..32000) as f64,
-                rng.gen_range(0..32000) as f64,
+                rng.random_range(0..32000) as f64,
+                rng.random_range(0..32000) as f64,
+                rng.random_range(0..32000) as f64,
             ),
-            gps_time: rng.r#gen(),
-            intensity: rng.gen_range(0..32000) as i64,
-            user_data: rng.gen_range(0..=255),
+            gps_time: rng.random(),
+            intensity: rng.random_range(0..32000) as i64,
+            user_data: rng.random_range(0..=255),
         }
     }
 }
@@ -203,7 +203,7 @@ fn write_large_file_with_custom_format<T: PointType + PartialEq + std::fmt::Debu
 where
     TestLASPointDistribution: Distribution<T>,
 {
-    let rng = thread_rng();
+    let rng = rand::rng();
     let expected_points = rng
         .sample_iter::<T, _>(TestLASPointDistribution)
         .take(count)
@@ -352,7 +352,7 @@ fn test_write_large_file_with_custom_format() -> Result<()> {
 #[test]
 fn test_las_laz_readers_are_equivalent() -> Result<()> {
     // Test that writing and reading points as LAS and as LAZ gives the same result
-    let rng = thread_rng();
+    let rng = rand::rng();
     let expected_points = rng
         .sample_iter::<LasPointFormat0, _>(TestLASPointDistribution)
         .take(345)

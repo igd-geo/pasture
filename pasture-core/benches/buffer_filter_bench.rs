@@ -7,7 +7,7 @@ use pasture_core::containers::{
     BorrowedBuffer, HashMapBuffer, InterleavedBufferMut, OwningBuffer, VectorBuffer,
 };
 use pasture_derive::PointType;
-use rand::{Rng, distr::StandardUniform, prelude::Distribution, rng};
+use rand::{RngExt, distr::StandardUniform, prelude::Distribution, rng};
 
 #[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]

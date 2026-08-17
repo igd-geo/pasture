@@ -5,7 +5,7 @@ use pasture_core::{
     layout::attributes::POSITION_3D,
     nalgebra::Vector3,
 };
-use rand::Rng;
+use rand::RngExt;
 use rayon::prelude::*;
 
 /// Represents a line between two points
@@ -47,16 +47,16 @@ fn distance_point_line(point: &Vector3<f64>, line: &Line) -> f64 {
 /// generates a random plane from three points of the buffer
 fn generate_rng_plane<T: BorrowedBuffer>(buffer: &T) -> Plane {
     // choose three random points from the pointcloud
-    let mut rng = rand::thread_rng();
-    let rand1 = rng.gen_range(0..buffer.len());
-    let mut rand2 = rng.gen_range(0..buffer.len());
+    let mut rng = rand::rng();
+    let rand1 = rng.random_range(0..buffer.len());
+    let mut rand2 = rng.random_range(0..buffer.len());
     while rand1 == rand2 {
-        rand2 = rng.gen_range(0..buffer.len());
+        rand2 = rng.random_range(0..buffer.len());
     }
-    let mut rand3 = rng.gen_range(0..buffer.len());
+    let mut rand3 = rng.random_range(0..buffer.len());
     // make sure we have 3 unique random numbers to generate the plane model
     while rand2 == rand3 || rand1 == rand3 {
-        rand3 = rng.gen_range(0..buffer.len());
+        rand3 = rng.random_range(0..buffer.len());
     }
     let p_a: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(rand1);
     let p_b: Vector3<f64> = buffer.view_attribute(&POSITION_3D).at(rand2);
@@ -79,12 +79,12 @@ fn generate_rng_plane<T: BorrowedBuffer>(buffer: &T) -> Plane {
 /// generates a random line from two points of the buffer
 fn generate_rng_line<T: BorrowedBuffer>(buffer: &T) -> Line {
     // choose two random points from the pointcloud
-    let mut rng = rand::thread_rng();
-    let rand1 = rng.gen_range(0..buffer.len());
-    let mut rand2 = rng.gen_range(0..buffer.len());
+    let mut rng = rand::rng();
+    let rand1 = rng.random_range(0..buffer.len());
+    let mut rand2 = rng.random_range(0..buffer.len());
     // make sure we have two unique points
     while rand1 == rand2 {
-        rand2 = rng.gen_range(0..buffer.len());
+        rand2 = rng.random_range(0..buffer.len());
     }
     // generate line from the two points
     Line {
@@ -399,7 +399,7 @@ mod tests {
                 // let mut rng = rand::thread_rng();
                 // generate plane points (along x- and y-axis)
                 let mut point = SimplePoint {
-                    // position: Vector3::new(rng.gen_range(0.0..100.0), rng.gen_range(0.0..100.0), 1.0),
+                    // position: Vector3::new(rng.random_range(0.0..100.0), rng.random_range(0.0..100.0), 1.0),
                     position: Vector3::new(p as f64, (p * p) as f64, 1.0),
                 };
                 // generate z-axis points for the line

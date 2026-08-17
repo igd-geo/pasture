@@ -12,7 +12,7 @@ use pasture_core::{
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{Rng, distr::Uniform, rng};
+use rand::{Rng, RngExt, distr::Uniform, rng};
 
 #[derive(PointType, Default, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]

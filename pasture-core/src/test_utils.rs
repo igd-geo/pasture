@@ -1,6 +1,6 @@
 use nalgebra::Vector3;
 use pasture_derive::PointType;
-use rand::prelude::Distribution;
+use rand::{RngExt, prelude::Distribution};
 
 #[derive(
     PointType, Default, Copy, Clone, PartialEq, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit,

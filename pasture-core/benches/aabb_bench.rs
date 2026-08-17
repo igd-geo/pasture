@@ -3,7 +3,7 @@ use std::hint::black_box;
 use criterion::{Criterion, criterion_group, criterion_main};
 use nalgebra::Vector3;
 use pasture_core::math::AABB;
-use rand::{Rng, rng};
+use rand::{RngExt, rng};
 
 fn gen_random_positions(count: usize) -> Vec<Vector3<f64>> {
     let mut rng = rng();

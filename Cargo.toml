@@ -1,5 +1,11 @@
 [workspace]
-members = ["pasture-core", "pasture-io", "pasture-tools", "pasture-derive", "pasture-algorithms"]
+members = [
+    "pasture-core",
+    "pasture-io",
+    "pasture-tools",
+    "pasture-derive",
+    "pasture-algorithms",
+]
 resolver = "2"
 
 [patch.crates-io]
@@ -11,6 +17,6 @@ chrono = { git = 'https://github.com/chronotope/chrono', branch = 'main' }
 debug = true
 
 [workspace.dependencies]
-nalgebra = "0.34.1"
+nalgebra = "0.35.0"
 anyhow = "1.0.100"
-bytemuck = {version = "1.23.2", features = ["derive"] }
+bytemuck = { version = "1.23.2", features = ["derive"] }

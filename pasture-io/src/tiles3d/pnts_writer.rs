@@ -211,8 +211,7 @@ impl<W: Write + Seek> PntsWriter<W> {
                 .expect("Size of BatchTable binary body exceeds maximum size of 4GiB!"),
         );
 
-        bincode::serialize_into(&mut self.writer, &pnts_header)
-            .context("Error while serializing .pnts header")?;
+        pnts_header.write_to(&mut self.writer)?;
         self.writer
             .write(feature_table_blob.as_slice())
             .context("Error while writing FeatureTable header")?;

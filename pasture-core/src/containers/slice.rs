@@ -831,7 +831,7 @@ impl_slice_buffer_mut_for_trait_object! {ColumnarBufferMut, BufferSliceColumnarM
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, rng};
+    use rand::{RngExt, rng};
 
     use crate::{
         containers::{HashMapBuffer, VectorBuffer},

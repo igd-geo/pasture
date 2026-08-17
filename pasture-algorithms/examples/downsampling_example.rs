@@ -4,7 +4,7 @@ use pasture_core::{
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{Rng, prelude::ThreadRng};
+use rand::{RngExt, prelude::ThreadRng};
 
 #[repr(C, packed)]
 #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
@@ -54,53 +54,61 @@ pub struct SimplePoint {
 }
 
 fn _generate_vec3f32(rng: &mut ThreadRng) -> Vector3<f32> {
-    Vector3::new(rng.gen_range(-30.0..10.0), rng.gen_range(-11.1..10.0), 31.0)
+    Vector3::new(
+        rng.random_range(-30.0..10.0),
+        rng.random_range(-11.1..10.0),
+        31.0,
+    )
 }
 fn generate_vec3f64(rng: &mut ThreadRng) -> Vector3<f64> {
-    Vector3::new(rng.gen_range(0.0..10.0), rng.gen_range(0.0..10.0), 1.0)
+    Vector3::new(
+        rng.random_range(0.0..10.0),
+        rng.random_range(0.0..10.0),
+        1.0,
+    )
 }
 fn generate_vec3u16(rng: &mut ThreadRng) -> Vector3<u16> {
-    Vector3::new(rng.gen_range(11..120), rng.gen_range(11..120), 42)
+    Vector3::new(rng.random_range(11..120), rng.random_range(11..120), 42)
 }
 
 fn main() {
     //generate random points for the pointcloud
     let buffer = (0..100000)
         .map(|p| {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             //generate plane points (along x- and y-axis)
             let mut point = SimplePoint {
                 position: generate_vec3f64(&mut rng),
-                intensity: rng.gen_range(200..800),
-                return_number: rng.gen_range(20..80),
-                num_of_returns: rng.gen_range(20..80),
-                classification_flags: rng.gen_range(7..20),
-                scanner_channel: rng.gen_range(7..20),
-                scan_dir_flag: rng.gen_range(0..47),
-                edge_of_flight_line: rng.gen_range(0..81),
-                classification: rng.gen_range(121..200),
-                scan_angle_rank: rng.gen_range(-121..20),
-                scan_angle: rng.gen_range(-21..8),
-                user_data: rng.gen_range(1..8),
-                point_source_id: rng.gen_range(9..89),
+                intensity: rng.random_range(200..800),
+                return_number: rng.random_range(20..80),
+                num_of_returns: rng.random_range(20..80),
+                classification_flags: rng.random_range(7..20),
+                scanner_channel: rng.random_range(7..20),
+                scan_dir_flag: rng.random_range(0..47),
+                edge_of_flight_line: rng.random_range(0..81),
+                classification: rng.random_range(121..200),
+                scan_angle_rank: rng.random_range(-121..20),
+                scan_angle: rng.random_range(-21..8),
+                user_data: rng.random_range(1..8),
+                point_source_id: rng.random_range(9..89),
                 color_rgb: generate_vec3u16(&mut rng),
-                gps_time: rng.gen_range(-22.4..81.3),
-                nir: rng.gen_range(4..82),
-                // wave_packet_descriptor_index: rng.gen_range(2..42),
-                // waveform_data_offset: rng.gen_range(1..31),
-                // waveform_packet_size: rng.gen_range(32..64),
-                // return_point_waveform_location: rng.gen_range(-32.2..64.1),
+                gps_time: rng.random_range(-22.4..81.3),
+                nir: rng.random_range(4..82),
+                // wave_packet_descriptor_index: rng.random_range(2..42),
+                // waveform_data_offset: rng.random_range(1..31),
+                // waveform_packet_size: rng.random_range(32..64),
+                // return_point_waveform_location: rng.random_range(-32.2..64.1),
                 // waveform_parameters: generate_vec3f32(&mut rng),
             };
             //generate z-axis points for the line
             if p % 4 == 0 {
-                point.position = Vector3::new(0.0, 0.0, rng.gen_range(0.0..20.0));
+                point.position = Vector3::new(0.0, 0.0, rng.random_range(0.0..20.0));
                 point.intensity = 200
             }
             //generate outliers
             if p % 50 == 0 {
                 let position = point.position;
-                point.position = Vector3::new(position.x, position.y, rng.gen_range(5.0..7.3));
+                point.position = Vector3::new(position.x, position.y, rng.random_range(5.0..7.3));
                 point.intensity = 100
             }
             point

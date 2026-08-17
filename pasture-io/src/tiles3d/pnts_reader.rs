@@ -50,7 +50,7 @@ pub struct PntsReader<R: BufRead + Seek> {
 impl<R: BufRead + Seek> PntsReader<R> {
     pub fn from_read(mut read: R) -> Result<PntsReader<R>> {
         // PNTS is little-endian, this is the default of bincode
-        let header: PntsHeader = bincode::deserialize_from(&mut read)
+        let header = PntsHeader::read_from(&mut read)
             .context("Could not deserialize PNTS header from reader")?;
         header.verify_magic()?;
         let position_after_header = read.stream_position()? as usize;

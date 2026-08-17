@@ -12,17 +12,17 @@ categories = ["data-structures", "command-line-utilities"]
 readme = "README.md"
 
 [dependencies]
-pasture-core = {version = "=0.5.0", path = "../pasture-core" }
-pasture-io = {version = "=0.5.0", path = "../pasture-io" }
-pasture-algorithms = {version = "=0.5.0", path = "../pasture-algorithms" }
-pasture-derive = {version = "=0.5.0", path = "../pasture-derive" }
+pasture-core = { version = "=0.5.0", path = "../pasture-core" }
+pasture-io = { version = "=0.5.0", path = "../pasture-io" }
+pasture-algorithms = { version = "=0.5.0", path = "../pasture-algorithms" }
+pasture-derive = { version = "=0.5.0", path = "../pasture-derive" }
 anyhow = { workspace = true }
-clap = "2.33.3"
+clap = { version = "4.6.6", features = ["derive"] }
 log = "0.4"
-pretty_env_logger = "0.4.0"
+pretty_env_logger = "0.5.0"
 plotters = "^0.3.0"
-rand = {version = "0.8.3", features = ["small_rng"] }
-morton-index = "0.2"
+rand = "0.10.2"
+morton-index = "0.3"
 
 [[bin]]
 name = "info"

@@ -120,7 +120,7 @@ impl<'a, T: PointType> Iterator for PointIteratorByMut<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, rng};
+    use rand::{RngExt, rng};
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, VectorBuffer},

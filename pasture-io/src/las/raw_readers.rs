@@ -432,7 +432,7 @@ pub struct RawLAZReader<'a, T: Read + Seek + Send + 'a> {
     size_of_point_in_file: u64,
 }
 
-impl<'a, T: Read + Seek + Send + 'a> RawLAZReader<'a, T> {
+impl<'a, T: Read + Seek + Send + Sync + 'a> RawLAZReader<'a, T> {
     pub fn from_read(mut read: T, point_layout_matches_memory_layout: bool) -> Result<Self> {
         let raw_header = raw::Header::read_from(&mut read)?;
         let offset_to_first_point_in_file = raw_header.offset_to_point_data as u64;
@@ -585,7 +585,7 @@ impl<'a, T: Read + Seek + Send + 'a> LASReaderBase for RawLAZReader<'a, T> {
     }
 }
 
-impl<'a, T: Read + Seek + Send + 'a> PointReader for RawLAZReader<'a, T> {
+impl<'a, T: Read + Seek + Send + Sync + 'a> PointReader for RawLAZReader<'a, T> {
     fn read_into<B: BorrowedMutBuffer>(
         &mut self,
         point_buffer: &mut B,
@@ -611,7 +611,7 @@ impl<'a, T: Read + Seek + Send + 'a> PointReader for RawLAZReader<'a, T> {
     }
 }
 
-impl<'a, T: Read + Seek + Send + 'a> SeekToPoint for RawLAZReader<'a, T> {
+impl<'a, T: Read + Seek + Send + Sync + 'a> SeekToPoint for RawLAZReader<'a, T> {
     fn seek_point(&mut self, position: SeekFrom) -> Result<usize> {
         let new_position = match position {
             SeekFrom::Start(from_start) => from_start as i64,

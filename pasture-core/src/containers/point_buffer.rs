@@ -1564,7 +1564,7 @@ mod tests {
     use itertools::Itertools;
     use nalgebra::Vector3;
     use rand::rng;
-    use rand::{Rng, prelude::Distribution};
+    use rand::{RngExt, prelude::Distribution};
 
     use crate::layout::{PointAttributeDataType, attributes::POSITION_3D};
     use crate::test_utils::*;

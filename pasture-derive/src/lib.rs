@@ -5,11 +5,11 @@ use std::collections::HashSet;
 use layout::{StructMemberLayout, get_struct_member_layout};
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::DeriveInput;
 use syn::{
-    Attribute, Data, Error, Field, Fields, GenericArgument, Ident, Lit, NestedMeta, PathArguments,
-    Result, Type, TypePath, parse_macro_input,
+    Attribute, Data, Error, Expr, ExprLit, Field, Fields, GenericArgument, Ident, Lit,
+    PathArguments, Result, Type, TypePath, parse_macro_input,
 };
+use syn::{DeriveInput, Meta};
 
 mod layout;
 
@@ -220,36 +220,34 @@ fn type_path_to_primitive_type(type_path: &TypePath) -> Result<PasturePrimitiveT
 }
 
 fn get_attribute_name_from_field(field: &Field) -> Result<String> {
-    if field.attrs.len() != 1 {
+    let pasture_attributes: Vec<&Attribute> = field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("pasture"))
+        .collect();
+    if pasture_attributes.len() != 1 {
         return Err(Error::new_spanned(
             field,
             "derive(PointType) requires exactly one #[pasture] attribute per member!",
         ));
     }
-    let pasture_attribute = &field.attrs[0];
-    let meta = pasture_attribute.parse_meta()?;
-    // TODO Better explanation of the builtin Pasture attributes in this error message!
+    let pasture_attribute = pasture_attributes[0];
+
     let malformed_field_error_msg = "#[pasture] attribute is malformed. Correct syntax is #[pasture(attribute = \"NAME\")] or #[pasture(BUILTIN_XXX)], where XXX matches any of the builtin attributes in Pasture.";
+
+    // TODO Better explanation of the builtin Pasture attributes in this error message!
 
     // For now, we expect that 'meta' is a Meta::List containing a single entry
     // The entry should be a NameValue, corresponding to 'attribute = "NAME"', or a Path, corresponding to 'builtin_XXX', where XXX matches any of the basic
     // builtin attributes in Pasture (such as INTENSITY, POSITION_3D etc.)
-    match &meta {
+    match &pasture_attribute.meta {
         syn::Meta::List(list) => {
-            let first_list_entry = list
-                .nested
-                .first()
-                .ok_or_else(|| Error::new_spanned(list, malformed_field_error_msg))?;
-            let nested_meta = match first_list_entry {
-                NestedMeta::Meta(nested_meta) => nested_meta,
-                _ => return Err(Error::new_spanned(list, malformed_field_error_msg)),
-            };
-
+            let nested_meta = list.parse_args::<Meta>()?;
             match nested_meta {
                 syn::Meta::Path(path) => {
-                    let ident = path
-                        .get_ident()
-                        .ok_or_else(|| Error::new_spanned(path, malformed_field_error_msg))?;
+                    let ident = path.get_ident().ok_or_else(|| {
+                        Error::new_spanned(path.clone(), malformed_field_error_msg)
+                    })?;
                     let ident_as_str = ident.to_string();
                     match ident_as_str.as_str() {
                         "BUILTIN_POSITION_3D" => Ok("Position3D".into()),
@@ -294,7 +292,11 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
                             return None;
                         }
 
-                        if let Lit::Str(ref attribute_name) = name_value.lit {
+                        if let Expr::Lit(ExprLit {
+                            lit: Lit::Str(attribute_name),
+                            ..
+                        }) = &name_value.value
+                        {
                             Some(attribute_name.value())
                         } else {
                             None

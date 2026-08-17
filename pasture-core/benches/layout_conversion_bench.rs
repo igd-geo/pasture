@@ -10,7 +10,7 @@ use pasture_core::{
     layout::{PointType, conversion::BufferLayoutConverter},
 };
 use pasture_derive::PointType;
-use rand::{Rng, prelude::Distribution, rng};
+use rand::{RngExt, prelude::Distribution, rng};
 
 #[derive(Debug, Copy, Clone, bytemuck::Zeroable, bytemuck::Pod, PointType)]
 #[repr(C, packed)]

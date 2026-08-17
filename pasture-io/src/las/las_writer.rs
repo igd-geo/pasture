@@ -9,7 +9,7 @@ use crate::{base::PointWriter, las::las_point_format_from_point_layout};
 
 use super::{RawLASWriter, RawLAZWriter, path_is_compressed_las_file};
 
-enum WriterVariant<T: Write + Seek + Send + 'static> {
+enum WriterVariant<T: Write + Seek + Send + Sync + 'static> {
     LAS(RawLASWriter<T>),
     LAZ(RawLAZWriter<T>),
 }
@@ -19,11 +19,11 @@ enum WriterVariant<T: Write + Seek + Send + 'static> {
 /// *NOTE*: Due to the nature of the LAS file format, this file
 /// writer requires manual `flush` calls in order to actually write the LAS/LAZ data. Once you are done
 /// writing points, make sure to call `flush` so that the LAS header is updated correctly.
-pub struct LASWriter<T: Write + Seek + Send + 'static> {
+pub struct LASWriter<T: Write + Seek + Send + Sync + 'static> {
     writer: WriterVariant<T>,
 }
 
-impl<T: Write + Seek + Send + 'static> LASWriter<T> {
+impl<T: Write + Seek + Send + Sync + 'static> LASWriter<T> {
     /// Creates a new `LASWriter` from the given `writer`. This uses a default-created LAS header for writing,
     /// with an appropriate point format determined from the given `point_layout`. The LAS header uses a scale
     /// of 0.001, which yields 1mm precision. LAS version 1.4 is used.
@@ -101,7 +101,7 @@ impl LASWriter<BufWriter<File>> {
     }
 }
 
-impl<T: Write + Seek + Send + 'static> PointWriter for LASWriter<T> {
+impl<T: Write + Seek + Send + Sync + 'static> PointWriter for LASWriter<T> {
     fn write<B: BorrowedBuffer>(&mut self, points: &B) -> Result<()> {
         match &mut self.writer {
             WriterVariant::LAS(writer) => writer.write(points),

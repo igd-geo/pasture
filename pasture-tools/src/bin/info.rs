@@ -1,7 +1,7 @@
 use std::{path::PathBuf, time::Instant};
 
 use anyhow::Result;
-use clap::{App, Arg};
+use clap::Parser;
 use pasture_algorithms::minmax::minmax_attribute;
 use pasture_core::{
     containers::{BorrowedBuffer, OwningBuffer, VectorBuffer},
@@ -21,39 +21,19 @@ use pasture_core::{
 };
 use pasture_io::base::{GenericPointReader, PointReader, SeekToPoint};
 
+#[derive(Parser)]
+#[command(
+    version = "0.1",
+    author = "Pascal Bormann <pascal.bormann@igd.fraunhofer.de>",
+    about = "Prints information about the given point cloud file"
+)]
 struct Args {
+    /// Input point cloud file
+    #[arg(short = 'i', value_name = "INPUT")]
     pub input_file: PathBuf,
+    /// Output a detailed analysis of the point cloud file, showing min and max values for all point attributes
+    #[arg(short = 'd', value_name = "DETAILED")]
     pub detailed: bool,
-}
-
-fn get_args() -> Result<Args> {
-    let matches = App::new("pasture playground")
-        .version("0.1")
-        .author("Pascal Bormann <pascal.bormann@igd.fraunhofer.de>")
-        .about("Prints information about the given point cloud file")
-        .arg(
-            Arg::with_name("INPUT")
-                .short("i")
-                .takes_value(true)
-                .value_name("INPUT")
-                .help("Input point cloud file")
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("DETAILED")
-                .short("d")
-                .long("detailed")
-                .help("Output a detailed analysis of the point cloud file, showing min and max values for all point attributes")
-        )
-        .get_matches();
-
-    let input_file = PathBuf::from(matches.value_of("INPUT").unwrap());
-    let detailed = matches.is_present("DETAILED");
-
-    Ok(Args {
-        input_file,
-        detailed,
-    })
 }
 
 fn print_attributes(point_layout: &PointLayout) {
@@ -194,7 +174,7 @@ fn analyze_file<R: PointReader + SeekToPoint>(reader: &mut R) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let args = get_args()?;
+    let args = Args::parse();
     let mut reader = GenericPointReader::open_file(&args.input_file)?;
     let meta = reader.get_metadata();
     println!("pasture info report for {}", args.input_file.display());

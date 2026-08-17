@@ -651,7 +651,7 @@ mod tests {
 
     use itertools::Itertools;
     use nalgebra::Vector3;
-    use rand::{Rng, rng};
+    use rand::{RngExt, rng};
 
     use crate::{
         containers::{BorrowedBufferExt, HashMapBuffer, VectorBuffer},

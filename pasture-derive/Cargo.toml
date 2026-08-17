@@ -14,7 +14,7 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-syn = {version = "1.0.60", features = ["full", "extra-traits"] }
+syn = { version = "3.0.3", features = ["full", "extra-traits"] }
 quote = "1.0.8"
 anyhow = { workspace = true }
 

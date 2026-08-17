@@ -467,7 +467,7 @@ mod tests {
         nalgebra::Vector3,
     };
     use pasture_derive::PointType;
-    use rand::{Rng, distributions::Uniform, thread_rng};
+    use rand::{RngExt, distr::Uniform};
 
     #[derive(
         PointType, Default, Copy, Clone, Debug, bytemuck::AnyBitPattern, bytemuck::NoUninit,
@@ -858,10 +858,10 @@ mod tests {
         buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 0.0, 0.0),
         });
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
-                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0),
+                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9).unwrap()), 0.0, 0.0),
             });
         }
         let result = convexhull::convex_hull_as_points(&buffer);
@@ -876,10 +876,10 @@ mod tests {
     #[test]
     fn test_convex_random_1d_points_in_box_create_box_last() -> Result<()> {
         let mut buffer = HashMapBuffer::with_capacity(22, TestPointTypeSmall::layout());
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
-                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9)), 0.0, 0.0),
+                position: Vector3::new(rng.sample(Uniform::new(-0.9, 0.9).unwrap()), 0.0, 0.0),
             });
         }
         buffer.view_mut().push_point(TestPointTypeSmall {
@@ -912,12 +912,12 @@ mod tests {
         buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(-1.0, 1.0, 0.0),
         });
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
                     0.0,
                 ),
             });
@@ -1055,13 +1055,13 @@ mod tests {
         buffer.view_mut().push_point(TestPointTypeSmall {
             position: Vector3::new(1.0, 1.0, 1.0),
         });
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
                 ),
             });
         }
@@ -1085,13 +1085,13 @@ mod tests {
     #[test]
     fn test_convex_random_points_in_box_create_box_last() -> Result<()> {
         let mut buffer = HashMapBuffer::with_capacity(28, TestPointTypeSmall::layout());
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
-                    rng.sample(Uniform::new(-0.9, 0.9)),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
+                    rng.sample(Uniform::new(-0.9, 0.9).unwrap()),
                 ),
             });
         }
@@ -1139,13 +1139,13 @@ mod tests {
     #[test]
     fn test_convex_random_points() -> Result<()> {
         let mut buffer = HashMapBuffer::with_capacity(100, TestPointTypeSmall::layout());
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..100 {
             buffer.view_mut().push_point(TestPointTypeSmall {
                 position: Vector3::new(
-                    rng.sample(Uniform::new(-100.0, 100.0)),
-                    rng.sample(Uniform::new(-100.0, 100.0)),
-                    rng.sample(Uniform::new(-100.0, 100.0)),
+                    rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+                    rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+                    rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
                 ),
             });
         }

@@ -7,7 +7,7 @@ use pasture_core::{
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::Rng;
+use rand::RngExt;
 
 #[repr(C, packed)]
 #[derive(PointType, Debug, Copy, Clone, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
@@ -22,20 +22,25 @@ fn main() {
     //generate random points for the pointcloud
     let mut buffer = (0..20000)
         .map(|p| {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             //generate plane points (along x- and y-axis)
             let mut point = SimplePoint {
-                position: Vector3::new(rng.gen_range(0.0..100.0), rng.gen_range(0.0..100.0), 1.0),
+                position: Vector3::new(
+                    rng.random_range(0.0..100.0),
+                    rng.random_range(0.0..100.0),
+                    1.0,
+                ),
                 intensity: 1,
             };
             //generate z-axis points for the line
             if p % 4 == 0 {
-                point.position = Vector3::new(0.0, 0.0, rng.gen_range(0.0..200.0));
+                point.position = Vector3::new(0.0, 0.0, rng.random_range(0.0..200.0));
             }
             //generate outliers
             if p % 50 == 0 {
                 let position = point.position;
-                point.position = Vector3::new(position.x, position.y, rng.gen_range(-50.0..50.2));
+                point.position =
+                    Vector3::new(position.x, position.y, rng.random_range(-50.0..50.2));
             }
             point
         })

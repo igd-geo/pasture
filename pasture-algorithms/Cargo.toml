@@ -15,21 +15,20 @@ readme = "README.md"
 pasture-core = { version = "=0.5.0", path = "../pasture-core" }
 pasture-derive = { version = "=0.5.0", path = "../pasture-derive" }
 anyhow = { workspace = true }
-rand = "0.8.3"
+rand = "0.10.2"
 rayon = "1.5"
 typenum = "1.13.0"
-kd-tree = "0.3.0"
+kd-tree = "0.6.2"
 num-traits = "0.2.14"
-getrandom = {version = "0.2.5", features = ["js"]}
 bytemuck = { version = "1.5.1" }
 
 # Some algorithms/dependencies are not supported on wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Couldn't get proj-sys to compile on wasm
-proj-sys = "0.22.0"
+proj-sys = "0.27.0"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.8.2"
 assert_approx_eq = "1.1.0"
 
 [[bench]]

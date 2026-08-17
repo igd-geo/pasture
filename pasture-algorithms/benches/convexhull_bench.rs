@@ -6,7 +6,7 @@ use pasture_core::{
     nalgebra::Vector3,
 };
 use pasture_derive::PointType;
-use rand::{Rng, distributions::Uniform, thread_rng};
+use rand::{Rng, RngExt, distr::Uniform};
 
 #[derive(PointType, Default, Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C, packed)]
@@ -24,17 +24,17 @@ const NUM_POINTS_BIG: usize = 100000;
 fn random_custom_point_small<R: Rng + ?Sized>(rng: &mut R) -> CustomPointTypeSmall {
     CustomPointTypeSmall {
         position: Vector3::new(
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
-            rng.sample(Uniform::new(-100.0, 100.0)),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
+            rng.sample(Uniform::new(-100.0, 100.0).unwrap()),
         ),
-        classification: rng.sample(Uniform::new(0u8, 8)),
+        classification: rng.sample(Uniform::new(0u8, 8).unwrap()),
     }
 }
 
 fn get_dummy_points_custom_format_small_interleaved(num_points: usize) -> VectorBuffer {
     let mut buffer = VectorBuffer::with_capacity(num_points, CustomPointTypeSmall::layout());
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..num_points {
         buffer
             .view_mut()
@@ -45,7 +45,7 @@ fn get_dummy_points_custom_format_small_interleaved(num_points: usize) -> Vector
 
 fn get_dummy_points_custom_format_small_columnar(num_points: usize) -> HashMapBuffer {
     let mut buffer = HashMapBuffer::with_capacity(num_points, CustomPointTypeSmall::layout());
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..num_points {
         buffer
             .view_mut()

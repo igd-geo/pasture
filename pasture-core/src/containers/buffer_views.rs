@@ -524,7 +524,7 @@ impl<B: BorrowedBuffer + ?Sized, T: PrimitiveType> Iterator
 #[cfg(test)]
 mod tests {
     use nalgebra::Vector3;
-    use rand::{Rng, rng};
+    use rand::{RngExt, rng};
 
     use crate::{
         containers::{BorrowedBufferExt, BorrowedMutBufferExt, HashMapBuffer, VectorBuffer},
