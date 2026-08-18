@@ -39,7 +39,7 @@ fn get_default_las_converter<'a>(
     if let Some(position_attribute) = target_layout.get_attribute_by_name(POSITION_3D.name()) {
         let transforms = *las_header.transforms();
         match position_attribute.datatype() {
-            PointAttributeDataType::Vec3f64 => converter.set_custom_mapping_with_transformation(
+            PointAttributeDataType::VEC3F64 => converter.set_custom_mapping_with_transformation(
                 &ATTRIBUTE_LOCAL_LAS_POSITION,
                 position_attribute.attribute_definition(),
                 move |pos: Vector3<f64>| -> Vector3<f64> {
@@ -51,7 +51,7 @@ fn get_default_las_converter<'a>(
                 },
                 false,
             ),
-            PointAttributeDataType::Vec3f32 => converter.set_custom_mapping_with_transformation(
+            PointAttributeDataType::VEC3F32 => converter.set_custom_mapping_with_transformation(
                 &ATTRIBUTE_LOCAL_LAS_POSITION,
                 position_attribute.attribute_definition(),
                 move |pos: Vector3<f32>| -> Vector3<f32> {
@@ -819,10 +819,10 @@ mod tests {
                     let format = Format::new($format)?;
                     let layout = PointLayout::from_attributes(&[
                         attributes::POSITION_3D
-                            .with_custom_datatype(PointAttributeDataType::Vec3f32),
+                            .with_custom_datatype(PointAttributeDataType::VEC3F32),
                         attributes::CLASSIFICATION
                             .with_custom_datatype(PointAttributeDataType::U32),
-                        attributes::COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        attributes::COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U8),
                         attributes::POINT_SOURCE_ID,
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
@@ -833,7 +833,7 @@ mod tests {
                     let positions = buffer
                         .view_attribute::<Vector3<f32>>(
                             &attributes::POSITION_3D
-                                .with_custom_datatype(PointAttributeDataType::Vec3f32),
+                                .with_custom_datatype(PointAttributeDataType::VEC3F32),
                         )
                         .into_iter()
                         .collect::<Vec<_>>();
@@ -862,7 +862,7 @@ mod tests {
                     let colors = buffer
                         .view_attribute::<Vector3<u8>>(
                             &attributes::COLOR_RGB
-                                .with_custom_datatype(PointAttributeDataType::Vec3u8),
+                                .with_custom_datatype(PointAttributeDataType::VEC3U8),
                         )
                         .into_iter()
                         .collect::<Vec<_>>();
@@ -919,10 +919,10 @@ mod tests {
                     let format = Format::new($format)?;
                     let layout = PointLayout::from_attributes(&[
                         attributes::POSITION_3D
-                            .with_custom_datatype(PointAttributeDataType::Vec3f32),
+                            .with_custom_datatype(PointAttributeDataType::VEC3F32),
                         attributes::CLASSIFICATION
                             .with_custom_datatype(PointAttributeDataType::U32),
-                        attributes::COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        attributes::COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U8),
                         attributes::POINT_SOURCE_ID,
                         attributes::WAVEFORM_PARAMETERS,
                     ]);
@@ -940,7 +940,7 @@ mod tests {
                     let positions = buffer
                         .view_attribute::<Vector3<f32>>(
                             &attributes::POSITION_3D
-                                .with_custom_datatype(PointAttributeDataType::Vec3f32),
+                                .with_custom_datatype(PointAttributeDataType::VEC3F32),
                         )
                         .into_iter()
                         .collect::<Vec<_>>();
@@ -969,7 +969,7 @@ mod tests {
                     let colors = buffer
                         .view_attribute::<Vector3<u8>>(
                             &attributes::COLOR_RGB
-                                .with_custom_datatype(PointAttributeDataType::Vec3u8),
+                                .with_custom_datatype(PointAttributeDataType::VEC3U8),
                         )
                         .into_iter()
                         .collect::<Vec<_>>();

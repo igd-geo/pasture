@@ -29,9 +29,8 @@ fn read_attribute_in_custom_layout<T: PrimitiveType>(
     converter: AttributeConversionFn,
     point_read: &mut Cursor<Vec<u8>>,
 ) -> Result<T> {
-    let attribute_size = attribute_def.size() as usize;
-    let attribute_start =
-        (current_point_index * size_of_single_point) + attribute_def.offset() as usize;
+    let attribute_size = attribute_def.size();
+    let attribute_start = (current_point_index * size_of_single_point) + attribute_def.offset();
     let attribute_slice =
         &point_read.get_ref()[attribute_start..(attribute_start + attribute_size)];
 

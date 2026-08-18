@@ -78,7 +78,7 @@ fn main() {
         // We don't have to use default attributes in a `PointLayout`. We can use custom datatypes for the builtin attributes
         // as well as custom attribute names:
         let custom_layout = PointLayout::from_attributes(&[
-            attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+            attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F32),
             PointAttributeDefinition::custom(Cow::Borrowed("Custom"), PointAttributeDataType::U64),
         ]);
 

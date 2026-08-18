@@ -50,7 +50,7 @@ fn main() -> Result<()> {
 
     for position in buffer
         .view_attribute::<Vector3<i32>>(
-            &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3i32),
+            &POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3I32),
         )
         .into_iter()
     {

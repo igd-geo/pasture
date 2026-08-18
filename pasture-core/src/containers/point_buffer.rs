@@ -109,7 +109,7 @@ pub trait BorrowedBuffer {
             .point_layout()
             .get_attribute(attribute)
             .expect("Attribute not found in PointLayout of this buffer");
-        let attribute_size = attribute_member.size() as usize;
+        let attribute_size = attribute_member.size();
         let first_point = point_range.start;
         for point_index in point_range {
             let zero_based_index = point_index - first_point;
@@ -439,7 +439,7 @@ pub trait OwningBufferExt: OwningBuffer {
                         old_self_len..new_self_len,
                     );
                     for (index, new_attribute) in new_attributes
-                        .chunks_exact_mut(attribute.size() as usize)
+                        .chunks_exact_mut(attribute.size())
                         .enumerate()
                     {
                         other.get_attribute(attribute.attribute_definition(), index, new_attribute);
@@ -630,9 +630,9 @@ impl VectorBuffer {
         point_index: usize,
         attribute: &PointAttributeMember,
     ) -> Range<usize> {
-        let start_byte = (point_index * self.point_layout.size_of_point_entry() as usize)
-            + attribute.offset() as usize;
-        let end_byte = start_byte + attribute.size() as usize;
+        let start_byte =
+            (point_index * self.point_layout.size_of_point_entry() as usize) + attribute.offset();
+        let end_byte = start_byte + attribute.size();
         start_byte..end_byte
     }
 }
@@ -732,7 +732,7 @@ impl BorrowedMutBuffer for VectorBuffer {
             .point_layout
             .get_attribute(attribute)
             .expect("Attribute not found in PointLayout of this buffer");
-        let attribute_size = attribute_member.size() as usize;
+        let attribute_size = attribute_member.size();
         let first_point = point_range.start;
         for point_index in point_range {
             let zero_based_index = point_index - first_point;
@@ -950,7 +950,7 @@ impl HashMapBuffer {
         let attributes_storage = point_layout
             .attributes()
             .map(|attribute| {
-                let bytes_for_attribute = capacity * attribute.size() as usize;
+                let bytes_for_attribute = capacity * attribute.size();
                 (
                     attribute.attribute_definition().clone(),
                     Vec::with_capacity(bytes_for_attribute),
@@ -1007,7 +1007,7 @@ impl HashMapBuffer {
                     self.get_attribute_range_ref(attribute.attribute_definition(), 0..self.len());
                 let dst_attribute_data = columnar_buffer
                     .get_attribute_range_mut(attribute.attribute_definition(), 0..num_matches);
-                let stride = attribute.size() as usize;
+                let stride = attribute.size();
                 for (dst_index, src_index) in
                     (0..self.len()).filter(|idx| predicate(*idx)).enumerate()
                 {
@@ -1022,8 +1022,8 @@ impl HashMapBuffer {
             for attribute in self.point_layout.attributes() {
                 let src_attribute_data =
                     self.get_attribute_range_ref(attribute.attribute_definition(), 0..self.len());
-                let src_stride = attribute.size() as usize;
-                let dst_offset = attribute.offset() as usize;
+                let src_stride = attribute.size();
+                let dst_offset = attribute.offset();
                 let dst_stride = self.point_layout.size_of_point_entry() as usize;
                 for (dst_index, src_index) in
                     (0..self.len()).filter(|idx| predicate(*idx)).enumerate()
@@ -1045,7 +1045,7 @@ impl HashMapBuffer {
         point_index: usize,
         attribute: &PointAttributeDefinition,
     ) -> Range<usize> {
-        let attribute_size = attribute.size() as usize;
+        let attribute_size = attribute.size();
         (point_index * attribute_size)..((point_index + 1) * attribute_size)
     }
 
@@ -1053,7 +1053,7 @@ impl HashMapBuffer {
         points_range: Range<usize>,
         attribute: &PointAttributeDefinition,
     ) -> Range<usize> {
-        let attribute_size = attribute.size() as usize;
+        let attribute_size = attribute.size();
         (points_range.start * attribute_size)..(points_range.end * attribute_size)
     }
 }
@@ -1186,7 +1186,7 @@ impl BorrowedMutBuffer for HashMapBuffer {
             unsafe {
                 let src_ptr = storage.as_mut_ptr().add(src_byte_range.start);
                 let dst_ptr = storage.as_mut_ptr().add(dst_byte_range.start);
-                std::ptr::swap_nonoverlapping(src_ptr, dst_ptr, attribute.size() as usize);
+                std::ptr::swap_nonoverlapping(src_ptr, dst_ptr, attribute.size());
             }
         }
     }
@@ -1250,7 +1250,7 @@ impl OwningBuffer for HashMapBuffer {
 
     fn resize(&mut self, count: usize) {
         for (attribute, storage) in self.attributes_storage.iter_mut() {
-            let new_num_bytes = count * attribute.size() as usize;
+            let new_num_bytes = count * attribute.size();
             storage.resize(new_num_bytes, 0);
         }
         self.length = count;
@@ -1389,9 +1389,9 @@ impl<T: AsRef<[u8]>> ExternalMemoryBuffer<T> {
         point_index: usize,
         attribute: &PointAttributeMember,
     ) -> Range<usize> {
-        let start_byte = (point_index * self.point_layout.size_of_point_entry() as usize)
-            + attribute.offset() as usize;
-        let end_byte = start_byte + attribute.size() as usize;
+        let start_byte =
+            (point_index * self.point_layout.size_of_point_entry() as usize) + attribute.offset();
+        let end_byte = start_byte + attribute.size();
         start_byte..end_byte
     }
 }
@@ -1493,7 +1493,7 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> BorrowedMutBuffer for ExternalMemoryBuffer<T>
             .point_layout
             .get_attribute(attribute)
             .expect("Attribute not found in PointLayout of this buffer");
-        let attribute_size = attribute_member.size() as usize;
+        let attribute_size = attribute_member.size();
         let first_point = point_range.start;
         for point_index in point_range {
             let zero_based_index = point_index - first_point;
@@ -1624,19 +1624,19 @@ mod tests {
             PointAttributeDataType::U8 => {
                 compare_attributes_typed::<u8>(buffer, attribute, expected_points)
             }
-            PointAttributeDataType::Vec3f32 => {
+            PointAttributeDataType::VEC3F32 => {
                 compare_attributes_typed::<Vector3<f32>>(buffer, attribute, expected_points)
             }
-            PointAttributeDataType::Vec3f64 => {
+            PointAttributeDataType::VEC3F64 => {
                 compare_attributes_typed::<Vector3<f64>>(buffer, attribute, expected_points);
             }
-            PointAttributeDataType::Vec3i32 => {
+            PointAttributeDataType::VEC3I32 => {
                 compare_attributes_typed::<Vector3<i32>>(buffer, attribute, expected_points)
             }
-            PointAttributeDataType::Vec3u16 => {
+            PointAttributeDataType::VEC3U16 => {
                 compare_attributes_typed::<Vector3<u16>>(buffer, attribute, expected_points)
             }
-            PointAttributeDataType::Vec3u8 => {
+            PointAttributeDataType::VEC3U8 => {
                 compare_attributes_typed::<Vector3<u8>>(buffer, attribute, expected_points)
             }
             _ => unimplemented!(),
@@ -1845,7 +1845,7 @@ mod tests {
             .map(|point| point.position)
             .collect::<Vec<_>>();
         let actual_positions = buffer
-            .view_attribute(&POSITION_3D)
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(expected_positions, actual_positions);
@@ -1879,7 +1879,7 @@ mod tests {
             .map(|point| point.position)
             .collect::<Vec<_>>();
         let actual_positions = buffer
-            .view_attribute(&POSITION_3D)
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(expected_positions, actual_positions);
@@ -2048,7 +2048,7 @@ mod tests {
         }
 
         let actual_positions = buffer
-            .view_attribute(&POSITION_3D)
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(overwrite_positions, actual_positions);
@@ -2062,7 +2062,7 @@ mod tests {
         drop(buffer_slice);
 
         let actual_positions = buffer
-            .view_attribute(&POSITION_3D)
+            .view_attribute::<Vector3<f64>>(&POSITION_3D)
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(overwrite_positions, actual_positions);

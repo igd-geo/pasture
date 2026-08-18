@@ -409,22 +409,22 @@ pub fn compare_attributes_dynamically_typed<
         PointAttributeDataType::I64 => compare_attribute::<i64, _, _>(attribute, buffer1, buffer2),
         PointAttributeDataType::F32 => compare_attribute::<f32, _, _>(attribute, buffer1, buffer2),
         PointAttributeDataType::F64 => compare_attribute::<f64, _, _>(attribute, buffer1, buffer2),
-        PointAttributeDataType::Vec3u8 => {
+        PointAttributeDataType::VEC3U8 => {
             compare_attribute::<Vector3<u8>, _, _>(attribute, buffer1, buffer2)
         }
-        PointAttributeDataType::Vec3u16 => {
+        PointAttributeDataType::VEC3U16 => {
             compare_attribute::<Vector3<u16>, _, _>(attribute, buffer1, buffer2)
         }
-        PointAttributeDataType::Vec3f32 => {
+        PointAttributeDataType::VEC3F32 => {
             compare_attribute::<Vector3<f32>, _, _>(attribute, buffer1, buffer2)
         }
-        PointAttributeDataType::Vec3i32 => {
+        PointAttributeDataType::VEC3I32 => {
             compare_attribute::<Vector3<i32>, _, _>(attribute, buffer1, buffer2)
         }
-        PointAttributeDataType::Vec3f64 => {
+        PointAttributeDataType::VEC3F64 => {
             compare_attribute::<Vector3<f64>, _, _>(attribute, buffer1, buffer2)
         }
-        PointAttributeDataType::Vec4u8 => {
+        PointAttributeDataType::VEC4U8 => {
             compare_attribute::<Vector4<u8>, _, _>(attribute, buffer1, buffer2)
         }
         other => panic!("Unsupported PointAttributeDataType {}", other),

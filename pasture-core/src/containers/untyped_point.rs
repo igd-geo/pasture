@@ -61,8 +61,8 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
             .layout
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
-        let start = attribute.offset() as usize;
-        let end = start + attribute.datatype().size() as usize;
+        let start = attribute.offset();
+        let end = start + attribute.datatype().size();
         if self.buffer.len() < end {
             bail!("Buffer size to small.");
         }
@@ -77,8 +77,8 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
             .layout
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
-        let start = attribute.offset() as usize;
-        let end = start + attribute.datatype().size() as usize;
+        let start = attribute.offset();
+        let end = start + attribute.datatype().size();
         if self.buffer.len() < end {
             bail!("Buffer size to small.");
         }
@@ -158,8 +158,8 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
             .layout
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
-        let start = attribute.offset() as usize;
-        let end = start + attribute.datatype().size() as usize;
+        let start = attribute.offset();
+        let end = start + attribute.datatype().size();
         if self.buffer.len() < end {
             bail!("Buffer size to small.");
         }
@@ -219,8 +219,8 @@ impl UntypedPoint for UntypedPointSlice<'_> {
             .layout
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
-        let start = attribute.offset() as usize;
-        let end = start + attribute.datatype().size() as usize;
+        let start = attribute.offset();
+        let end = start + attribute.datatype().size();
         if self.slice.len() < end {
             bail!("Buffer size to small.");
         }
@@ -235,8 +235,8 @@ impl UntypedPoint for UntypedPointSlice<'_> {
             .layout
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
-        let start = attribute.offset() as usize;
-        let end = start + attribute.datatype().size() as usize;
+        let start = attribute.offset();
+        let end = start + attribute.datatype().size();
         if self.slice.len() < end {
             bail!("Buffer size to small.");
         }
@@ -252,8 +252,8 @@ impl UntypedPoint for UntypedPointSlice<'_> {
             .layout
             .get_attribute(attribute)
             .with_context(|| "Cannot find attribute.")?;
-        let start = attribute.offset() as usize;
-        let end = start + attribute.datatype().size() as usize;
+        let start = attribute.offset();
+        let end = start + attribute.datatype().size();
         if self.slice.len() < end {
             bail!("Buffer size to small.");
         }
@@ -334,10 +334,10 @@ mod tests {
         let offset = layout.offset_of(&attributes::INTENSITY).unwrap();
         // Write
         let mut cursor = point.get_cursor();
-        cursor.set_position(offset);
+        cursor.set_position(offset as u64);
         cursor.write_u16::<LittleEndian>(intensity_value)?;
         // Readback
-        cursor.set_position(offset);
+        cursor.set_position(offset as u64);
         let intensity_from_point = cursor.read_u16::<LittleEndian>()?;
 
         assert_eq!(intensity_value, intensity_from_point);
@@ -370,10 +370,10 @@ mod tests {
         let offset = layout.offset_of(&attributes::INTENSITY).unwrap();
         // Write
         let mut cursor = point.get_cursor();
-        cursor.set_position(offset);
+        cursor.set_position(offset as u64);
         cursor.write_u16::<LittleEndian>(intensity_value)?;
         // Readback
-        cursor.set_position(offset);
+        cursor.set_position(offset as u64);
         let intensity_from_point = cursor.read_u16::<LittleEndian>()?;
 
         assert_eq!(intensity_value, intensity_from_point);

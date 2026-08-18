@@ -12,7 +12,7 @@ pub mod attributes {
     /// Attribute definition for an RGBA color in the 3D Tiles format
     pub const COLOR_RGBA: PointAttributeDefinition = PointAttributeDefinition::custom(
         Cow::Borrowed("ColorRGBA"),
-        PointAttributeDataType::Vec4u8,
+        PointAttributeDataType::VEC4U8,
     );
 }
 

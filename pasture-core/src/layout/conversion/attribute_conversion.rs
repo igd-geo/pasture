@@ -31,20 +31,20 @@ struct RawAttributeConverter {
 impl RawAttributeConverter {
     pub fn new(
         conversion_fn: AttributeConversionFn,
-        source_offset: u64,
-        source_size: u64,
-        target_offset: u64,
-        target_size: u64,
+        source_offset: usize,
+        source_size: usize,
+        target_offset: usize,
+        target_size: usize,
     ) -> Self {
         Self {
             conversion_fn,
             source_range: Range {
-                start: source_offset as usize,
-                end: (source_offset + source_size) as usize,
+                start: source_offset,
+                end: source_offset + source_size,
             },
             target_range: Range {
-                start: target_offset as usize,
-                end: (target_offset + target_size) as usize,
+                start: target_offset,
+                end: target_offset + target_size,
             },
         }
     }
@@ -257,19 +257,19 @@ pub fn get_generic_converter(
 
             insert_scalar_converter_using_as!(f32, f64, F32, F64, converters);
 
-            insert_vec3_converter_using_as!(f32, f64, Vec3f32, Vec3f64, converters);
+            insert_vec3_converter_using_as!(f32, f64, VEC3F32, VEC3F64, converters);
 
-            insert_vec3_converter_using_as!(u8, u16, Vec3u8, Vec3u16, converters);
-            insert_vec3_converter_using_as!(u8, i32, Vec3u8, Vec3i32, converters);
-            insert_vec3_converter_using_as!(u8, f32, Vec3u8, Vec3f32, converters);
-            insert_vec3_converter_using_as!(u8, f64, Vec3u8, Vec3f64, converters);
+            insert_vec3_converter_using_as!(u8, u16, VEC3U8, VEC3U16, converters);
+            insert_vec3_converter_using_as!(u8, i32, VEC3U8, VEC3I32, converters);
+            insert_vec3_converter_using_as!(u8, f32, VEC3U8, VEC3F32, converters);
+            insert_vec3_converter_using_as!(u8, f64, VEC3U8, VEC3F64, converters);
 
-            insert_vec3_converter_using_as!(u16, i32, Vec3u16, Vec3i32, converters);
-            insert_vec3_converter_using_as!(u16, f32, Vec3u16, Vec3f32, converters);
-            insert_vec3_converter_using_as!(u16, f64, Vec3u16, Vec3f64, converters);
+            insert_vec3_converter_using_as!(u16, i32, VEC3U16, VEC3I32, converters);
+            insert_vec3_converter_using_as!(u16, f32, VEC3U16, VEC3F32, converters);
+            insert_vec3_converter_using_as!(u16, f64, VEC3U16, VEC3F64, converters);
 
-            insert_vec3_converter_using_as!(i32, f32, Vec3i32, Vec3f32, converters);
-            insert_vec3_converter_using_as!(i32, f64, Vec3i32, Vec3f64, converters);
+            insert_vec3_converter_using_as!(i32, f32, VEC3I32, VEC3F32, converters);
+            insert_vec3_converter_using_as!(i32, f64, VEC3I32, VEC3F64, converters);
 
             converters
         };

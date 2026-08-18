@@ -50,7 +50,7 @@ impl AttributeMapping<'_> {
     pub(crate) fn required_buffer_size(&self) -> usize {
         self.source_attribute
             .size()
-            .max(self.target_attribute.size()) as usize
+            .max(self.target_attribute.size())
     }
 }
 
@@ -417,8 +417,8 @@ impl<'a> BufferLayoutConverter<'a> {
                     mapping.target_attribute.attribute_definition(),
                     target_range.clone(),
                 );
-                let source_attribute_size = mapping.source_attribute.size() as usize;
-                let target_attribute_size = mapping.target_attribute.size() as usize;
+                let source_attribute_size = mapping.source_attribute.size();
+                let target_attribute_size = mapping.target_attribute.size();
                 let mut source_tmp_buffer: Vec<u8> = vec![0; source_attribute_size];
                 for (source_chunk, target_chunk) in source_attribute_data
                     .chunks_exact(source_attribute_size)
@@ -460,7 +460,7 @@ impl<'a> BufferLayoutConverter<'a> {
                         mapping.target_attribute.attribute_definition(),
                         target_range.clone(),
                     );
-                    let target_attribute_size = mapping.target_attribute.size() as usize;
+                    let target_attribute_size = mapping.target_attribute.size();
                     for target_chunk in
                         target_attribute_range.chunks_exact_mut(target_attribute_size)
                     {
@@ -485,7 +485,7 @@ impl<'a> BufferLayoutConverter<'a> {
             );
             let mut target_attribute_data =
                 target_buffer.view_raw_attribute_mut(mapping.target_attribute);
-            let source_attribute_size = mapping.source_attribute.size() as usize;
+            let source_attribute_size = mapping.source_attribute.size();
 
             if let Some(converter) = mapping.converter {
                 let mut source_tmp_buffer: Vec<u8> = vec![0; source_attribute_size];
@@ -544,7 +544,7 @@ impl<'a> BufferLayoutConverter<'a> {
                 mapping.target_attribute.attribute_definition(),
                 target_range.clone(),
             );
-            let target_attribute_size = mapping.target_attribute.size() as usize;
+            let target_attribute_size = mapping.target_attribute.size();
 
             for (point_index, target_attribute_chunk) in target_attribute_range
                 .chunks_exact_mut(target_attribute_size)
@@ -615,7 +615,7 @@ impl<'a> BufferLayoutConverter<'a> {
                 if let Some(converter) = mapping.converter {
                     if let Some(transformation) = mapping.transformation.as_ref() {
                         if transformation.apply_to_source_attribute {
-                            let buf = &mut buffer[..mapping.source_attribute.size() as usize];
+                            let buf = &mut buffer[..mapping.source_attribute.size()];
                             buf.copy_from_slice(source_attribute_data);
                             (transformation.func)(buf);
                             unsafe {
@@ -633,7 +633,7 @@ impl<'a> BufferLayoutConverter<'a> {
                         }
                     }
                 } else if let Some(transformation) = mapping.transformation.as_ref() {
-                    let buf = &mut buffer[..mapping.source_attribute.size() as usize];
+                    let buf = &mut buffer[..mapping.source_attribute.size()];
                     buf.copy_from_slice(source_attribute_data);
                     (transformation.func)(buf);
                     target_attribute_data.copy_from_slice(buf);

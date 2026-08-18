@@ -442,7 +442,7 @@ impl<'a, B: BorrowedBuffer + ?Sized, T: PrimitiveType> AttributeViewConverting<'
             )
             .ok_or(anyhow!("Conversion between attribute types is impossible"))?
         };
-        let converter_buffer = vec![0; attribute_in_layout.size() as usize];
+        let converter_buffer = vec![0; attribute_in_layout.size()];
         Ok(Self {
             attribute: attribute_in_layout.clone(),
             buffer,
@@ -606,7 +606,7 @@ mod tests {
             buffer1.view_attribute_mut::<Vector3<f64>>(&POSITION_3D),
             buffer2.view_attribute_mut::<Vector3<f64>>(&POSITION_3D),
         );
-        let f32_position = POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32);
+        let f32_position = POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F32);
         assert_eq!(
             buffer1
                 .view_attribute_with_conversion::<Vector3<f32>>(&f32_position)

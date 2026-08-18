@@ -1,26 +1,16 @@
 use std::{alloc::Layout, borrow::Cow, fmt::Display, iter::FromIterator, ops::Range};
 
 use itertools::Itertools;
-use nalgebra::{Point3, Point4, Vector3, Vector4};
+use nalgebra::{Point, Point3, Point4, SVector, Vector3, Vector4};
 use static_assertions::const_assert;
 use uuid::Uuid;
 
 use crate::math::Alignable;
 
 /// Possible data types for individual point attributes
-///
-/// # Why no `bool` anymore?
-///
-/// Previous versions of pasture allowed `bool` as a `PointAttributeDataType`. This introduced undefined behavior (UB)
-/// into pasture since (contrary to C) there are only two valid bit patterns for `bool` in Rust (`0x0` and `0x1`). Hence,
-/// casting from a byte slice to a type containing `bool` values will result in UB unless we guarantee that the bytes
-/// are a valid bit pattern. In theory, these checks could be implemented, but they would have to be implemented everywhere
-/// where we deal with raw point bytes. Since pasture switched to the `bytemuck` crate for all byte casting, and `bytemuck`
-/// simply disallows slice-to-T casts for types that are not valid for any bit pattern, is was deemed that this is not worth
-/// the effort. If you need `bool`-like behavior, you can always use an `u8` type and check for `value != 0`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PointAttributeDataType {
+pub enum ScalarPointAttributeDataType {
     /// An unsigned 8-bit integer value, corresponding to Rusts `u8` type
     U8,
     /// A signed 8-bit integer value, corresponding to Rusts `i8` type
@@ -41,20 +31,6 @@ pub enum PointAttributeDataType {
     F32,
     /// A double-precision floating point value, corresponding to Rusts `f64` type
     F64,
-    /// A 3-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector3<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    Vec3u8,
-    /// A 3-component vector storing unsigned 16-bit integer values. Corresponding to the `Vector3<u16>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    Vec3u16,
-    /// A 3-component vector storing single-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    Vec3f32,
-    /// A 3-component vector storing singed 32-bit integer values. Corresponding to the `Vector3<i32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    Vec3i32,
-    /// A 3-component vector storing double-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    Vec3f64,
-    /// A 4-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector4<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    Vec4u8,
-    /// A raw byte array of a given size determined at runtime. This corresponds to the Rust type `[u8; N]`
-    ByteArray(u64),
     /// A custom data type. This makes pasture extensible to types that it does not know. To use a custom type `T` with
     /// pasture, implement the `PrimitiveType` trait for this type and have it return `PointAttributeDataType::Custom`
     /// with the correct size and alignment
@@ -62,96 +38,265 @@ pub enum PointAttributeDataType {
         size: u64,
         min_alignment: u64,
         name: Uuid,
-    }, //TODO REFACTOR Vector types should probably be Point3 instead, or at least use nalgebra::Point3 as their underlying type!
-       //TODO Instead of representing each VecN<T> type as a separate literal, might it be possible to do: Vec3(PointAttributeDataType)?
-       //Not in that way of course, because of recursive datastructures, but something like that?
+    },
 }
 
-impl PointAttributeDataType {
-    /// Size of the associated `PointAttributeDataType`
-    pub const fn size(&self) -> u64 {
+impl ScalarPointAttributeDataType {
+    /// Size of the data type in bytes
+    pub const fn size(&self) -> usize {
         match self {
-            PointAttributeDataType::U8 => 1,
-            PointAttributeDataType::I8 => 1,
-            PointAttributeDataType::U16 => 2,
-            PointAttributeDataType::I16 => 2,
-            PointAttributeDataType::U32 => 4,
-            PointAttributeDataType::I32 => 4,
-            PointAttributeDataType::U64 => 8,
-            PointAttributeDataType::I64 => 8,
-            PointAttributeDataType::F32 => 4,
-            PointAttributeDataType::F64 => 8,
-            PointAttributeDataType::Vec3u8 => 3,
-            PointAttributeDataType::Vec3u16 => 6,
-            PointAttributeDataType::Vec3i32 => 12,
-            PointAttributeDataType::Vec3f32 => 12,
-            PointAttributeDataType::Vec3f64 => 24,
-            PointAttributeDataType::Vec4u8 => 4,
-            PointAttributeDataType::ByteArray(length) => *length,
-            PointAttributeDataType::Custom {
-                size,
-                min_alignment: _,
-                name: _,
-            } => *size,
+            ScalarPointAttributeDataType::U8 => 1,
+            ScalarPointAttributeDataType::I8 => 1,
+            ScalarPointAttributeDataType::U16 => 2,
+            ScalarPointAttributeDataType::I16 => 2,
+            ScalarPointAttributeDataType::U32 => 4,
+            ScalarPointAttributeDataType::I32 => 4,
+            ScalarPointAttributeDataType::U64 => 8,
+            ScalarPointAttributeDataType::I64 => 8,
+            ScalarPointAttributeDataType::F32 => 4,
+            ScalarPointAttributeDataType::F64 => 8,
+            ScalarPointAttributeDataType::Custom { size, .. } => *size as usize,
         }
     }
 
-    /// Minimum required alignment of the associated `PointAttributeDataType`
-    pub fn min_alignment(&self) -> u64 {
-        let align = match self {
-            PointAttributeDataType::U8 => std::mem::align_of::<u8>(),
-            PointAttributeDataType::I8 => std::mem::align_of::<i8>(),
-            PointAttributeDataType::U16 => std::mem::align_of::<u16>(),
-            PointAttributeDataType::I16 => std::mem::align_of::<i16>(),
-            PointAttributeDataType::U32 => std::mem::align_of::<u32>(),
-            PointAttributeDataType::I32 => std::mem::align_of::<i32>(),
-            PointAttributeDataType::U64 => std::mem::align_of::<u64>(),
-            PointAttributeDataType::I64 => std::mem::align_of::<i64>(),
-            PointAttributeDataType::F32 => std::mem::align_of::<f32>(),
-            PointAttributeDataType::F64 => std::mem::align_of::<f64>(),
-            PointAttributeDataType::Vec3u8 => std::mem::align_of::<Vector3<u8>>(),
-            PointAttributeDataType::Vec3u16 => std::mem::align_of::<Vector3<u16>>(),
-            PointAttributeDataType::Vec3i32 => std::mem::align_of::<Vector3<i32>>(),
-            PointAttributeDataType::Vec3f32 => std::mem::align_of::<Vector3<f32>>(),
-            PointAttributeDataType::Vec3f64 => std::mem::align_of::<Vector3<f64>>(),
-            PointAttributeDataType::Vec4u8 => std::mem::align_of::<Vector4<u8>>(),
-            PointAttributeDataType::ByteArray(_) => 1,
-            PointAttributeDataType::Custom {
-                size: _,
-                min_alignment,
-                name: _,
-            } => *min_alignment as usize,
-        };
-        align as u64
+    /// Minimum required alignment of the data type
+    pub fn min_alignment(&self) -> usize {
+        match self {
+            ScalarPointAttributeDataType::U8 => std::mem::align_of::<u8>(),
+            ScalarPointAttributeDataType::I8 => std::mem::align_of::<i8>(),
+            ScalarPointAttributeDataType::U16 => std::mem::align_of::<u16>(),
+            ScalarPointAttributeDataType::I16 => std::mem::align_of::<i16>(),
+            ScalarPointAttributeDataType::U32 => std::mem::align_of::<u32>(),
+            ScalarPointAttributeDataType::I32 => std::mem::align_of::<i32>(),
+            ScalarPointAttributeDataType::U64 => std::mem::align_of::<u64>(),
+            ScalarPointAttributeDataType::I64 => std::mem::align_of::<i64>(),
+            ScalarPointAttributeDataType::F32 => std::mem::align_of::<f32>(),
+            ScalarPointAttributeDataType::F64 => std::mem::align_of::<f64>(),
+            ScalarPointAttributeDataType::Custom { min_alignment, .. } => *min_alignment as usize,
+        }
     }
 }
 
-impl Display for PointAttributeDataType {
+impl Display for ScalarPointAttributeDataType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PointAttributeDataType::U8 => write!(f, "U8"),
-            PointAttributeDataType::I8 => write!(f, "I8"),
-            PointAttributeDataType::U16 => write!(f, "U16"),
-            PointAttributeDataType::I16 => write!(f, "I16"),
-            PointAttributeDataType::U32 => write!(f, "U32"),
-            PointAttributeDataType::I32 => write!(f, "I32"),
-            PointAttributeDataType::U64 => write!(f, "U64"),
-            PointAttributeDataType::I64 => write!(f, "I64"),
-            PointAttributeDataType::F32 => write!(f, "F32"),
-            PointAttributeDataType::F64 => write!(f, "F64"),
-            PointAttributeDataType::Vec3u8 => write!(f, "Vec3<u8>"),
-            PointAttributeDataType::Vec3u16 => write!(f, "Vec3<u16>"),
-            PointAttributeDataType::Vec3i32 => write!(f, "Vec3<i32>"),
-            PointAttributeDataType::Vec3f32 => write!(f, "Vec3<f32>"),
-            PointAttributeDataType::Vec3f64 => write!(f, "Vec3<f64>"),
-            PointAttributeDataType::Vec4u8 => write!(f, "Vec4<u8>"),
-            PointAttributeDataType::ByteArray(length) => write!(f, "ByteArray[{length}]"),
-            PointAttributeDataType::Custom {
+            ScalarPointAttributeDataType::U8 => write!(f, "U8"),
+            ScalarPointAttributeDataType::I8 => write!(f, "I8"),
+            ScalarPointAttributeDataType::U16 => write!(f, "U16"),
+            ScalarPointAttributeDataType::I16 => write!(f, "I16"),
+            ScalarPointAttributeDataType::U32 => write!(f, "U32"),
+            ScalarPointAttributeDataType::I32 => write!(f, "I32"),
+            ScalarPointAttributeDataType::U64 => write!(f, "U64"),
+            ScalarPointAttributeDataType::I64 => write!(f, "I64"),
+            ScalarPointAttributeDataType::F32 => write!(f, "F32"),
+            ScalarPointAttributeDataType::F64 => write!(f, "F64"),
+            ScalarPointAttributeDataType::Custom {
                 size: _,
                 min_alignment: _,
                 name,
             } => write!(f, "{name}"),
         }
+    }
+}
+
+/// Possible data types for individual point attributes.
+///
+/// This represents vector types as a scalar type + number of components.
+/// E.g. to represent Vec3<i32> this would be encoded as
+/// a `ScalarPointAttributeDataType::I32` with 3 components.
+///
+/// To represent scalar values, set the number of components to 1.
+///
+/// Byte arrays can be represented by setting the underlying scalar type
+/// to `ScalarPointAttributeDataType::U8` and components to the array length.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PointAttributeDataType {
+    /// Number of vector components.
+    pub components: usize,
+    /// Underlying scalar type.
+    pub scalar: ScalarPointAttributeDataType,
+}
+
+impl PointAttributeDataType {
+    /// Constructs a PointAttributeDataType for a scalar value
+    pub const fn scalar(inner: ScalarPointAttributeDataType) -> Self {
+        PointAttributeDataType {
+            components: 1,
+            scalar: inner,
+        }
+    }
+
+    /// Constructs a 2-component vector. Corresponding to the `Vector2<T>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const fn vector2(inner: ScalarPointAttributeDataType) -> Self {
+        PointAttributeDataType {
+            components: 2,
+            scalar: inner,
+        }
+    }
+
+    /// Constructs a 3-component vector. Corresponding to the `Vector3<T>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const fn vector3(inner: ScalarPointAttributeDataType) -> Self {
+        PointAttributeDataType {
+            components: 3,
+            scalar: inner,
+        }
+    }
+
+    /// Constructs a 4-component vector. Corresponding to the `Vector4<T>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const fn vector4(inner: ScalarPointAttributeDataType) -> Self {
+        PointAttributeDataType {
+            components: 4,
+            scalar: inner,
+        }
+    }
+
+    /// A raw byte array of a given size determined at runtime. This corresponds to the Rust type `[u8; N]`
+    pub const fn byte_array(len: usize) -> Self {
+        PointAttributeDataType {
+            components: len,
+            scalar: ScalarPointAttributeDataType::U8,
+        }
+    }
+
+    /// An unsigned 8-bit integer value, corresponding to Rusts `u8` type
+    pub const U8: Self = Self::scalar(ScalarPointAttributeDataType::U8);
+
+    /// An unsigned 16-bit integer value, corresponding to Rusts `u16` type
+    pub const U16: Self = Self::scalar(ScalarPointAttributeDataType::U16);
+
+    /// An unsigned 32-bit integer value, corresponding to Rusts `u32` type
+    pub const U32: Self = Self::scalar(ScalarPointAttributeDataType::U32);
+
+    /// An unsigned 64-bit integer value, corresponding to Rusts `u64` type
+    pub const U64: Self = Self::scalar(ScalarPointAttributeDataType::U64);
+
+    /// A signed 8-bit integer value, corresponding to Rusts `i8` type
+    pub const I8: Self = Self::scalar(ScalarPointAttributeDataType::I8);
+
+    /// A signed 16-bit integer value, corresponding to Rusts `i16` type
+    pub const I16: Self = Self::scalar(ScalarPointAttributeDataType::I16);
+
+    /// A signed 32-bit integer value, corresponding to Rusts `i32` type
+    pub const I32: Self = Self::scalar(ScalarPointAttributeDataType::I32);
+
+    /// A signed 64-bit integer value, corresponding to Rusts `i64` type
+    pub const I64: Self = Self::scalar(ScalarPointAttributeDataType::I64);
+
+    /// A single-precision floating point value, corresponding to Rusts `f32` type
+    pub const F32: Self = Self::scalar(ScalarPointAttributeDataType::F32);
+
+    /// A double-precision floating point value, corresponding to Rusts `f64` type
+    pub const F64: Self = Self::scalar(ScalarPointAttributeDataType::F64);
+
+    /// A 3-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector3<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3U8: Self = Self::vector3(ScalarPointAttributeDataType::U8);
+
+    /// A 3-component vector storing unsigned 16-bit integer values. Corresponding to the `Vector3<u16>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3U16: Self = Self::vector3(ScalarPointAttributeDataType::U16);
+
+    /// A 3-component vector storing unsigned 32-bit integer values. Corresponding to the `Vector3<u32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3U32: Self = Self::vector3(ScalarPointAttributeDataType::U32);
+
+    /// A 3-component vector storing unsigned 64-bit integer values. Corresponding to the `Vector3<u64>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3U64: Self = Self::vector3(ScalarPointAttributeDataType::U64);
+
+    /// A 3-component vector storing singed 8-bit integer values. Corresponding to the `Vector3<i8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3I8: Self = Self::vector3(ScalarPointAttributeDataType::I8);
+
+    /// A 3-component vector storing singed 16-bit integer values. Corresponding to the `Vector3<i16>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3I16: Self = Self::vector3(ScalarPointAttributeDataType::I16);
+
+    /// A 3-component vector storing singed 32-bit integer values. Corresponding to the `Vector3<i32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3I32: Self = Self::vector3(ScalarPointAttributeDataType::I32);
+
+    /// A 3-component vector storing singed 64-bit integer values. Corresponding to the `Vector3<i64>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3I64: Self = Self::vector3(ScalarPointAttributeDataType::I64);
+
+    /// A 3-component vector storing single-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3F32: Self = Self::vector3(ScalarPointAttributeDataType::F32);
+
+    /// A 3-component vector storing double-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC3F64: Self = Self::vector3(ScalarPointAttributeDataType::F64);
+
+    /// A 4-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector4<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
+    pub const VEC4U8: Self = Self::vector4(ScalarPointAttributeDataType::U8);
+
+    /// Size of the associated `PointAttributeDataType`
+    pub const fn size(&self) -> usize {
+        self.scalar.size() * self.components
+    }
+
+    /// Minimum required alignment of the associated `PointAttributeDataType`
+    pub fn min_alignment(&self) -> usize {
+        self.scalar.min_alignment()
+    }
+}
+
+impl Display for PointAttributeDataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.components {
+            1 => write!(f, "{}", self.scalar),
+            2 => write!(f, "Vec2<{}>", self.scalar),
+            3 => write!(f, "Vec3<{}>", self.scalar),
+            4 => write!(f, "Vec4<{}>", self.scalar),
+            n => write!(f, "[{}; {}]", self.scalar, n),
+        }
+    }
+}
+
+trait ScalarType: Copy + bytemuck::Pod {
+    fn scalar_type() -> ScalarPointAttributeDataType;
+}
+
+impl ScalarType for u8 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::U8
+    }
+}
+impl ScalarType for u16 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::U16
+    }
+}
+impl ScalarType for u32 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::U32
+    }
+}
+impl ScalarType for u64 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::U64
+    }
+}
+impl ScalarType for i8 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::I8
+    }
+}
+impl ScalarType for i16 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::I16
+    }
+}
+impl ScalarType for i32 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::I32
+    }
+}
+impl ScalarType for i64 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::I64
+    }
+}
+impl ScalarType for f32 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::F32
+    }
+}
+impl ScalarType for f64 {
+    fn scalar_type() -> ScalarPointAttributeDataType {
+        ScalarPointAttributeDataType::F64
     }
 }
 
@@ -162,114 +307,36 @@ pub trait PrimitiveType: Copy + bytemuck::Pod {
     fn data_type() -> PointAttributeDataType;
 }
 
-impl PrimitiveType for u8 {
+impl<T> PrimitiveType for T
+where
+    T: ScalarType,
+{
     fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::U8
+        PointAttributeDataType::scalar(T::scalar_type())
     }
 }
-impl PrimitiveType for u16 {
+
+impl<T, const D: usize> PrimitiveType for SVector<T, D>
+where
+    T: ScalarType + nalgebra::Scalar,
+{
     fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::U16
+        PointAttributeDataType {
+            components: D,
+            scalar: T::scalar_type(),
+        }
     }
 }
-impl PrimitiveType for u32 {
+
+impl<T, const D: usize> PrimitiveType for Point<T, D>
+where
+    T: ScalarType + nalgebra::Scalar,
+{
     fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::U32
-    }
-}
-impl PrimitiveType for u64 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::U64
-    }
-}
-impl PrimitiveType for i8 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::I8
-    }
-}
-impl PrimitiveType for i16 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::I16
-    }
-}
-impl PrimitiveType for i32 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::I32
-    }
-}
-impl PrimitiveType for i64 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::I64
-    }
-}
-impl PrimitiveType for f32 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::F32
-    }
-}
-impl PrimitiveType for f64 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::F64
-    }
-}
-impl PrimitiveType for Vector3<u8> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3u8
-    }
-}
-impl PrimitiveType for Vector3<u16> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3u16
-    }
-}
-impl PrimitiveType for Vector3<i32> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3i32
-    }
-}
-impl PrimitiveType for Vector3<f32> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3f32
-    }
-}
-impl PrimitiveType for Vector3<f64> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3f64
-    }
-}
-impl PrimitiveType for Vector4<u8> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec4u8
-    }
-}
-impl PrimitiveType for Point3<u8> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3u8
-    }
-}
-impl PrimitiveType for Point3<u16> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3u16
-    }
-}
-impl PrimitiveType for Point3<i32> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3i32
-    }
-}
-impl PrimitiveType for Point3<f32> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3f32
-    }
-}
-impl PrimitiveType for Point3<f64> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec3f64
-    }
-}
-impl PrimitiveType for Point4<u8> {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::Vec4u8
+        PointAttributeDataType {
+            components: D,
+            scalar: T::scalar_type(),
+        }
     }
 }
 
@@ -337,16 +404,16 @@ impl PointAttributeDefinition {
 
     /// Returns the size in bytes of this attribute
     #[inline]
-    pub const fn size(&self) -> u64 {
+    pub const fn size(&self) -> usize {
         self.datatype.size()
     }
 
     /// Returns a new PointAttributeDefinition based on this PointAttributeDefinition, but with a different datatype
     /// ```
     /// # use pasture_core::layout::*;
-    /// let custom_position_attribute = attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32);
+    /// let custom_position_attribute = attributes::POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F32);
     /// # assert_eq!(custom_position_attribute.name(), attributes::POSITION_3D.name());
-    /// # assert_eq!(custom_position_attribute.datatype(), PointAttributeDataType::Vec3f32);
+    /// # assert_eq!(custom_position_attribute.datatype(), PointAttributeDataType::VEC3F32);
     /// ```
     pub fn with_custom_datatype(&self, new_datatype: PointAttributeDataType) -> Self {
         Self {
@@ -365,7 +432,7 @@ impl PointAttributeDefinition {
     /// # assert_eq!(custom_position_attribute.datatype(), attributes::POSITION_3D.datatype());
     /// # assert_eq!(custom_position_attribute.offset(), 8);
     /// ```
-    pub fn at_offset_in_type(&self, offset: u64) -> PointAttributeMember {
+    pub fn at_offset_in_type(&self, offset: usize) -> PointAttributeMember {
         PointAttributeMember {
             attribute_definition: self.clone(),
             offset,
@@ -386,8 +453,8 @@ impl Display for PointAttributeDefinition {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PointAttributeMember {
     attribute_definition: PointAttributeDefinition,
-    offset: u64,
-    size: u64,
+    offset: usize,
+    size: usize,
 }
 
 impl PointAttributeMember {
@@ -399,7 +466,7 @@ impl PointAttributeMember {
     /// # assert_eq!(custom_attribute.datatype(), PointAttributeDataType::F32);
     /// # assert_eq!(custom_attribute.offset(), 8);
     /// ```
-    pub fn custom(name: &'static str, datatype: PointAttributeDataType, offset: u64) -> Self {
+    pub fn custom(name: &'static str, datatype: PointAttributeDataType, offset: usize) -> Self {
         Self {
             attribute_definition: PointAttributeDefinition {
                 name: Cow::Borrowed(name),
@@ -441,7 +508,7 @@ impl PointAttributeMember {
     /// # assert_eq!(offset, 8);
     /// ```
     #[inline]
-    pub const fn offset(&self) -> u64 {
+    pub const fn offset(&self) -> usize {
         self.offset
     }
 
@@ -452,14 +519,14 @@ impl PointAttributeMember {
 
     /// Returns the size in bytes of the associated `PointAttributeMember`
     #[inline]
-    pub const fn size(&self) -> u64 {
+    pub const fn size(&self) -> usize {
         self.size
     }
 
     /// Returns the byte range within the `PointType` for this attribute
     pub fn byte_range_within_point(&self) -> Range<usize> {
-        let start = self.offset as usize;
-        let end = start + self.size() as usize;
+        let start = self.offset;
+        let end = start + self.size();
         start..end
     }
 }
@@ -493,7 +560,7 @@ pub mod attributes {
     /// Attribute definition for a 3D position. Default datatype is Vec3f64
     pub const POSITION_3D: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("Position3D"),
-        datatype: PointAttributeDataType::Vec3f64,
+        datatype: PointAttributeDataType::VEC3F64,
     };
 
     /// Attribute definition for an intensity value. Default datatype is U16
@@ -571,7 +638,7 @@ pub mod attributes {
     /// Attribute definition for an RGB color. Default datatype is Vec3u16
     pub const COLOR_RGB: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("ColorRGB"),
-        datatype: PointAttributeDataType::Vec3u16,
+        datatype: PointAttributeDataType::VEC3U16,
     };
 
     /// Attribute definition for a GPS timestamp. Default datatype is F64
@@ -615,7 +682,7 @@ pub mod attributes {
     /// Attribute definition for the waveform parameters in the LAS format. Default datatype is Vector3<f32>
     pub const WAVEFORM_PARAMETERS: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("WaveformParameters"),
-        datatype: PointAttributeDataType::Vec3f32,
+        datatype: PointAttributeDataType::VEC3F32,
     };
 
     /// Attribute definition for a point ID. Default datatype is U64
@@ -627,7 +694,7 @@ pub mod attributes {
     /// Attribute definition for a 3D point normal. Default datatype is Vec3f32
     pub const NORMAL: PointAttributeDefinition = PointAttributeDefinition {
         name: Cow::Borrowed("Normal"),
-        datatype: PointAttributeDataType::Vec3f32,
+        datatype: PointAttributeDataType::VEC3F32,
     };
 }
 
@@ -636,7 +703,7 @@ pub enum FieldAlignment {
     /// Use alignment as if the type is [`#[repr(C)]`](https://doc.rust-lang.org/reference/type-layout.html#reprc-structs)
     Default,
     /// Use alignment as if the type is [`#[repr(packed(N))]`](https://doc.rust-lang.org/reference/type-layout.html#the-alignment-modifiers)
-    Packed(u64),
+    Packed(usize),
 }
 
 /// Describes the data layout of a single point in a point cloud
@@ -726,7 +793,7 @@ impl PointLayout {
     /// ```
     pub fn from_attributes_packed(
         attributes: &[PointAttributeDefinition],
-        max_alignment: u64,
+        max_alignment: usize,
     ) -> Self {
         let mut layout = Self::default();
         for attribute in attributes {
@@ -752,7 +819,7 @@ impl PointLayout {
     /// ```
     pub fn from_members_and_alignment(
         attributes: &[PointAttributeMember],
-        type_alignment: u64,
+        type_alignment: usize,
     ) -> Self {
         // Conduct extensive checks for uniqueness and non-overlap. The checks are a bit expensive, however
         // they are absolutely necessary because this method is dangerous!
@@ -787,8 +854,8 @@ impl PointLayout {
         Self {
             attributes: attributes.to_vec(),
             memory_layout: Layout::from_size_align(
-                unaligned_size.align_to(type_alignment) as usize,
-                type_alignment as usize,
+                unaligned_size.align_to(type_alignment),
+                type_alignment,
             )
             .expect("Could not create memory layout for PointLayout"),
         }
@@ -833,7 +900,7 @@ impl PointLayout {
             .packed_offset_of_next_field()
             .align_to(alignment_requirement_of_field);
 
-        let current_max_alignment = self.memory_layout.align() as u64;
+        let current_max_alignment = self.memory_layout.align();
         let new_max_alignment = match field_alignment {
             FieldAlignment::Default => std::cmp::max(
                 current_max_alignment,
@@ -847,7 +914,7 @@ impl PointLayout {
         self.attributes
             .push(point_attribute.at_offset_in_type(offset));
 
-        let old_size = self.memory_layout.size() as u64;
+        let old_size = self.memory_layout.size();
         let attribute_end = offset + point_attribute.size();
         let new_size_unaligned = std::cmp::max(old_size, attribute_end);
         self.memory_layout = Layout::from_size_align(
@@ -1008,7 +1075,7 @@ impl PointLayout {
 
     /// Returns the offset from an attribute.
     /// If the attribute don't exist in the layout this function returns None.
-    pub fn offset_of(&self, attribute: &PointAttributeDefinition) -> Option<u64> {
+    pub fn offset_of(&self, attribute: &PointAttributeDefinition) -> Option<usize> {
         self.attributes
             .iter()
             .find(|this_attribute| {
@@ -1020,7 +1087,7 @@ impl PointLayout {
 
     /// Returns the offset of the next field that could be added to this `PointLayout`, without any alignment
     /// requirements
-    fn packed_offset_of_next_field(&self) -> u64 {
+    fn packed_offset_of_next_field(&self) -> usize {
         if self.attributes.is_empty() {
             0
         } else {
@@ -1095,8 +1162,8 @@ mod tests {
     fn test_derive_point_type() {
         let expected_layout_1 = PointLayout::from_attributes_packed(
             &[
-                POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f64),
-                COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u16),
+                POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F64),
+                COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U16),
                 INTENSITY.with_custom_datatype(PointAttributeDataType::U16),
             ],
             1,

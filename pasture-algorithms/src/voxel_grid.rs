@@ -343,7 +343,7 @@ fn centroid_average_vec<T: BorrowedBuffer>(
     let mut z_sum = 0.0;
     for p in &v.points {
         match point_type {
-            PointAttributeDataType::Vec3u8 => {
+            PointAttributeDataType::VEC3U8 => {
                 let vec = buffer
                     .view_attribute::<Vector3<u8>>(attribute_definition)
                     .at(*p);
@@ -351,7 +351,7 @@ fn centroid_average_vec<T: BorrowedBuffer>(
                 y_sum += vec.y as f64;
                 z_sum += vec.z as f64;
             }
-            PointAttributeDataType::Vec3u16 => {
+            PointAttributeDataType::VEC3U16 => {
                 let vec = buffer
                     .view_attribute::<Vector3<u16>>(attribute_definition)
                     .at(*p);
@@ -359,7 +359,7 @@ fn centroid_average_vec<T: BorrowedBuffer>(
                 y_sum += vec.y as f64;
                 z_sum += vec.z as f64;
             }
-            PointAttributeDataType::Vec3f32 => {
+            PointAttributeDataType::VEC3F32 => {
                 let vec = buffer
                     .view_attribute::<Vector3<f32>>(attribute_definition)
                     .at(*p);
@@ -367,7 +367,7 @@ fn centroid_average_vec<T: BorrowedBuffer>(
                 y_sum += vec.y as f64;
                 z_sum += vec.z as f64;
             }
-            PointAttributeDataType::Vec3f64 => {
+            PointAttributeDataType::VEC3F64 => {
                 let vec = buffer
                     .view_attribute::<Vector3<f64>>(attribute_definition)
                     .at(*p);
@@ -375,7 +375,7 @@ fn centroid_average_vec<T: BorrowedBuffer>(
                 y_sum += vec.y;
                 z_sum += vec.z;
             }
-            PointAttributeDataType::Vec4u8 => unimplemented!(),
+            PointAttributeDataType::VEC4U8 => unimplemented!(),
             _ => panic!("Invalid data type for centroid_average_vec"),
         }
     }
@@ -429,11 +429,11 @@ fn centroid_average_num<PB: BorrowedBuffer>(
             PointAttributeDataType::F64 => {
                 sum += buffer.view_attribute::<f64>(attribute_definition).at(*p)
             }
-            PointAttributeDataType::Vec3u8 => panic!("For vector types use centroid_average_vec."),
-            PointAttributeDataType::Vec3u16 => panic!("For vector types use centroid_average_vec."),
-            PointAttributeDataType::Vec3f32 => panic!("For vector types use centroid_average_vec."),
-            PointAttributeDataType::Vec3f64 => panic!("For vector types use centroid_average_vec."),
-            PointAttributeDataType::Vec4u8 => panic!("For vector types use centroid_average_vec."),
+            PointAttributeDataType::VEC3U8 => panic!("For vector types use centroid_average_vec."),
+            PointAttributeDataType::VEC3U16 => panic!("For vector types use centroid_average_vec."),
+            PointAttributeDataType::VEC3F32 => panic!("For vector types use centroid_average_vec."),
+            PointAttributeDataType::VEC3F64 => panic!("For vector types use centroid_average_vec."),
+            PointAttributeDataType::VEC4U8 => panic!("For vector types use centroid_average_vec."),
             _ => unimplemented!(),
         }
     }

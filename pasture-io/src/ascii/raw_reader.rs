@@ -199,7 +199,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         let attribute_offset = point.get_layout().offset_of(attribute);
         if let Some(attribute_offset) = attribute_offset {
             let mut cursor = point.get_cursor();
-            cursor.set_position(attribute_offset + offset);
+            cursor.set_position(attribute_offset as u64 + offset);
             cursor.write_i8(data)?;
         }
         Ok(())
@@ -218,7 +218,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         let attribute_offset = point.get_layout().offset_of(attribute);
         if let Some(attribute_offset) = attribute_offset {
             let mut cursor = point.get_cursor();
-            cursor.set_position(attribute_offset + offset);
+            cursor.set_position(attribute_offset as u64 + offset);
             cursor.write_u8(data)?;
         }
         Ok(())
@@ -234,7 +234,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         let attribute_offset = point.get_layout().offset_of(attribute);
         if let Some(attribute_offset) = attribute_offset {
             let mut cursor = point.get_cursor();
-            cursor.set_position(attribute_offset + offset);
+            cursor.set_position(attribute_offset as u64 + offset);
             cursor.write_u8(data)?;
         }
         Ok(())
@@ -250,7 +250,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         let attribute_offset = point.get_layout().offset_of(attribute);
         if let Some(attribute_offset) = attribute_offset {
             let mut cursor = point.get_cursor();
-            cursor.set_position(attribute_offset + offset);
+            cursor.set_position(attribute_offset as u64 + offset);
             cursor.write_u16::<LittleEndian>(data)?;
         }
         Ok(())
@@ -266,7 +266,7 @@ impl<T: Read + BufRead> RawAsciiReader<T> {
         let attribute_offset = point.get_layout().offset_of(attribute);
         if let Some(attribute_offset) = attribute_offset {
             let mut cursor = point.get_cursor();
-            cursor.set_position(attribute_offset + offset);
+            cursor.set_position(attribute_offset as u64 + offset);
             cursor.write_f64::<LittleEndian>(data)?;
         }
         Ok(())

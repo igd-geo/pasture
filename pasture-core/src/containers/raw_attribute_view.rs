@@ -25,9 +25,9 @@ impl<'a> RawAttributeView<'a> {
     ) -> Self {
         let stride = buffer.point_layout().size_of_point_entry() as usize;
         Self {
-            offset: attribute_member.offset() as usize,
+            offset: attribute_member.offset(),
             point_data: buffer.get_point_range_ref(0..buffer.len()),
-            size_of_attribute: attribute_member.size() as usize,
+            size_of_attribute: attribute_member.size(),
             stride,
         }
     }
@@ -40,8 +40,8 @@ impl<'a> RawAttributeView<'a> {
         Self {
             offset: 0,
             point_data: buffer.get_attribute_range_ref(attribute_definition, 0..buffer.len()),
-            size_of_attribute: attribute_definition.size() as usize,
-            stride: attribute_definition.size() as usize,
+            size_of_attribute: attribute_definition.size(),
+            stride: attribute_definition.size(),
         }
     }
 
@@ -100,9 +100,9 @@ impl<'a> RawAttributeViewMut<'a> {
     ) -> Self {
         let stride = buffer.point_layout().size_of_point_entry() as usize;
         Self {
-            offset: attribute_member.offset() as usize,
+            offset: attribute_member.offset(),
             point_data: buffer.get_point_range_mut(0..buffer.len()),
-            size_of_attribute: attribute_member.size() as usize,
+            size_of_attribute: attribute_member.size(),
             stride,
         }
     }
@@ -115,8 +115,8 @@ impl<'a> RawAttributeViewMut<'a> {
         Self {
             offset: 0,
             point_data: buffer.get_attribute_range_mut(attribute_definition, 0..buffer.len()),
-            size_of_attribute: attribute_definition.size() as usize,
-            stride: attribute_definition.size() as usize,
+            size_of_attribute: attribute_definition.size(),
+            stride: attribute_definition.size(),
         }
     }
 }
@@ -180,7 +180,7 @@ mod tests {
         let layout = CustomPointTypeBig::layout();
 
         for attribute in layout.attributes() {
-            let mut buffer = vec![0; attribute.size() as usize];
+            let mut buffer = vec![0; attribute.size()];
             let raw_view = RawAttributeView::from_interleaved_buffer(&test_data, attribute);
             let data_from_iter_view: Vec<Vec<u8>> = raw_view.map(|a| a.to_vec()).collect();
             let raw_view_mut =
@@ -223,7 +223,7 @@ mod tests {
         let layout = CustomPointTypeBig::layout();
 
         for attribute in layout.attributes() {
-            let mut buffer = vec![0; attribute.size() as usize];
+            let mut buffer = vec![0; attribute.size()];
             let raw_view = RawAttributeView::from_columnar_buffer(
                 &test_data,
                 attribute.attribute_definition(),

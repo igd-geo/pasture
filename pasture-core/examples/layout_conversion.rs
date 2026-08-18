@@ -112,8 +112,8 @@ fn main() {
         // vector-to-scalar conversion, e.g. going from positions to classifications)
         default_converter.set_custom_mapping(
             // Make sure that the attributes and their datatypes exactly match the source and target layouts!
-            &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3i32),
-            &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+            &POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3I32),
+            &COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U8),
         );
 
         // Custom mappings also support transformations. With them, we can apply some arbitrary transformation
@@ -122,7 +122,7 @@ fn main() {
         const OFFSET: Vector3<f64> = Vector3::new(10.0, 10.0, 10.0);
         const SCALE: Vector3<f64> = Vector3::new(0.001, 0.001, 0.001);
         default_converter.set_custom_mapping_with_transformation(
-            &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3i32),
+            &POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3I32),
             &POSITION_3D,
             |local_position: Vector3<f64>| local_position.component_mul(&SCALE) + OFFSET,
             // We also have to specify whether we want to transform the source attribute or the target attribute. Here, we

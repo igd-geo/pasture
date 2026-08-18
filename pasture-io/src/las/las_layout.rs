@@ -44,7 +44,7 @@ pub const ATTRIBUTE_EXTENDED_FLAGS: PointAttributeDefinition = PointAttributeDef
 /// Custom position attribute for LAS positions in local space
 pub const ATTRIBUTE_LOCAL_LAS_POSITION: PointAttributeDefinition = PointAttributeDefinition::custom(
     Cow::Borrowed("LASLocalPosition"),
-    PointAttributeDataType::Vec3i32,
+    PointAttributeDataType::VEC3I32,
 );
 
 /// Returns the default `PointLayout` for the given LAS point format. If `exact_binary_representation` is true, the
@@ -150,7 +150,7 @@ pub fn point_layout_from_las_metadata(
 
     let num_described_bytes = extra_byte_attributes
         .iter()
-        .map(|attribute| attribute.size() as usize)
+        .map(|attribute| attribute.size())
         .sum::<usize>();
 
     // Add the extra bytes attributes with a 1-byte alignment, because the base LAS point types are all tightly packed
@@ -165,7 +165,7 @@ pub fn point_layout_from_las_metadata(
         base_layout.add_attribute(
             PointAttributeDefinition::custom(
                 Cow::Borrowed("UndescribedExtraBytes"),
-                PointAttributeDataType::ByteArray(num_undescribed_bytes as u64),
+                PointAttributeDataType::byte_array(num_undescribed_bytes),
             ),
             FieldAlignment::Packed(1),
         );

@@ -123,7 +123,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
                     attribute_offsets
                         .insert(POSITION_3D.name().to_owned(), reference.byte_offset as u64);
                     layout.add_attribute(
-                        POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                        POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F32),
                         FieldAlignment::Packed(1),
                     );
                 }
@@ -160,7 +160,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
                     attribute_offsets
                         .insert(COLOR_RGB.name().to_owned(), reference.byte_offset as u64);
                     layout.add_attribute(
-                        COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U8),
                         FieldAlignment::Packed(1),
                     );
                 }
@@ -278,7 +278,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
             // not supported at the moment
             let position_attribute = position_attribute.clone();
             match position_attribute.datatype() {
-                PointAttributeDataType::Vec3f32 => point_buffer.transform_attribute(
+                PointAttributeDataType::VEC3F32 => point_buffer.transform_attribute(
                     position_attribute.attribute_definition(),
                     |_, position: Vector3<f32>| -> Vector3<f32> {
                         Vector3::new(
@@ -288,7 +288,7 @@ impl<R: BufRead + Seek> PntsReader<R> {
                         )
                     },
                 ),
-                PointAttributeDataType::Vec3f64 => point_buffer.transform_attribute(
+                PointAttributeDataType::VEC3F64 => point_buffer.transform_attribute(
                     position_attribute.attribute_definition(),
                     |_, position: Vector3<f64>| -> Vector3<f64> { position + rtc_center },
                 ),
@@ -326,7 +326,7 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
                 let offset_to_first_point_of_attribute =
                     *self.attribute_offsets.get(attribute.name()).unwrap();
                 let offset_to_current_point_of_attribute = offset_to_first_point_of_attribute
-                    + (self.current_point_index as u64 * attribute_stride);
+                    + (self.current_point_index as u64 * attribute_stride as u64);
 
                 self.reader
                     .seek(SeekFrom::Start(offset_to_current_point_of_attribute))?;
@@ -337,8 +337,8 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
                     target_attribute.attribute_definition(),
                 );
                 if let Some(conversion_fn) = converter {
-                    let mut src_buf: Vec<u8> = vec![0; attribute.size() as usize];
-                    let mut dst_buf: Vec<u8> = vec![0; target_attribute.size() as usize];
+                    let mut src_buf: Vec<u8> = vec![0; attribute.size()];
+                    let mut dst_buf: Vec<u8> = vec![0; target_attribute.size()];
                     let target_attribute_def = target_attribute.attribute_definition();
                     for point_index in 0..num_to_read {
                         self.reader.read_exact(src_buf.as_mut_slice())?;
@@ -352,7 +352,7 @@ impl<R: BufRead + Seek> PointReader for PntsReader<R> {
                         }
                     }
                 } else {
-                    let mut buf: Vec<u8> = vec![0; attribute.size() as usize];
+                    let mut buf: Vec<u8> = vec![0; attribute.size()];
                     let target_attribute_def = target_attribute.attribute_definition();
                     for point_index in 0..num_to_read {
                         self.reader.read_exact(buf.as_mut_slice())?;

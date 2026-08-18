@@ -68,7 +68,7 @@ fn main() {
     BorrowedBuffer::get_point(&vector_buffer, 0, &mut memory_for_one_point);
     BorrowedBuffer::get_point(&hashmap_buffer, 0, &mut memory_for_one_point);
 
-    let mut memory_for_one_position: Vec<u8> = vec![0; POSITION_3D.size() as usize];
+    let mut memory_for_one_position: Vec<u8> = vec![0; POSITION_3D.size()];
     BorrowedBuffer::get_attribute(
         &vector_buffer,
         &POSITION_3D,

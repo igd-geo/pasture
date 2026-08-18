@@ -1,223 +1,12 @@
 extern crate proc_macro;
-use std::collections::HashSet;
-
-//use anyhow::{anyhow, bail, Result};
-use layout::{StructMemberLayout, get_struct_member_layout};
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::spanned::Spanned;
 use syn::{
-    Attribute, Data, Error, Expr, ExprLit, Field, Fields, GenericArgument, Ident, Lit,
-    PathArguments, Result, Type, TypePath, parse_macro_input,
+    Attribute, Data, Error, Expr, ExprLit, Field, Fields, Ident, Index, Lit, Member, Result, Type,
+    parse_macro_input,
 };
 use syn::{DeriveInput, Meta};
-
-mod layout;
-
-enum PasturePrimitiveType {
-    U8,
-    I8,
-    U16,
-    I16,
-    U32,
-    I32,
-    U64,
-    I64,
-    F32,
-    F64,
-    Vec3u8,
-    Vec3u16,
-    Vec3f32,
-    Vec3f64,
-    Vec3i32,
-    Vec4u8,
-}
-
-impl PasturePrimitiveType {
-    fn min_alignment(&self) -> u64 {
-        match self {
-            PasturePrimitiveType::U8 => 1,
-            PasturePrimitiveType::I8 => 1,
-            PasturePrimitiveType::U16 => 2,
-            PasturePrimitiveType::I16 => 2,
-            PasturePrimitiveType::U32 => 4,
-            PasturePrimitiveType::I32 => 4,
-            PasturePrimitiveType::U64 => 8,
-            PasturePrimitiveType::I64 => 8,
-            PasturePrimitiveType::F32 => 4,
-            PasturePrimitiveType::F64 => 8,
-            PasturePrimitiveType::Vec3u8 => 1,
-            PasturePrimitiveType::Vec3u16 => 2,
-            PasturePrimitiveType::Vec3f32 => 4,
-            PasturePrimitiveType::Vec3f64 => 8,
-            PasturePrimitiveType::Vec3i32 => 4,
-            &PasturePrimitiveType::Vec4u8 => 1,
-        }
-    }
-
-    fn size(&self) -> u64 {
-        match self {
-            PasturePrimitiveType::U8 => 1,
-            PasturePrimitiveType::I8 => 1,
-            PasturePrimitiveType::U16 => 2,
-            PasturePrimitiveType::I16 => 2,
-            PasturePrimitiveType::U32 => 4,
-            PasturePrimitiveType::I32 => 4,
-            PasturePrimitiveType::U64 => 8,
-            PasturePrimitiveType::I64 => 8,
-            PasturePrimitiveType::F32 => 4,
-            PasturePrimitiveType::F64 => 8,
-            PasturePrimitiveType::Vec3u8 => 3,
-            PasturePrimitiveType::Vec3u16 => 6,
-            PasturePrimitiveType::Vec3f32 => 12,
-            PasturePrimitiveType::Vec3f64 => 24,
-            PasturePrimitiveType::Vec3i32 => 12,
-            &PasturePrimitiveType::Vec4u8 => 4,
-        }
-    }
-
-    fn as_token_stream(&self) -> quote::__private::TokenStream {
-        match self {
-            PasturePrimitiveType::U8 => quote! {pasture_core::layout::PointAttributeDataType::U8},
-            PasturePrimitiveType::I8 => quote! {pasture_core::layout::PointAttributeDataType::I8},
-            PasturePrimitiveType::U16 => quote! {pasture_core::layout::PointAttributeDataType::U16},
-            PasturePrimitiveType::I16 => quote! {pasture_core::layout::PointAttributeDataType::I16},
-            PasturePrimitiveType::U32 => quote! {pasture_core::layout::PointAttributeDataType::U32},
-            PasturePrimitiveType::I32 => quote! {pasture_core::layout::PointAttributeDataType::I32},
-            PasturePrimitiveType::U64 => quote! {pasture_core::layout::PointAttributeDataType::U64},
-            PasturePrimitiveType::I64 => quote! {pasture_core::layout::PointAttributeDataType::I64},
-            PasturePrimitiveType::F32 => quote! {pasture_core::layout::PointAttributeDataType::F32},
-            PasturePrimitiveType::F64 => quote! {pasture_core::layout::PointAttributeDataType::F64},
-            PasturePrimitiveType::Vec3u8 => {
-                quote! {pasture_core::layout::PointAttributeDataType::Vec3u8}
-            }
-            PasturePrimitiveType::Vec3u16 => {
-                quote! {pasture_core::layout::PointAttributeDataType::Vec3u16}
-            }
-            PasturePrimitiveType::Vec3f32 => {
-                quote! {pasture_core::layout::PointAttributeDataType::Vec3f32}
-            }
-            PasturePrimitiveType::Vec3f64 => {
-                quote! {pasture_core::layout::PointAttributeDataType::Vec3f64}
-            }
-            PasturePrimitiveType::Vec3i32 => {
-                quote! {pasture_core::layout::PointAttributeDataType::Vec3i32}
-            }
-            PasturePrimitiveType::Vec4u8 => {
-                quote! {pasture_core::layout::PointAttributeDataType::Vec4u8}
-            }
-        }
-    }
-}
-
-fn get_primitive_type_for_ident_type(ident: &Ident) -> Result<PasturePrimitiveType> {
-    let type_name = ident.to_string();
-    match type_name.as_str() {
-        "u8" => Ok(PasturePrimitiveType::U8),
-        "u16" => Ok(PasturePrimitiveType::U16),
-        "u32" => Ok(PasturePrimitiveType::U32),
-        "u64" => Ok(PasturePrimitiveType::U64),
-        "i8" => Ok(PasturePrimitiveType::I8),
-        "i16" => Ok(PasturePrimitiveType::I16),
-        "i32" => Ok(PasturePrimitiveType::I32),
-        "i64" => Ok(PasturePrimitiveType::I64),
-        "f32" => Ok(PasturePrimitiveType::F32),
-        "f64" => Ok(PasturePrimitiveType::F64),
-        _ => Err(Error::new_spanned(
-            ident,
-            format!("Type {} is no valid Pasture primitive type!", type_name),
-        )),
-    }
-}
-
-fn get_primitive_type_for_non_ident_type(type_path: &TypePath) -> Result<PasturePrimitiveType> {
-    // Path should have an ident (Vector3, Vector4, ...), as well as one generic argument
-    let valid_idents: HashSet<_> = ["Vector3", "Vector4", "Point3", "Point4"].iter().collect();
-
-    let path_segment = type_path
-        .path
-        .segments
-        .first()
-        .ok_or_else(|| Error::new_spanned(&type_path.path, "Invalid type"))?;
-    if !valid_idents.contains(&path_segment.ident.to_string().as_str()) {
-        return Err(Error::new_spanned(&path_segment.ident, "Invalid type"));
-    }
-
-    let path_arg = match &path_segment.arguments {
-        PathArguments::AngleBracketed(arg) => arg,
-        _ => return Err(Error::new_spanned(&path_segment.arguments, "Invalid type")),
-    };
-
-    let first_generic_arg = path_arg
-        .args
-        .first()
-        .ok_or_else(|| Error::new_spanned(path_arg, "Invalid type arguments"))?;
-
-    let type_arg = match first_generic_arg {
-        GenericArgument::Type(t) => t,
-        _ => return Err(Error::new_spanned(first_generic_arg, "Invalid type")),
-    };
-
-    let type_path = match type_arg {
-        Type::Path(p) => p,
-        _ => return Err(Error::new_spanned(type_arg, "Invalid type")),
-    };
-
-    match type_path.path.get_ident() {
-        Some(ident) => {
-            // Not ALL primitive types are supported as generic arguments for Vector3
-            let type_name = ident.to_string();
-            let outer_type_name = path_segment.ident.to_string();
-            match outer_type_name.as_str() {
-                "Vector3" | "Point3" => match type_name.as_str() {
-                    "u8" => Ok(PasturePrimitiveType::Vec3u8),
-                    "u16" => Ok(PasturePrimitiveType::Vec3u16),
-                    "f32" => Ok(PasturePrimitiveType::Vec3f32),
-                    "f64" => Ok(PasturePrimitiveType::Vec3f64),
-                    "i32" => Ok(PasturePrimitiveType::Vec3i32),
-                    _ => Err(Error::new_spanned(
-                        ident,
-                        format!(
-                            "{0}<{1}> is no valid Pasture primitive type. {0} is supported, but only for generic argument(s) u8, u16, i32, f32 or f64",
-                            outer_type_name, type_name
-                        ),
-                    )),
-                },
-                "Vector4" | "Point4" => match type_name.as_str() {
-                    "u8" => Ok(PasturePrimitiveType::Vec4u8),
-                    _ => Err(Error::new_spanned(
-                        ident,
-                        format!(
-                            "{0}<{1}> is no valid Pasture primitive type. {0} is supported, but only for generic argument(s) u8",
-                            outer_type_name, type_name
-                        ),
-                    )),
-                },
-                _ => Err(Error::new_spanned(ident, "Invalid type")),
-            }
-        }
-        None => Err(Error::new_spanned(&type_path.path, "Invalid type")),
-    }
-}
-
-fn type_path_to_primitive_type(type_path: &TypePath) -> Result<PasturePrimitiveType> {
-    if type_path.qself.is_some() {
-        return Err(Error::new_spanned(
-            type_path,
-            "Qualified types are illegal in a struct with #[derive(PointType)]",
-        ));
-    }
-
-    let datatype = match type_path.path.get_ident() {
-        Some(ident) => get_primitive_type_for_ident_type(ident),
-        None => get_primitive_type_for_non_ident_type(type_path),
-    }?;
-
-    Ok(datatype)
-    // let gen = quote! {
-    //     pasture_core::layout::PointAttributeDataType::#datatype_name
-    // };
-    // Ok(gen)
-}
 
 fn get_attribute_name_from_field(field: &Field) -> Result<String> {
     let pasture_attributes: Vec<&Attribute> = field
@@ -314,23 +103,31 @@ fn get_attribute_name_from_field(field: &Field) -> Result<String> {
 /// that the field maps to, as well as the primitive type of the field
 struct FieldLayoutDescription {
     pub attribute_name: String,
-    pub primitive_type: PasturePrimitiveType,
+    pub ty: Type,
+    pub ident: Member,
 }
 
 fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescription>> {
     fields
         .iter()
-        .map(|field| match field.ty {
-            Type::Path(ref type_path) => {
-                let primitive_type = type_path_to_primitive_type(type_path)?;
-                let attribute_name = get_attribute_name_from_field(field)?;
+        .enumerate()
+        .map(|(idx, field)| {
+            let attribute_name = get_attribute_name_from_field(field)?;
+            let ident = field.ident.clone().map_or_else(
+                || {
+                    Member::Unnamed(Index {
+                        index: idx as u32,
+                        span: field.span(),
+                    })
+                },
+                Member::Named,
+            );
 
-                Ok(FieldLayoutDescription {
-                    attribute_name,
-                    primitive_type,
-                })
-            }
-            ref bad => Err(Error::new_spanned(bad, "Invalid type in PointType struct")),
+            Ok(FieldLayoutDescription {
+                attribute_name,
+                ty: field.ty.clone(),
+                ident,
+            })
         })
         .collect::<Result<Vec<FieldLayoutDescription>>>()
 }
@@ -350,43 +147,6 @@ fn field_parameters(data: &Data, ident: &Ident) -> Result<Vec<FieldLayoutDescrip
             "#[derive(PointType)] is only valid for structs",
         )),
     }
-}
-
-fn calculate_offsets_and_alignment(
-    fields: &[FieldLayoutDescription],
-    data: &Data,
-    ident: &Ident,
-    type_attributes: &[Attribute],
-) -> Result<(Vec<u64>, u64)> {
-    let struct_data = match data {
-        Data::Struct(struct_data) => struct_data,
-        _ => {
-            return Err(Error::new_spanned(
-                ident,
-                "#[derive(PointType)] is only valid for structs",
-            ));
-        }
-    };
-    let struct_layout = get_struct_member_layout(type_attributes, struct_data)?;
-
-    let mut current_offset = 0_u64;
-    let mut max_alignment = 1_u64;
-    let mut offsets = vec![];
-    for field in fields {
-        let min_alignment = match struct_layout {
-            StructMemberLayout::C => field.primitive_type.min_alignment(),
-            StructMemberLayout::Packed(max_alignment) => {
-                std::cmp::min(max_alignment, field.primitive_type.min_alignment())
-            }
-        };
-        max_alignment = std::cmp::max(min_alignment, max_alignment);
-
-        let aligned_offset = current_offset.div_ceil(min_alignment) * min_alignment;
-        offsets.push(aligned_offset);
-        current_offset = aligned_offset + field.primitive_type.size();
-    }
-
-    Ok((offsets, max_alignment))
 }
 
 /// Custom `derive` macro that implements the [`PointType`](pasture_core::layout::PointType) trait for the type that it is applied to.
@@ -454,28 +214,39 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
             return why.to_compile_error().into();
         }
     };
-    let (offsets, type_alignment) =
-        match calculate_offsets_and_alignment(&fields, &input.data, name, input.attrs.as_slice()) {
-            Ok(inner) => inner,
-            Err(why) => {
-                return why.to_compile_error().into();
-            }
-        };
 
-    let attribute_descriptions = fields.iter().zip(offsets.iter()).map(|(field, offset)| {
-        let attribute_name = &field.attribute_name;
-        let primitive_type = &field.primitive_type.as_token_stream();
+    let attribute_descriptions = fields.iter().map(|field| {
+        let FieldLayoutDescription {
+            attribute_name,
+            ty,
+            ident,
+        } = field;
         quote! {
-            pasture_core::layout::PointAttributeDefinition::custom(std::borrow::Cow::Borrowed(#attribute_name), #primitive_type).at_offset_in_type(#offset)
+            pasture_core::layout::PointAttributeDefinition::custom(
+                std::borrow::Cow::Borrowed(#attribute_name),
+                <#ty as pasture_core::layout::PrimitiveType>::data_type()
+            ).at_offset_in_type(offset_of!(#name, #ident))
         }
     });
+
+    // let r#gen = quote! {
+    //     impl pasture_core::layout::PointType for #name {
+    //         fn layout() -> pasture_core::layout::PointLayout {
+    //             pasture_core::layout::PointLayout::from_members_and_alignment(&[
+    //                 #(#attribute_descriptions ,)*
+    //             ], #type_alignment)
+    //         }
+    //     }
+    // };
 
     let r#gen = quote! {
         impl pasture_core::layout::PointType for #name {
             fn layout() -> pasture_core::layout::PointLayout {
+                use core::mem::{align_of, offset_of};
+
                 pasture_core::layout::PointLayout::from_members_and_alignment(&[
                     #(#attribute_descriptions ,)*
-                ], #type_alignment)
+                ], align_of::<#name>())
             }
         }
     };

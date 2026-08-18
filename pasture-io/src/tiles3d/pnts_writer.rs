@@ -118,10 +118,10 @@ impl<W: Write + Seek> PntsWriter<W> {
 
         let color_rgba = COLOR_RGBA;
         let supported_attributes: HashMap<&str, PointAttributeDataType> = vec![
-            (POSITION_3D.name(), PointAttributeDataType::Vec3f32),
-            (COLOR_RGB.name(), PointAttributeDataType::Vec3u8),
-            (color_rgba.name(), PointAttributeDataType::Vec4u8),
-            (NORMAL.name(), PointAttributeDataType::Vec3f32),
+            (POSITION_3D.name(), PointAttributeDataType::VEC3F32),
+            (COLOR_RGB.name(), PointAttributeDataType::VEC3U8),
+            (color_rgba.name(), PointAttributeDataType::VEC4U8),
+            (NORMAL.name(), PointAttributeDataType::VEC3F32),
         ]
         .drain(..)
         .collect();
@@ -233,8 +233,7 @@ impl<W: Write + Seek> PntsWriter<W> {
             .attributes()
             .scan(0, |state, attribute| {
                 let ret = *state;
-                *state +=
-                    (attribute.size() as usize * num_points).align_to(PNTS_SEMANTICS_MAX_ALIGNMENT);
+                *state += (attribute.size() * num_points).align_to(PNTS_SEMANTICS_MAX_ALIGNMENT);
                 Some(ret)
             })
             .collect::<Vec<_>>();
@@ -291,7 +290,7 @@ impl<W: Write + Seek> PntsWriter<W> {
         self.default_layout
             .attributes()
             .map(|attribute| {
-                (num_points * attribute.size() as usize).align_to(PNTS_SEMANTICS_MAX_ALIGNMENT)
+                (num_points * { attribute.size() }).align_to(PNTS_SEMANTICS_MAX_ALIGNMENT)
             })
             .sum()
     }
@@ -307,7 +306,7 @@ impl<W: Write + Seek> PntsWriter<W> {
                 .write_all(attribute_data)
                 .context("Error while writing attribute data")?;
 
-            let blob_byte_size = attribute.size() as usize * self.cached_points.len();
+            let blob_byte_size = attribute.size() * self.cached_points.len();
             let num_padding_bytes =
                 blob_byte_size.align_to(PNTS_SEMANTICS_MAX_ALIGNMENT) - blob_byte_size;
             if num_padding_bytes != 0 {
@@ -352,14 +351,14 @@ impl<W: Write + Seek> PointWriter for PntsWriter<W> {
             for (attribute_name, maybe_converter) in self.attribute_converters.iter() {
                 if let Some(attr) = points.point_layout().get_attribute_by_name(attribute_name) {
                     let attribute_def = attr.attribute_definition();
-                    let mut buf = vec![0; attribute_def.size() as usize];
+                    let mut buf = vec![0; attribute_def.size()];
                     let dst_attribute = self
                         .cached_points
                         .point_layout()
                         .get_attribute_by_name(attribute_name)
                         .unwrap()
                         .clone();
-                    let dst_attribute_size = dst_attribute.size() as usize;
+                    let dst_attribute_size = dst_attribute.size();
                     let dst_attribute_def = dst_attribute.attribute_definition();
                     let mut converted_buf = vec![0; dst_attribute_size];
                     for point_index in 0..points.len() {
@@ -543,8 +542,8 @@ mod tests {
 
             let read_points_layout = PointLayout::from_attributes_packed(
                 &[
-                    POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
-                    COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                    POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F32),
+                    COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U8),
                 ],
                 1,
             );
@@ -562,7 +561,7 @@ mod tests {
                 expected_pos_1,
                 read_points
                     .view_attribute::<Vector3<f32>>(
-                        &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                        &POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F32),
                     )
                     .at(0)
             );
@@ -570,7 +569,7 @@ mod tests {
                 expected_pos_2,
                 read_points
                     .view_attribute::<Vector3<f32>>(
-                        &POSITION_3D.with_custom_datatype(PointAttributeDataType::Vec3f32),
+                        &POSITION_3D.with_custom_datatype(PointAttributeDataType::VEC3F32),
                     )
                     .at(1)
             );
@@ -579,7 +578,7 @@ mod tests {
                 expected_color_1,
                 read_points
                     .view_attribute::<Vector3<u8>>(
-                        &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        &COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U8),
                     )
                     .at(0)
             );
@@ -587,7 +586,7 @@ mod tests {
                 expected_color_2,
                 read_points
                     .view_attribute::<Vector3<u8>>(
-                        &COLOR_RGB.with_custom_datatype(PointAttributeDataType::Vec3u8),
+                        &COLOR_RGB.with_custom_datatype(PointAttributeDataType::VEC3U8),
                     )
                     .at(1)
             );
