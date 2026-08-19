@@ -13,12 +13,12 @@
 //! The conversion then operates on these two buffers. As this is a *highly* unsafe operation where all sorts of things
 //! could go wrong, any conversion is only valid together with the *exact* `PointLayout` of both `A` and `B`!
 
-use lazy_static::lazy_static;
-use nalgebra::Vector3;
 use num_traits::AsPrimitive;
-use std::{collections::HashMap, ops::Range};
+use std::{any::type_name, ops::Range};
 
-use crate::layout::{PointAttributeDataType, PointAttributeDefinition, PointLayout};
+use crate::layout::{
+    PointAttributeDataType, PointAttributeDefinition, PointLayout, ScalarDataType,
+};
 
 /// Helper structure that contains the relevant data to convert a single attribute from a source binary
 /// buffer to a target binary buffer.
@@ -135,151 +135,62 @@ pub fn get_converter_for_attributes(
     get_generic_converter(from_attribute.datatype(), to_attribute.datatype())
 }
 
-macro_rules! insert_scalar_converter_using_as {
-    ($prim_from:ident, $prim_to:ident, $type_from:ident, $type_to:ident, $map:expr) => {
-        // Insert symmetric conversion function from<->to and assert that they are unique
-        assert!(
-            ($map)
-                .insert(
-                    (
-                        PointAttributeDataType::$type_from,
-                        PointAttributeDataType::$type_to,
-                    ),
-                    convert_scalar_using_as::<$prim_from, $prim_to>,
-                )
-                .is_none()
-        );
-        assert!(
-            ($map)
-                .insert(
-                    (
-                        PointAttributeDataType::$type_to,
-                        PointAttributeDataType::$type_from,
-                    ),
-                    convert_scalar_using_as::<$prim_to, $prim_from>,
-                )
-                .is_none()
-        );
-    };
-}
-
-macro_rules! insert_vec3_converter_using_as {
-    ($prim_from:ident, $prim_to:ident, $type_from:ident, $type_to:ident, $map:expr) => {
-        // Insert symmetric conversion function from<->to and assert that they are unique
-        assert!(
-            ($map)
-                .insert(
-                    (
-                        PointAttributeDataType::$type_from,
-                        PointAttributeDataType::$type_to,
-                    ),
-                    convert_vec3_using_as::<$prim_from, $prim_to>,
-                )
-                .is_none()
-        );
-        assert!(
-            ($map)
-                .insert(
-                    (
-                        PointAttributeDataType::$type_to,
-                        PointAttributeDataType::$type_from,
-                    ),
-                    convert_vec3_using_as::<$prim_to, $prim_from>,
-                )
-                .is_none()
-        );
-    };
-}
-
 /// Returns a generic converter that can convert between primitive types. These functions implement primitive type conversions
 /// as if using the `as` operator, using the [`num_traits::AsPrimitive`] trait
 pub fn get_generic_converter(
     from_type: PointAttributeDataType,
     to_type: PointAttributeDataType,
 ) -> Option<AttributeConversionFn> {
-    lazy_static! {
-        static ref GENERIC_CONVERTERS: HashMap<(PointAttributeDataType, PointAttributeDataType), AttributeConversionFn> = {
-            let mut converters = HashMap::<
-                (PointAttributeDataType, PointAttributeDataType),
-                AttributeConversionFn,
-            >::new();
-            insert_scalar_converter_using_as!(u8, u16, U8, U16, converters);
-            insert_scalar_converter_using_as!(u8, u32, U8, U32, converters);
-            insert_scalar_converter_using_as!(u8, u64, U8, U64, converters);
-            insert_scalar_converter_using_as!(u8, i8, U8, I8, converters);
-            insert_scalar_converter_using_as!(u8, i16, U8, I16, converters);
-            insert_scalar_converter_using_as!(u8, i32, U8, I32, converters);
-            insert_scalar_converter_using_as!(u8, i64, U8, I64, converters);
-            insert_scalar_converter_using_as!(u8, f32, U8, F32, converters);
-            insert_scalar_converter_using_as!(u8, f64, U8, F64, converters);
+    if from_type.components != to_type.components {
+        return None;
+    }
+    let components = from_type.components;
 
-            insert_scalar_converter_using_as!(u16, u32, U16, U32, converters);
-            insert_scalar_converter_using_as!(u16, u64, U16, U64, converters);
-            insert_scalar_converter_using_as!(u16, i8, U16, I8, converters);
-            insert_scalar_converter_using_as!(u16, i16, U16, I16, converters);
-            insert_scalar_converter_using_as!(u16, i32, U16, I32, converters);
-            insert_scalar_converter_using_as!(u16, i64, U16, I64, converters);
-            insert_scalar_converter_using_as!(u16, f32, U16, F32, converters);
-            insert_scalar_converter_using_as!(u16, f64, U16, F64, converters);
-
-            insert_scalar_converter_using_as!(u32, u64, U32, U64, converters);
-            insert_scalar_converter_using_as!(u32, i8, U32, I8, converters);
-            insert_scalar_converter_using_as!(u32, i16, U32, I16, converters);
-            insert_scalar_converter_using_as!(u32, i32, U32, I32, converters);
-            insert_scalar_converter_using_as!(u32, i64, U32, I64, converters);
-            insert_scalar_converter_using_as!(u32, f32, U32, F32, converters);
-            insert_scalar_converter_using_as!(u32, f64, U32, F64, converters);
-
-            insert_scalar_converter_using_as!(u64, i8, U64, I8, converters);
-            insert_scalar_converter_using_as!(u64, i16, U64, I16, converters);
-            insert_scalar_converter_using_as!(u64, i32, U64, I32, converters);
-            insert_scalar_converter_using_as!(u64, i64, U64, I64, converters);
-            insert_scalar_converter_using_as!(u64, f32, U64, F32, converters);
-            insert_scalar_converter_using_as!(u64, f64, U64, F64, converters);
-
-            insert_scalar_converter_using_as!(i8, i16, I8, I16, converters);
-            insert_scalar_converter_using_as!(i8, i32, I8, I32, converters);
-            insert_scalar_converter_using_as!(i8, i64, I8, I64, converters);
-            insert_scalar_converter_using_as!(i8, f32, I8, F32, converters);
-            insert_scalar_converter_using_as!(i8, f64, I8, F64, converters);
-
-            insert_scalar_converter_using_as!(i16, i32, I16, I32, converters);
-            insert_scalar_converter_using_as!(i16, i64, I16, I64, converters);
-            insert_scalar_converter_using_as!(i16, f32, I16, F32, converters);
-            insert_scalar_converter_using_as!(i16, f64, I16, F64, converters);
-
-            insert_scalar_converter_using_as!(i32, i64, I32, I64, converters);
-            insert_scalar_converter_using_as!(i32, f32, I32, F32, converters);
-            insert_scalar_converter_using_as!(i32, f64, I32, F64, converters);
-
-            insert_scalar_converter_using_as!(i64, f32, I64, F32, converters);
-            insert_scalar_converter_using_as!(i64, f64, I64, F64, converters);
-
-            insert_scalar_converter_using_as!(f32, f64, F32, F64, converters);
-
-            insert_vec3_converter_using_as!(f32, f64, VEC3F32, VEC3F64, converters);
-
-            insert_vec3_converter_using_as!(u8, u16, VEC3U8, VEC3U16, converters);
-            insert_vec3_converter_using_as!(u8, i32, VEC3U8, VEC3I32, converters);
-            insert_vec3_converter_using_as!(u8, f32, VEC3U8, VEC3F32, converters);
-            insert_vec3_converter_using_as!(u8, f64, VEC3U8, VEC3F64, converters);
-
-            insert_vec3_converter_using_as!(u16, i32, VEC3U16, VEC3I32, converters);
-            insert_vec3_converter_using_as!(u16, f32, VEC3U16, VEC3F32, converters);
-            insert_vec3_converter_using_as!(u16, f64, VEC3U16, VEC3F64, converters);
-
-            insert_vec3_converter_using_as!(i32, f32, VEC3I32, VEC3F32, converters);
-            insert_vec3_converter_using_as!(i32, f64, VEC3I32, VEC3F64, converters);
-
-            converters
-        };
+    if from_type == to_type {
+        return Some(convert_unit);
     }
 
-    let key = (from_type, to_type);
-    let f = GENERIC_CONVERTERS
-        .get(&key)
-        .unwrap_or_else(|| panic!("Invalid conversion {} -> {}", from_type, to_type));
-    Some(*f)
+    macro_rules! conversion_match_components {
+        ($t1:ty, $t2:ty) => {
+            match components {
+                1 => Some(convert_using_as::<$t1, $t2, 1>),
+                2 => Some(convert_using_as::<$t1, $t2, 2>),
+                3 => Some(convert_using_as::<$t1, $t2, 3>),
+                4 => Some(convert_using_as::<$t1, $t2, 4>),
+                _ => Some(convert_array_using_as::<$t1, $t2>),
+            }
+        };
+    }
+    macro_rules! conversion_match_to_type {
+        ($t1:ty) => {
+            match to_type.scalar {
+                ScalarDataType::U8 => conversion_match_components!($t1, u8),
+                ScalarDataType::I8 => conversion_match_components!($t1, i8),
+                ScalarDataType::U16 => conversion_match_components!($t1, u16),
+                ScalarDataType::I16 => conversion_match_components!($t1, i16),
+                ScalarDataType::U32 => conversion_match_components!($t1, u32),
+                ScalarDataType::I32 => conversion_match_components!($t1, i32),
+                ScalarDataType::U64 => conversion_match_components!($t1, u64),
+                ScalarDataType::I64 => conversion_match_components!($t1, i64),
+                ScalarDataType::F32 => conversion_match_components!($t1, f32),
+                ScalarDataType::F64 => conversion_match_components!($t1, f64),
+                ScalarDataType::Custom { .. } => None,
+            }
+        };
+    }
+    match from_type.scalar {
+        ScalarDataType::U8 => conversion_match_to_type!(u8),
+        ScalarDataType::I8 => conversion_match_to_type!(i8),
+        ScalarDataType::U16 => conversion_match_to_type!(u16),
+        ScalarDataType::I16 => conversion_match_to_type!(i16),
+        ScalarDataType::U32 => conversion_match_to_type!(u32),
+        ScalarDataType::I32 => conversion_match_to_type!(i32),
+        ScalarDataType::U64 => conversion_match_to_type!(u64),
+        ScalarDataType::I64 => conversion_match_to_type!(i64),
+        ScalarDataType::F32 => conversion_match_to_type!(f32),
+        ScalarDataType::F64 => conversion_match_to_type!(f64),
+        ScalarDataType::Custom { .. } => None,
+    }
 }
 
 /// Unit conversion function (when from and to represent the same datatype)
@@ -310,6 +221,35 @@ pub unsafe fn convert_unit(from: &[u8], to: &mut [u8]) {
     to.copy_from_slice(from)
 }
 
+/// Generic conversion function from scalar or vector values of type `From` to type `To`. Assumes that `From` and
+/// `To` are primitive types so that the conversion can happen by using `as`. Boils down to `*to_value = from_value as To;`
+/// where `from_value` comes from the bytes `from` interpreted as `From`, and `to_value` comes from the bytes
+/// `to` interpreted as `To`.
+///
+/// # Safety
+///
+/// `from` and `to` can be unaligned, but must point to valid initialized memory of the types `From` and
+/// `To`, respectively
+unsafe fn convert_using_as<From, To, const C: usize>(from: &[u8], to: &mut [u8])
+where
+    From: AsPrimitive<To> + Copy,
+    To: Copy + 'static,
+{
+    // Relying on compiler optimizations here to do loop unrolling etc for optimal versions for
+    // scalars (C==1) and small vectors (mostly Vec3, C==3).
+    // todo: measure performance to validate this claim.
+    dbg!(type_name::<From>(), type_name::<To>(), C);
+    for i in 0..C {
+        unsafe {
+            let from_ptr = (from.as_ptr() as *const From).add(i);
+            let to_ptr = (to.as_mut_ptr() as *mut To).add(i);
+            let from_value = from_ptr.read_unaligned();
+            let to_value = from_value.as_();
+            to_ptr.write_unaligned(to_value);
+        }
+    }
+}
+
 /// Generic conversion function from scalar values of type `From` to type `To`. Assumes that `From` and
 /// `To` are primitive types so that the conversion can happen by using `as`. Boils down to `*to_value = from_value as To;`
 /// where `from_value` comes from the bytes `from` interpreted as `From`, and `to_value` comes from the bytes
@@ -319,41 +259,155 @@ pub unsafe fn convert_unit(from: &[u8], to: &mut [u8]) {
 ///
 /// `from` and `to` can be unaligned, but must point to valid initialized memory of the types `From` and
 /// `To`, respectively
-unsafe fn convert_scalar_using_as<From, To>(from: &[u8], to: &mut [u8])
+unsafe fn convert_array_using_as<From, To>(from: &[u8], to: &mut [u8])
 where
     From: AsPrimitive<To> + Copy,
     To: Copy + 'static,
 {
     unsafe {
-        let from_ptr = from.as_ptr() as *const From;
-        let to_ptr = to.as_mut_ptr() as *mut To;
-
-        let from_value = from_ptr.read_unaligned();
-        let to_value = from_value.as_();
-        to_ptr.write_unaligned(to_value);
+        let mut from_ptr = from.as_ptr() as *const From;
+        let mut to_ptr = to.as_mut_ptr() as *mut To;
+        let from_end = from.as_ptr().add(from.len()) as *const From;
+        let to_end = to.as_ptr().add(to.len()) as *mut To;
+        while from_ptr < from_end && to_ptr < to_end {
+            let from_value = from_ptr.read_unaligned();
+            let to_value = from_value.as_();
+            to_ptr.write_unaligned(to_value);
+            from_ptr = from_ptr.add(1);
+            to_ptr = to_ptr.add(1);
+        }
     }
 }
 
-/// Generic conversion function from a `Vector3<From>` into a `Vector3<To>`. Assumes that `From` and `To`
-/// are primitive types so that the conversion can happen by using `as` for the components of the vector.
-/// Boils down to `to_vector.x = from_vector.x as To;` etc. where `from_vector` comes from the bytes `from`
-/// interpreted as `Vector3<From>` and `to_vector` comes from the bytes `to` interpreted as `Vector3<To>`.
-///
-/// # Safety
-///
-/// `from` and `to` can be unaligned, but must point to valid initialized memory of the type `Vector3<From>`
-/// and `Vector3<To>`, respectively.
-unsafe fn convert_vec3_using_as<From, To>(from: &[u8], to: &mut [u8])
-where
-    From: AsPrimitive<To> + Copy,
-    To: Copy + 'static,
-{
-    unsafe {
-        let from_ptr = from.as_ptr() as *const Vector3<From>;
-        let to_ptr = to.as_mut_ptr() as *mut Vector3<To>;
+#[cfg(test)]
+mod tests {
+    use std::slice;
 
-        let from_vec = from_ptr.read_unaligned();
-        let to_vec = Vector3::<To>::new(from_vec[0].as_(), from_vec[1].as_(), from_vec[2].as_());
-        to_ptr.write_unaligned(to_vec);
+    use bytemuck::{Pod, Zeroable};
+    use nalgebra::Vector3;
+    use rand::RngExt;
+    use uuid::Uuid;
+
+    use crate::layout::{
+        PointAttributeDataType, PrimitiveType, ScalarDataType, conversion::get_generic_converter,
+    };
+
+    #[test]
+    fn test_same_type() {
+        fn test_case<T>(test_value: T)
+        where
+            T: PrimitiveType + Default + PartialEq + std::fmt::Debug,
+        {
+            let converter_function = get_generic_converter(T::data_type(), T::data_type()).unwrap();
+            let mut result_value: T = T::default();
+            let src = bytemuck::cast_slice::<T, u8>(slice::from_ref(&test_value));
+            let dst = bytemuck::cast_slice_mut(slice::from_mut(&mut result_value));
+            unsafe {
+                converter_function(src, dst);
+            }
+            assert_eq!(
+                test_value,
+                result_value,
+                "Test failed for type {}",
+                T::data_type()
+            );
+        }
+
+        #[repr(transparent)]
+        #[derive(Debug, Default, Eq, PartialEq, Copy, Clone, Pod, Zeroable)]
+        struct CustomType([u8; 16]);
+
+        impl PrimitiveType for CustomType {
+            fn data_type() -> crate::layout::PointAttributeDataType {
+                PointAttributeDataType::scalar(ScalarDataType::Custom {
+                    size: 16,
+                    min_alignment: 1,
+                    name: Uuid::from_bytes_le(*b"My custom type. "),
+                })
+            }
+        }
+
+        let mut rng = rand::rng();
+        test_case(rng.random::<u8>());
+        test_case(rng.random::<u16>());
+        test_case(rng.random::<u32>());
+        test_case(rng.random::<u64>());
+        test_case(rng.random::<i8>());
+        test_case(rng.random::<i16>());
+        test_case(rng.random::<i32>());
+        test_case(rng.random::<i64>());
+        test_case(rng.random::<f32>());
+        test_case(rng.random::<f64>());
+        test_case(Vector3::new(
+            rng.random::<f64>(),
+            rng.random::<f64>(),
+            rng.random::<f64>(),
+        ));
+        test_case(rng.random::<[u8; 20]>());
+        test_case(CustomType(rng.random()));
+    }
+
+    #[test]
+    fn test_as_conversion() {
+        let mut rng = rand::rng();
+        macro_rules! test_case {
+            ($t1:ty, $t2:ty, $c:tt) => {{
+                let converter_function =
+                    get_generic_converter(<[$t1; $c]>::data_type(), <[$t2; $c]>::data_type()).unwrap();
+
+                let test_value: [$t1; $c] = rng.random();
+                let mut result_value: [$t2; $c] = Default::default();
+                let expected_result_value: [$t2; $c] = test_value.map(|x| x as $t2);
+                let src = bytemuck::cast_slice::<$t1, u8>(&test_value);
+                let dst = bytemuck::cast_slice_mut::<$t2, u8>(&mut result_value);
+                unsafe {
+                    converter_function(src, dst);
+                }
+                assert_eq!(
+                    result_value,
+                    expected_result_value,
+                    "Test failed for conversion {} as {}. Input value was {:?}, converted value was {:?}, but expected value is {:?}.",
+                    <[$t1; $c]>::data_type(),
+                    <[$t2; $c]>::data_type(),
+                    test_value,
+                    result_value,
+                    expected_result_value
+                );
+            }};
+        }
+        macro_rules! test_cases_target {
+            ($t1:ty, $c:tt) => {
+                test_case!($t1, u8, $c);
+                test_case!($t1, u16, $c);
+                test_case!($t1, u32, $c);
+                test_case!($t1, u64, $c);
+                test_case!($t1, i8, $c);
+                test_case!($t1, i16, $c);
+                test_case!($t1, i32, $c);
+                test_case!($t1, i64, $c);
+                test_case!($t1, f32, $c);
+                test_case!($t1, f64, $c);
+            };
+        }
+        macro_rules! test_cases_source {
+            ($c:tt) => {
+                test_cases_target!(u8, $c);
+                test_cases_target!(u16, $c);
+                test_cases_target!(u32, $c);
+                test_cases_target!(u64, $c);
+                test_cases_target!(i8, $c);
+                test_cases_target!(i16, $c);
+                test_cases_target!(i32, $c);
+                test_cases_target!(i64, $c);
+                test_cases_target!(f32, $c);
+                test_cases_target!(f64, $c);
+            };
+        }
+
+        test_cases_source!(1); // scalars
+        test_cases_source!(2); // vec2
+        test_cases_source!(3); // vec3
+        test_cases_source!(4); // vec4
+        test_cases_source!(10); // arbitrarily sized arrays (here: [T; 10])
     }
 }

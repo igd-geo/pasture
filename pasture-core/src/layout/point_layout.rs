@@ -7,10 +7,13 @@ use uuid::Uuid;
 
 use crate::math::Alignable;
 
-/// Possible data types for individual point attributes
+/// Possible scalar data types for individual point attributes.
+///
+/// Each scalar is a valid point attribute data type itself (see [PointAttributeDataType::scalar]),
+/// but also vectors or arrays of a scalar base type can be formed (see [PointAttributeDataType::vector3], [PointAttributeDataType::array], ...).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ScalarPointAttributeDataType {
+pub enum ScalarDataType {
     /// An unsigned 8-bit integer value, corresponding to Rusts `u8` type
     U8,
     /// A signed 8-bit integer value, corresponding to Rusts `i8` type
@@ -41,56 +44,56 @@ pub enum ScalarPointAttributeDataType {
     },
 }
 
-impl ScalarPointAttributeDataType {
+impl ScalarDataType {
     /// Size of the data type in bytes
     pub const fn size(&self) -> usize {
         match self {
-            ScalarPointAttributeDataType::U8 => 1,
-            ScalarPointAttributeDataType::I8 => 1,
-            ScalarPointAttributeDataType::U16 => 2,
-            ScalarPointAttributeDataType::I16 => 2,
-            ScalarPointAttributeDataType::U32 => 4,
-            ScalarPointAttributeDataType::I32 => 4,
-            ScalarPointAttributeDataType::U64 => 8,
-            ScalarPointAttributeDataType::I64 => 8,
-            ScalarPointAttributeDataType::F32 => 4,
-            ScalarPointAttributeDataType::F64 => 8,
-            ScalarPointAttributeDataType::Custom { size, .. } => *size as usize,
+            ScalarDataType::U8 => 1,
+            ScalarDataType::I8 => 1,
+            ScalarDataType::U16 => 2,
+            ScalarDataType::I16 => 2,
+            ScalarDataType::U32 => 4,
+            ScalarDataType::I32 => 4,
+            ScalarDataType::U64 => 8,
+            ScalarDataType::I64 => 8,
+            ScalarDataType::F32 => 4,
+            ScalarDataType::F64 => 8,
+            ScalarDataType::Custom { size, .. } => *size as usize,
         }
     }
 
     /// Minimum required alignment of the data type
     pub fn min_alignment(&self) -> usize {
         match self {
-            ScalarPointAttributeDataType::U8 => std::mem::align_of::<u8>(),
-            ScalarPointAttributeDataType::I8 => std::mem::align_of::<i8>(),
-            ScalarPointAttributeDataType::U16 => std::mem::align_of::<u16>(),
-            ScalarPointAttributeDataType::I16 => std::mem::align_of::<i16>(),
-            ScalarPointAttributeDataType::U32 => std::mem::align_of::<u32>(),
-            ScalarPointAttributeDataType::I32 => std::mem::align_of::<i32>(),
-            ScalarPointAttributeDataType::U64 => std::mem::align_of::<u64>(),
-            ScalarPointAttributeDataType::I64 => std::mem::align_of::<i64>(),
-            ScalarPointAttributeDataType::F32 => std::mem::align_of::<f32>(),
-            ScalarPointAttributeDataType::F64 => std::mem::align_of::<f64>(),
-            ScalarPointAttributeDataType::Custom { min_alignment, .. } => *min_alignment as usize,
+            ScalarDataType::U8 => std::mem::align_of::<u8>(),
+            ScalarDataType::I8 => std::mem::align_of::<i8>(),
+            ScalarDataType::U16 => std::mem::align_of::<u16>(),
+            ScalarDataType::I16 => std::mem::align_of::<i16>(),
+            ScalarDataType::U32 => std::mem::align_of::<u32>(),
+            ScalarDataType::I32 => std::mem::align_of::<i32>(),
+            ScalarDataType::U64 => std::mem::align_of::<u64>(),
+            ScalarDataType::I64 => std::mem::align_of::<i64>(),
+            ScalarDataType::F32 => std::mem::align_of::<f32>(),
+            ScalarDataType::F64 => std::mem::align_of::<f64>(),
+            ScalarDataType::Custom { min_alignment, .. } => *min_alignment as usize,
         }
     }
 }
 
-impl Display for ScalarPointAttributeDataType {
+impl Display for ScalarDataType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScalarPointAttributeDataType::U8 => write!(f, "U8"),
-            ScalarPointAttributeDataType::I8 => write!(f, "I8"),
-            ScalarPointAttributeDataType::U16 => write!(f, "U16"),
-            ScalarPointAttributeDataType::I16 => write!(f, "I16"),
-            ScalarPointAttributeDataType::U32 => write!(f, "U32"),
-            ScalarPointAttributeDataType::I32 => write!(f, "I32"),
-            ScalarPointAttributeDataType::U64 => write!(f, "U64"),
-            ScalarPointAttributeDataType::I64 => write!(f, "I64"),
-            ScalarPointAttributeDataType::F32 => write!(f, "F32"),
-            ScalarPointAttributeDataType::F64 => write!(f, "F64"),
-            ScalarPointAttributeDataType::Custom {
+            ScalarDataType::U8 => write!(f, "U8"),
+            ScalarDataType::I8 => write!(f, "I8"),
+            ScalarDataType::U16 => write!(f, "U16"),
+            ScalarDataType::I16 => write!(f, "I16"),
+            ScalarDataType::U32 => write!(f, "U32"),
+            ScalarDataType::I32 => write!(f, "I32"),
+            ScalarDataType::U64 => write!(f, "U64"),
+            ScalarDataType::I64 => write!(f, "I64"),
+            ScalarDataType::F32 => write!(f, "F32"),
+            ScalarDataType::F64 => write!(f, "F64"),
+            ScalarDataType::Custom {
                 size: _,
                 min_alignment: _,
                 name,
@@ -114,13 +117,14 @@ impl Display for ScalarPointAttributeDataType {
 pub struct PointAttributeDataType {
     /// Number of vector components.
     pub components: usize,
+
     /// Underlying scalar type.
-    pub scalar: ScalarPointAttributeDataType,
+    pub scalar: ScalarDataType,
 }
 
 impl PointAttributeDataType {
     /// Constructs a PointAttributeDataType for a scalar value
-    pub const fn scalar(inner: ScalarPointAttributeDataType) -> Self {
+    pub const fn scalar(inner: ScalarDataType) -> Self {
         PointAttributeDataType {
             components: 1,
             scalar: inner,
@@ -128,7 +132,7 @@ impl PointAttributeDataType {
     }
 
     /// Constructs a 2-component vector. Corresponding to the `Vector2<T>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const fn vector2(inner: ScalarPointAttributeDataType) -> Self {
+    pub const fn vector2(inner: ScalarDataType) -> Self {
         PointAttributeDataType {
             components: 2,
             scalar: inner,
@@ -136,7 +140,7 @@ impl PointAttributeDataType {
     }
 
     /// Constructs a 3-component vector. Corresponding to the `Vector3<T>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const fn vector3(inner: ScalarPointAttributeDataType) -> Self {
+    pub const fn vector3(inner: ScalarDataType) -> Self {
         PointAttributeDataType {
             components: 3,
             scalar: inner,
@@ -144,10 +148,18 @@ impl PointAttributeDataType {
     }
 
     /// Constructs a 4-component vector. Corresponding to the `Vector4<T>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const fn vector4(inner: ScalarPointAttributeDataType) -> Self {
+    pub const fn vector4(inner: ScalarDataType) -> Self {
         PointAttributeDataType {
             components: 4,
             scalar: inner,
+        }
+    }
+
+    /// A raw array of a given type and size determined at runtime. This corresponds to the Rust type `[T; N]`
+    pub const fn array(len: usize, scalar: ScalarDataType) -> Self {
+        PointAttributeDataType {
+            components: len,
+            scalar,
         }
     }
 
@@ -155,72 +167,72 @@ impl PointAttributeDataType {
     pub const fn byte_array(len: usize) -> Self {
         PointAttributeDataType {
             components: len,
-            scalar: ScalarPointAttributeDataType::U8,
+            scalar: ScalarDataType::U8,
         }
     }
 
     /// An unsigned 8-bit integer value, corresponding to Rusts `u8` type
-    pub const U8: Self = Self::scalar(ScalarPointAttributeDataType::U8);
+    pub const U8: Self = Self::scalar(ScalarDataType::U8);
 
     /// An unsigned 16-bit integer value, corresponding to Rusts `u16` type
-    pub const U16: Self = Self::scalar(ScalarPointAttributeDataType::U16);
+    pub const U16: Self = Self::scalar(ScalarDataType::U16);
 
     /// An unsigned 32-bit integer value, corresponding to Rusts `u32` type
-    pub const U32: Self = Self::scalar(ScalarPointAttributeDataType::U32);
+    pub const U32: Self = Self::scalar(ScalarDataType::U32);
 
     /// An unsigned 64-bit integer value, corresponding to Rusts `u64` type
-    pub const U64: Self = Self::scalar(ScalarPointAttributeDataType::U64);
+    pub const U64: Self = Self::scalar(ScalarDataType::U64);
 
     /// A signed 8-bit integer value, corresponding to Rusts `i8` type
-    pub const I8: Self = Self::scalar(ScalarPointAttributeDataType::I8);
+    pub const I8: Self = Self::scalar(ScalarDataType::I8);
 
     /// A signed 16-bit integer value, corresponding to Rusts `i16` type
-    pub const I16: Self = Self::scalar(ScalarPointAttributeDataType::I16);
+    pub const I16: Self = Self::scalar(ScalarDataType::I16);
 
     /// A signed 32-bit integer value, corresponding to Rusts `i32` type
-    pub const I32: Self = Self::scalar(ScalarPointAttributeDataType::I32);
+    pub const I32: Self = Self::scalar(ScalarDataType::I32);
 
     /// A signed 64-bit integer value, corresponding to Rusts `i64` type
-    pub const I64: Self = Self::scalar(ScalarPointAttributeDataType::I64);
+    pub const I64: Self = Self::scalar(ScalarDataType::I64);
 
     /// A single-precision floating point value, corresponding to Rusts `f32` type
-    pub const F32: Self = Self::scalar(ScalarPointAttributeDataType::F32);
+    pub const F32: Self = Self::scalar(ScalarDataType::F32);
 
     /// A double-precision floating point value, corresponding to Rusts `f64` type
-    pub const F64: Self = Self::scalar(ScalarPointAttributeDataType::F64);
+    pub const F64: Self = Self::scalar(ScalarDataType::F64);
 
     /// A 3-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector3<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3U8: Self = Self::vector3(ScalarPointAttributeDataType::U8);
+    pub const VEC3U8: Self = Self::vector3(ScalarDataType::U8);
 
     /// A 3-component vector storing unsigned 16-bit integer values. Corresponding to the `Vector3<u16>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3U16: Self = Self::vector3(ScalarPointAttributeDataType::U16);
+    pub const VEC3U16: Self = Self::vector3(ScalarDataType::U16);
 
     /// A 3-component vector storing unsigned 32-bit integer values. Corresponding to the `Vector3<u32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3U32: Self = Self::vector3(ScalarPointAttributeDataType::U32);
+    pub const VEC3U32: Self = Self::vector3(ScalarDataType::U32);
 
     /// A 3-component vector storing unsigned 64-bit integer values. Corresponding to the `Vector3<u64>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3U64: Self = Self::vector3(ScalarPointAttributeDataType::U64);
+    pub const VEC3U64: Self = Self::vector3(ScalarDataType::U64);
 
     /// A 3-component vector storing singed 8-bit integer values. Corresponding to the `Vector3<i8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3I8: Self = Self::vector3(ScalarPointAttributeDataType::I8);
+    pub const VEC3I8: Self = Self::vector3(ScalarDataType::I8);
 
     /// A 3-component vector storing singed 16-bit integer values. Corresponding to the `Vector3<i16>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3I16: Self = Self::vector3(ScalarPointAttributeDataType::I16);
+    pub const VEC3I16: Self = Self::vector3(ScalarDataType::I16);
 
     /// A 3-component vector storing singed 32-bit integer values. Corresponding to the `Vector3<i32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3I32: Self = Self::vector3(ScalarPointAttributeDataType::I32);
+    pub const VEC3I32: Self = Self::vector3(ScalarDataType::I32);
 
     /// A 3-component vector storing singed 64-bit integer values. Corresponding to the `Vector3<i64>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3I64: Self = Self::vector3(ScalarPointAttributeDataType::I64);
+    pub const VEC3I64: Self = Self::vector3(ScalarDataType::I64);
 
     /// A 3-component vector storing single-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3F32: Self = Self::vector3(ScalarPointAttributeDataType::F32);
+    pub const VEC3F32: Self = Self::vector3(ScalarDataType::F32);
 
     /// A 3-component vector storing double-precision floating point values. Corresponding to the `Vector3<f32>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC3F64: Self = Self::vector3(ScalarPointAttributeDataType::F64);
+    pub const VEC3F64: Self = Self::vector3(ScalarDataType::F64);
 
     /// A 4-component vector storing unsigned 8-bit integer values. Corresponding to the `Vector4<u8>` type of the [nalgebra crate](https://crates.io/crates/nalgebra)
-    pub const VEC4U8: Self = Self::vector4(ScalarPointAttributeDataType::U8);
+    pub const VEC4U8: Self = Self::vector4(ScalarDataType::U8);
 
     /// Size of the associated `PointAttributeDataType`
     pub const fn size(&self) -> usize {
@@ -246,57 +258,57 @@ impl Display for PointAttributeDataType {
 }
 
 trait ScalarType: Copy + bytemuck::Pod {
-    fn scalar_type() -> ScalarPointAttributeDataType;
+    fn scalar_type() -> ScalarDataType;
 }
 
 impl ScalarType for u8 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::U8
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::U8
     }
 }
 impl ScalarType for u16 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::U16
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::U16
     }
 }
 impl ScalarType for u32 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::U32
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::U32
     }
 }
 impl ScalarType for u64 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::U64
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::U64
     }
 }
 impl ScalarType for i8 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::I8
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::I8
     }
 }
 impl ScalarType for i16 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::I16
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::I16
     }
 }
 impl ScalarType for i32 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::I32
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::I32
     }
 }
 impl ScalarType for i64 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::I64
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::I64
     }
 }
 impl ScalarType for f32 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::F32
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::F32
     }
 }
 impl ScalarType for f64 {
-    fn scalar_type() -> ScalarPointAttributeDataType {
-        ScalarPointAttributeDataType::F64
+    fn scalar_type() -> ScalarDataType {
+        ScalarDataType::F64
     }
 }
 
@@ -331,6 +343,19 @@ where
 impl<T, const D: usize> PrimitiveType for Point<T, D>
 where
     T: ScalarType + nalgebra::Scalar,
+{
+    fn data_type() -> PointAttributeDataType {
+        PointAttributeDataType {
+            components: D,
+            scalar: T::scalar_type(),
+        }
+    }
+}
+
+impl<T, const D: usize> PrimitiveType for [T; D]
+where
+    T: ScalarType,
+    Self: bytemuck::Pod,
 {
     fn data_type() -> PointAttributeDataType {
         PointAttributeDataType {
@@ -1138,11 +1163,14 @@ impl FromIterator<PointAttributeDefinition> for PointLayout {
 
 #[cfg(test)]
 mod tests {
+    use std::any::type_name;
+
     use super::*;
     use crate::layout::{
         PointType,
         attributes::{COLOR_RGB, INTENSITY, POSITION_3D},
     };
+    use nalgebra::{Point2, Vector2};
     use pasture_derive::PointType;
 
     #[derive(
@@ -1156,6 +1184,121 @@ mod tests {
         color: Vector3<u16>,
         #[pasture(BUILTIN_INTENSITY)]
         intensity: u16,
+    }
+
+    #[test]
+    fn test_point_attribute_datatypes_match_rust_types() {
+        fn testcase<T: PrimitiveType>() {
+            let rust_size = size_of::<T>();
+            let rust_align = align_of::<T>();
+            let pasture_size = T::data_type().size();
+            let pasture_align = T::data_type().min_alignment();
+            assert_eq!(
+                rust_size,
+                pasture_size,
+                "Size missmatch between rust type ({}) and point attribute datatype ({}).",
+                type_name::<T>(),
+                T::data_type()
+            );
+            assert_eq!(
+                rust_align,
+                pasture_align,
+                "Alignment missmatch between rust type ({}) and point attribute datatype ({}).",
+                type_name::<T>(),
+                T::data_type()
+            );
+        }
+
+        testcase::<u8>();
+        testcase::<u16>();
+        testcase::<u32>();
+        testcase::<u64>();
+        testcase::<i8>();
+        testcase::<i16>();
+        testcase::<i32>();
+        testcase::<i64>();
+        testcase::<f32>();
+        testcase::<f64>();
+        testcase::<Vector2<u8>>();
+        testcase::<Vector2<u16>>();
+        testcase::<Vector2<u32>>();
+        testcase::<Vector2<u64>>();
+        testcase::<Vector2<i8>>();
+        testcase::<Vector2<i16>>();
+        testcase::<Vector2<i32>>();
+        testcase::<Vector2<i64>>();
+        testcase::<Vector2<f32>>();
+        testcase::<Vector2<f64>>();
+        testcase::<Vector3<u8>>();
+        testcase::<Vector3<u16>>();
+        testcase::<Vector3<u32>>();
+        testcase::<Vector3<u64>>();
+        testcase::<Vector3<i8>>();
+        testcase::<Vector3<i16>>();
+        testcase::<Vector3<i32>>();
+        testcase::<Vector3<i64>>();
+        testcase::<Vector3<f32>>();
+        testcase::<Vector3<f64>>();
+        testcase::<Vector4<u8>>();
+        testcase::<Vector4<u16>>();
+        testcase::<Vector4<u32>>();
+        testcase::<Vector4<u64>>();
+        testcase::<Vector4<i8>>();
+        testcase::<Vector4<i16>>();
+        testcase::<Vector4<i32>>();
+        testcase::<Vector4<i64>>();
+        testcase::<Vector4<f32>>();
+        testcase::<Vector4<f64>>();
+        testcase::<Point2<u8>>();
+        testcase::<Point2<u16>>();
+        testcase::<Point2<u32>>();
+        testcase::<Point2<u64>>();
+        testcase::<Point2<i8>>();
+        testcase::<Point2<i16>>();
+        testcase::<Point2<i32>>();
+        testcase::<Point2<i64>>();
+        testcase::<Point2<f32>>();
+        testcase::<Point2<f64>>();
+        testcase::<Point3<u8>>();
+        testcase::<Point3<u16>>();
+        testcase::<Point3<u32>>();
+        testcase::<Point3<u64>>();
+        testcase::<Point3<i8>>();
+        testcase::<Point3<i16>>();
+        testcase::<Point3<i32>>();
+        testcase::<Point3<i64>>();
+        testcase::<Point3<f32>>();
+        testcase::<Point3<f64>>();
+        testcase::<Point4<u8>>();
+        testcase::<Point4<u16>>();
+        testcase::<Point4<u32>>();
+        testcase::<Point4<u64>>();
+        testcase::<Point4<i8>>();
+        testcase::<Point4<i16>>();
+        testcase::<Point4<i32>>();
+        testcase::<Point4<i64>>();
+        testcase::<Point4<f32>>();
+        testcase::<Point4<f64>>();
+        testcase::<[u8; 13]>();
+        testcase::<[u16; 13]>();
+        testcase::<[u32; 13]>();
+        testcase::<[u64; 13]>();
+        testcase::<[i8; 13]>();
+        testcase::<[i16; 13]>();
+        testcase::<[i32; 13]>();
+        testcase::<[i64; 13]>();
+        testcase::<[f32; 13]>();
+        testcase::<[f64; 13]>();
+        testcase::<[u8; 0]>();
+        testcase::<[u16; 0]>();
+        testcase::<[u32; 0]>();
+        testcase::<[u64; 0]>();
+        testcase::<[i8; 0]>();
+        testcase::<[i16; 0]>();
+        testcase::<[i32; 0]>();
+        testcase::<[i64; 0]>();
+        testcase::<[f32; 0]>();
+        testcase::<[f64; 0]>();
     }
 
     #[test]
