@@ -228,7 +228,7 @@ pub struct AttributeView<'a, B: BorrowedBuffer + ?Sized, T: PrimitiveType> {
 
 impl<'a, B: BorrowedBuffer + ?Sized, T: PrimitiveType> AttributeView<'a, B, T> {
     pub(crate) fn new(buffer: &'a B, attribute: &PointAttributeDefinition) -> Self {
-        assert_eq!(T::data_type(), attribute.datatype());
+        assert_eq!(T::DATA_TYPE, attribute.datatype());
         Self {
             attribute: buffer
                 .point_layout()
@@ -310,7 +310,7 @@ pub struct AttributeViewMut<'a, B: BorrowedMutBuffer + ?Sized, T: PrimitiveType>
 
 impl<'a, B: BorrowedMutBuffer + ?Sized, T: PrimitiveType> AttributeViewMut<'a, B, T> {
     pub(crate) fn new(buffer: &'a mut B, attribute: &PointAttributeDefinition) -> Self {
-        assert_eq!(T::data_type(), attribute.datatype());
+        assert_eq!(T::DATA_TYPE, attribute.datatype());
         Self {
             attribute: buffer
                 .point_layout()
@@ -428,17 +428,17 @@ pub struct AttributeViewConverting<'a, B: BorrowedBuffer + ?Sized, T: PrimitiveT
 
 impl<'a, B: BorrowedBuffer + ?Sized, T: PrimitiveType> AttributeViewConverting<'a, B, T> {
     pub(crate) fn new(buffer: &'a B, attribute: &PointAttributeDefinition) -> Result<Self> {
-        assert_eq!(T::data_type(), attribute.datatype());
+        assert_eq!(T::DATA_TYPE, attribute.datatype());
         let attribute_in_layout: &PointAttributeMember = buffer
             .point_layout()
             .get_attribute_by_name(attribute.name())
             .expect("Attribute not found in PointLayout of buffer");
-        let converter_fn = if attribute_in_layout.datatype() == T::data_type() {
+        let converter_fn = if attribute_in_layout.datatype() == T::DATA_TYPE {
             convert_unit
         } else {
             get_converter_for_attributes(
                 attribute_in_layout.attribute_definition(),
-                &attribute.with_custom_datatype(T::data_type()),
+                &attribute.with_custom_datatype(T::DATA_TYPE),
             )
             .ok_or(anyhow!("Conversion between attribute types is impossible"))?
         };

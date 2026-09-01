@@ -299,7 +299,7 @@ pub trait BorrowedBufferExt: BorrowedBuffer {
     /// # Panics
     ///
     /// If `attribute` is not part of the `PointLayout` of this buffer.
-    /// If `T::data_type()` does not match the data type of the attribute within the buffer
+    /// If `T::DATA_TYPE` does not match the data type of the attribute within the buffer
     fn view_attribute<T: PrimitiveType>(
         &self,
         attribute: &PointAttributeDefinition,
@@ -307,12 +307,12 @@ pub trait BorrowedBufferExt: BorrowedBuffer {
         AttributeView::new(self, attribute)
     }
 
-    /// Like `view_attribute`, but allows `T::data_type()` to be different from the data type of  
+    /// Like `view_attribute`, but allows `T::DATA_TYPE` to be different from the data type of
     /// the `attribute` within this buffer.
     ///
     /// # Panics
     ///
-    /// If `T::data_type()` does not match the data type of `attribute`
+    /// If `T::DATA_TYPE` does not match the data type of `attribute`
     fn view_attribute_with_conversion<T: PrimitiveType>(
         &self,
         attribute: &PointAttributeDefinition,
@@ -341,7 +341,7 @@ pub trait BorrowedMutBufferExt: BorrowedMutBuffer {
     /// # Panics
     ///
     /// If `attribute` is not part of the `PointLayout` of this buffer.<br>
-    /// If `T::data_type()` does not match `attribute.datatype()`
+    /// If `T::DATA_TYPE` does not match `attribute.datatype()`
     fn view_attribute_mut<T: PrimitiveType>(
         &mut self,
         attribute: &PointAttributeDefinition,
@@ -363,7 +363,7 @@ pub trait BorrowedMutBufferExt: BorrowedMutBuffer {
     /// # Panics
     ///
     /// If `attribute` is not part of the `PointLayout` of this buffer.<br>
-    /// If `T::data_type()` does not equal `attribute.datatype()`
+    /// If `T::DATA_TYPE` does not equal `attribute.datatype()`
     fn transform_attribute<T: PrimitiveType, F: Fn(usize, T) -> T>(
         &mut self,
         attribute: &PointAttributeDefinition,
@@ -882,7 +882,7 @@ impl<'a> HashMapBufferAttributePusher<'a> {
     /// # Panics
     ///
     /// If `attribute` is not part of the `PointLayout` of the underlying buffer.<br>
-    /// If `T::data_type()` does not match `attribute.datatype()`.<br>
+    /// If `T::DATA_TYPE` does not match `attribute.datatype()`.<br>
     /// If this is not the first call to `push_attribute_range`, and `data.len()` does not match the length of the
     /// data that was passed to the first invocation of `push_attribute_range`
     pub fn push_attribute_range<T: PrimitiveType>(
@@ -890,7 +890,7 @@ impl<'a> HashMapBufferAttributePusher<'a> {
         attribute: &PointAttributeDefinition,
         data: &[T],
     ) {
-        assert_eq!(T::data_type(), attribute.datatype());
+        assert_eq!(T::DATA_TYPE, attribute.datatype());
         let storage = self
             .attributes_storage
             .get_mut(attribute)

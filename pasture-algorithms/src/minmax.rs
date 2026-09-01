@@ -27,7 +27,7 @@ pub fn minmax_attribute<T: PrimitiveType + MinMax + Copy, B: BorrowedBuffer>(
 
     let mut minmax = None;
 
-    if T::data_type() == attribute.datatype() {
+    if T::DATA_TYPE == attribute.datatype() {
         for val in buffer.view_attribute::<T>(attribute) {
             match minmax {
                 None => minmax = Some((val, val)),

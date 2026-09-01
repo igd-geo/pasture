@@ -190,7 +190,7 @@ impl<'a> BufferLayoutConverter<'a> {
     ///
     /// If `from_attribute` is not part of the source `PointLayout`.
     /// If `to_attribute` is not part of the target `PointLayout`.
-    /// If `T::data_type()` does not match `to_attribute.datatype()`.
+    /// If `T::DATA_TYPE` does not match `to_attribute.datatype()`.
     pub fn set_custom_mapping_with_transformation<T: PrimitiveType, F: Fn(T) -> T + 'static>(
         &mut self,
         from_attribute: &PointAttributeDefinition,
@@ -207,9 +207,9 @@ impl<'a> BufferLayoutConverter<'a> {
             .get_attribute(to_attribute)
             .expect("to_attribute not found in target PointLayout");
         if apply_to_source_attribute {
-            assert_eq!(T::data_type(), from_attribute_member.datatype());
+            assert_eq!(T::DATA_TYPE, from_attribute_member.datatype());
         } else {
-            assert_eq!(T::data_type(), to_attribute_member.datatype());
+            assert_eq!(T::DATA_TYPE, to_attribute_member.datatype());
         }
 
         if let Some(previous_mapping) = self
@@ -385,7 +385,7 @@ impl<'a> BufferLayoutConverter<'a> {
     ///
     /// # Panics
     ///
-    /// If `T::data_type()` does not match `to_attribute.datatype()`
+    /// If `T::DATA_TYPE` does not match `to_attribute.datatype()`
     fn make_transformed_mapping<T: PrimitiveType>(
         from_attribute: &'a PointAttributeMember,
         to_attribute: &'a PointAttributeMember,

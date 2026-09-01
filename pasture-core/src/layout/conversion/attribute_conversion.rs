@@ -298,7 +298,7 @@ mod tests {
         where
             T: PrimitiveType + Default + PartialEq + std::fmt::Debug,
         {
-            let converter_function = get_generic_converter(T::data_type(), T::data_type()).unwrap();
+            let converter_function = get_generic_converter(T::DATA_TYPE, T::DATA_TYPE).unwrap();
             let mut result_value: T = T::default();
             let src = bytemuck::cast_slice::<T, u8>(slice::from_ref(&test_value));
             let dst = bytemuck::cast_slice_mut(slice::from_mut(&mut result_value));
@@ -309,7 +309,7 @@ mod tests {
                 test_value,
                 result_value,
                 "Test failed for type {}",
-                T::data_type()
+                T::DATA_TYPE
             );
         }
 
@@ -318,13 +318,12 @@ mod tests {
         struct CustomType([u8; 16]);
 
         impl PrimitiveType for CustomType {
-            fn data_type() -> crate::layout::PointAttributeDataType {
+            const DATA_TYPE: PointAttributeDataType =
                 PointAttributeDataType::scalar(ScalarDataType::Custom {
                     size: 16,
                     min_alignment: 1,
                     name: Uuid::from_bytes_le(*b"My custom type. "),
-                })
-            }
+                });
         }
 
         let mut rng = rand::rng();
@@ -353,7 +352,7 @@ mod tests {
         macro_rules! test_case {
             ($t1:ty, $t2:ty, $c:tt) => {{
                 let converter_function =
-                    get_generic_converter(<[$t1; $c]>::data_type(), <[$t2; $c]>::data_type()).unwrap();
+                    get_generic_converter(<[$t1; $c]>::DATA_TYPE, <[$t2; $c]>::DATA_TYPE).unwrap();
 
                 let test_value: [$t1; $c] = rng.random();
                 let mut result_value: [$t2; $c] = Default::default();
@@ -367,8 +366,8 @@ mod tests {
                     result_value,
                     expected_result_value,
                     "Test failed for conversion {} as {}. Input value was {:?}, converted value was {:?}, but expected value is {:?}.",
-                    <[$t1; $c]>::data_type(),
-                    <[$t2; $c]>::data_type(),
+                    <[$t1; $c]>::DATA_TYPE,
+                    <[$t2; $c]>::DATA_TYPE,
                     test_value,
                     result_value,
                     expected_result_value

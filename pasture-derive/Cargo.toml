@@ -18,5 +18,10 @@ syn = { version = "3.0.3", features = ["full", "extra-traits"] }
 quote = "1.0.8"
 anyhow = { workspace = true }
 
+[dev-dependencies]
+pasture-core = { version = "=0.5.0", path = "../pasture-core" }
+bytemuck = { version = "1.5.1" }
+nalgebra = { workspace = true, features = ["convert-bytemuck"] }
+
 [lib]
 proc-macro = true

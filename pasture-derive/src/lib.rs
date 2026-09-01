@@ -1,110 +1,77 @@
 extern crate proc_macro;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::{
-    Attribute, Data, Error, Expr, ExprLit, Field, Fields, Ident, Index, Lit, Member, Result, Type,
+    Attribute, Data, Error, Expr, Field, Fields, Ident, Index, Lit, Member, Path, Result, Type,
     parse_macro_input,
 };
 use syn::{DeriveInput, Meta};
 
-fn get_attribute_name_from_field(field: &Field) -> Result<String> {
+fn get_pasture_attr(field: &Field) -> Result<Option<&Attribute>> {
     let pasture_attributes: Vec<&Attribute> = field
         .attrs
         .iter()
         .filter(|attr| attr.path().is_ident("pasture"))
         .collect();
-    if pasture_attributes.len() != 1 {
-        return Err(Error::new_spanned(
+    if pasture_attributes.is_empty() {
+        Ok(None)
+    } else if pasture_attributes.len() == 1 {
+        Ok(Some(pasture_attributes[0]))
+    } else {
+        Err(Error::new_spanned(
             field,
-            "derive(PointType) requires exactly one #[pasture] attribute per member!",
-        ));
+            "Not more than one #[pasture] attribute per member is allowed!",
+        ))
     }
-    let pasture_attribute = pasture_attributes[0];
+}
 
-    let malformed_field_error_msg = "#[pasture] attribute is malformed. Correct syntax is #[pasture(attribute = \"NAME\")] or #[pasture(BUILTIN_XXX)], where XXX matches any of the builtin attributes in Pasture.";
+/// Checks, if the given path is a known builtin (BUILTIN_POSITION_3D, etc...)
+/// and if so, returns the builtin attribute name.
+fn builtin_attribute(path: &Path) -> Option<&'static str> {
+    let ident = path.get_ident()?;
+    let name = ident.to_string();
 
-    // TODO Better explanation of the builtin Pasture attributes in this error message!
-
-    // For now, we expect that 'meta' is a Meta::List containing a single entry
-    // The entry should be a NameValue, corresponding to 'attribute = "NAME"', or a Path, corresponding to 'builtin_XXX', where XXX matches any of the basic
-    // builtin attributes in Pasture (such as INTENSITY, POSITION_3D etc.)
-    match &pasture_attribute.meta {
-        syn::Meta::List(list) => {
-            let nested_meta = list.parse_args::<Meta>()?;
-            match nested_meta {
-                syn::Meta::Path(path) => {
-                    let ident = path.get_ident().ok_or_else(|| {
-                        Error::new_spanned(path.clone(), malformed_field_error_msg)
-                    })?;
-                    let ident_as_str = ident.to_string();
-                    match ident_as_str.as_str() {
-                        "BUILTIN_POSITION_3D" => Ok("Position3D".into()),
-                        "BUILTIN_INTENSITY" => Ok("Intensity".into()),
-                        "BUILTIN_RETURN_NUMBER" => Ok("ReturnNumber".into()),
-                        "BUILTIN_NUMBER_OF_RETURNS" => Ok("NumberOfReturns".into()),
-                        "BUILTIN_CLASSIFICATION_FLAGS" => Ok("ClassificationFlags".into()),
-                        "BUILTIN_SCANNER_CHANNEL" => Ok("ScannerChannel".into()),
-                        "BUILTIN_SCAN_DIRECTION_FLAG" => Ok("ScanDirectionFlag".into()),
-                        "BUILTIN_EDGE_OF_FLIGHT_LINE" => Ok("EdgeOfFlightLine".into()),
-                        "BUILTIN_CLASSIFICATION" => Ok("Classification".into()),
-                        "BUILTIN_SCAN_ANGLE_RANK" => Ok("ScanAngleRank".into()),
-                        "BUILTIN_SCAN_ANGLE" => Ok("ScanAngle".into()),
-                        "BUILTIN_USER_DATA" => Ok("UserData".into()),
-                        "BUILTIN_POINT_SOURCE_ID" => Ok("PointSourceID".into()),
-                        "BUILTIN_COLOR_RGB" => Ok("ColorRGB".into()),
-                        "BUILTIN_GPS_TIME" => Ok("GpsTime".into()),
-                        "BUILTIN_NIR" => Ok("NIR".into()),
-                        "BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX" => {
-                            Ok("WavePacketDescriptorIndex".into())
-                        }
-                        "BUILTIN_WAVEFORM_DATA_OFFSET" => Ok("WaveformDataOffset".into()),
-                        "BUILTIN_WAVEFORM_PACKET_SIZE" => Ok("WaveformPacketSize".into()),
-                        "BUILTIN_RETURN_POINT_WAVEFORM_LOCATION" => {
-                            Ok("ReturnPointWaveformLocation".into())
-                        }
-                        "BUILTIN_WAVEFORM_PARAMETERS" => Ok("WaveformParameters".into()),
-                        "BUILTIN_POINT_ID" => Ok("PointID".into()),
-                        "BUILTIN_NORMAL" => Ok("Normal".into()),
-                        // TODO Other attributes
-                        _ => Err(Error::new_spanned(
-                            ident,
-                            format!("Unrecognized attribute name {}", ident_as_str),
-                        )),
-                    }
-                }
-                syn::Meta::NameValue(name_value) => name_value
-                    .path
-                    .get_ident()
-                    .and_then(|path| {
-                        if path != "attribute" {
-                            return None;
-                        }
-
-                        if let Expr::Lit(ExprLit {
-                            lit: Lit::Str(attribute_name),
-                            ..
-                        }) = &name_value.value
-                        {
-                            Some(attribute_name.value())
-                        } else {
-                            None
-                        }
-                    })
-                    .ok_or_else(|| Error::new_spanned(name_value, malformed_field_error_msg)),
-                bad => Err(Error::new_spanned(bad, malformed_field_error_msg)),
-            }
-        }
-        bad => Err(Error::new_spanned(bad, malformed_field_error_msg)),
+    match name.as_str() {
+        "BUILTIN_POSITION_3D" => Some("Position3D"),
+        "BUILTIN_INTENSITY" => Some("Intensity"),
+        "BUILTIN_RETURN_NUMBER" => Some("ReturnNumber"),
+        "BUILTIN_NUMBER_OF_RETURNS" => Some("NumberOfReturns"),
+        "BUILTIN_CLASSIFICATION_FLAGS" => Some("ClassificationFlags"),
+        "BUILTIN_SCANNER_CHANNEL" => Some("ScannerChannel"),
+        "BUILTIN_SCAN_DIRECTION_FLAG" => Some("ScanDirectionFlag"),
+        "BUILTIN_EDGE_OF_FLIGHT_LINE" => Some("EdgeOfFlightLine"),
+        "BUILTIN_CLASSIFICATION" => Some("Classification"),
+        "BUILTIN_SCAN_ANGLE_RANK" => Some("ScanAngleRank"),
+        "BUILTIN_SCAN_ANGLE" => Some("ScanAngle"),
+        "BUILTIN_USER_DATA" => Some("UserData"),
+        "BUILTIN_POINT_SOURCE_ID" => Some("PointSourceID"),
+        "BUILTIN_COLOR_RGB" => Some("ColorRGB"),
+        "BUILTIN_GPS_TIME" => Some("GpsTime"),
+        "BUILTIN_NIR" => Some("NIR"),
+        "BUILTIN_WAVE_PACKET_DESCRIPTOR_INDEX" => Some("WavePacketDescriptorIndex"),
+        "BUILTIN_WAVEFORM_DATA_OFFSET" => Some("WaveformDataOffset"),
+        "BUILTIN_WAVEFORM_PACKET_SIZE" => Some("WaveformPacketSize"),
+        "BUILTIN_RETURN_POINT_WAVEFORM_LOCATION" => Some("ReturnPointWaveformLocation"),
+        "BUILTIN_WAVEFORM_PARAMETERS" => Some("WaveformParameters"),
+        "BUILTIN_POINT_ID" => Some("PointID"),
+        "BUILTIN_NORMAL" => Some("Normal"),
+        _ => None,
     }
+}
+
+enum PointAttributeInfo {
+    Ignore,
+    FromField { name: String, ty: Type },
+    FromConst { path: Path, ty: Type },
 }
 
 /// Describes a single field within a `PointType` struct. Contains the name of the field, the point attribute
 /// that the field maps to, as well as the primitive type of the field
 struct FieldLayoutDescription {
-    pub attribute_name: String,
-    pub ty: Type,
     pub ident: Member,
+    pub point_attribute: PointAttributeInfo,
 }
 
 fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescription>> {
@@ -112,7 +79,7 @@ fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescr
         .iter()
         .enumerate()
         .map(|(idx, field)| {
-            let attribute_name = get_attribute_name_from_field(field)?;
+            let pasture_attribute = get_pasture_attr(field)?;
             let ident = field.ident.clone().map_or_else(
                 || {
                     Member::Unnamed(Index {
@@ -123,10 +90,75 @@ fn get_field_layout_descriptions(fields: &Fields) -> Result<Vec<FieldLayoutDescr
                 Member::Named,
             );
 
+            let malformed_field_error_msg = "#[pasture] attribute is malformed.";
+            let point_attribute = match pasture_attribute {
+                None => PointAttributeInfo::FromField {
+                    name: field
+                        .ident
+                        .as_ref()
+                        .map_or_else(|| format!("Attribute{idx}"), |i| i.to_string()),
+                    ty: field.ty.clone(),
+                },
+                Some(attr) => match &attr.meta {
+                    Meta::List(list) => {
+                        let nested_meta = list.parse_args::<Meta>()?;
+                        match nested_meta {
+                            Meta::Path(path) => {
+                                if path.is_ident("ignore") {
+                                    PointAttributeInfo::Ignore
+                                } else if let Some(builtin) = builtin_attribute(&path) {
+                                    PointAttributeInfo::FromField {
+                                        name: builtin.to_string(),
+                                        ty: field.ty.clone(),
+                                    }
+                                } else {
+                                    PointAttributeInfo::FromConst {
+                                        path,
+                                        ty: field.ty.clone(),
+                                    }
+                                }
+                            }
+                            Meta::NameValue(meta_name_value) => {
+                                if meta_name_value.path.is_ident("rename")
+                                    || meta_name_value.path.is_ident("attribute")
+                                {
+                                    PointAttributeInfo::FromField {
+                                        name: match meta_name_value.value {
+                                            Expr::Lit(lit) => match lit.lit {
+                                                Lit::Str(string_literal) => string_literal.value(),
+                                                bad => {
+                                                    return Err(Error::new_spanned(
+                                                        bad,
+                                                        malformed_field_error_msg,
+                                                    ));
+                                                }
+                                            },
+                                            bad => {
+                                                return Err(Error::new_spanned(
+                                                    bad,
+                                                    malformed_field_error_msg,
+                                                ));
+                                            }
+                                        },
+                                        ty: field.ty.clone(),
+                                    }
+                                } else {
+                                    return Err(Error::new_spanned(
+                                        meta_name_value,
+                                        malformed_field_error_msg,
+                                    ));
+                                }
+                            }
+                            bad => return Err(Error::new_spanned(bad, malformed_field_error_msg)),
+                        }
+                    }
+                    bad => return Err(Error::new_spanned(bad, malformed_field_error_msg)),
+                },
+            };
+
             Ok(FieldLayoutDescription {
-                attribute_name,
-                ty: field.ty.clone(),
                 ident,
+                point_attribute,
             })
         })
         .collect::<Result<Vec<FieldLayoutDescription>>>()
@@ -152,10 +184,39 @@ fn field_parameters(data: &Data, ident: &Ident) -> Result<Vec<FieldLayoutDescrip
 /// Custom `derive` macro that implements the [`PointType`](pasture_core::layout::PointType) trait for the type that it is applied to.
 ///
 /// Any that that wants to implement `PointType` using this `derive` macro must fulfill the following requirements:
-/// - It must be at least one of `#[repr(C)]` and `#[repr(packed)]`
+/// - It must be `#[repr(C)]`
+/// - It must implement [bytemuck::NoUninit] and [bytemuck::AnyBitPattern]
 /// - All its members may only be [Pasture primitive types](pasture_core::layout::PointAttributeDataType)
-/// - Each member must contain an attribute `#[pasture(X)]`, where `X` is either one of the builtin attributes explained below, or `attribute = "name"` for a custom attribute named `name`
-/// - No two members may share the same attribute name
+///
+/// The derived point layout will contain a point attribute for each struct member.
+///
+/// Members can be annotated with the `#[pasture]` attribute to control the name and type of the generated point attributes.
+///
+/// # Default behaviour
+///
+/// By default, each generated point attribute will have the same name and datatype as the struct member.
+///
+/// # Rename fields
+///
+/// Struct members can be annotated with: `#[pasture(rename = "newname")]`
+///
+/// The provided name will be used for the generated point attribute instead of the name of the struct member.
+///
+/// # Ignore fields
+///
+/// Struct members can be annotated with: `#[pasture(ignore)]`
+///
+/// No point attributes will be created for ignored members. This is usefull for inserting padding between point attributes.
+///
+/// # External point attributes
+///
+/// Struct members can be annotated with: `#[pasture(path::to::some::CUSTOM_POINT_ATTRIBUTE)]`
+///
+/// The path has to point to a constant [`PointAttributeDefinition`](pasture_core::layout::PointAttributeDefinition). (`const CUSTOM_POINT_ATTRIBUTE: PointAttributeDefinition = PointAttributeDefinition::custom(...)`)
+///
+/// The attribute will use the provided `PointAttributeDefinition` (both name and type).
+///
+/// The type of the struct member will be checked to match the [`datatype`](pasture_core::layout::PointAttributeDefinition::datatype) of the point attribute definition.
 ///
 /// # Builtin attributes
 ///
@@ -185,9 +246,57 @@ fn field_parameters(data: &Data, ident: &Ident) -> Result<Vec<FieldLayoutDescrip
 /// - `BUILTIN_POINT_ID` corresponding to the [POINT_ID](pasture_core::layout::attributes::POINT_ID) attribute
 /// - `BUILTIN_NORMAL` corresponding to the [NORMAL](pasture_core::layout::attributes::NORMAL) attribute
 ///
-/// # Custom attributes
+/// Warning: Builtins only set the name of the point attribute. The datatype is always inferred from the
+/// type of the field itself. To get type checked attributes, use the path to the attributes in pasture_core.
 ///
-/// To associate a member of a custom `PointType` with a point attribute with custom `name`, use the `#[pasture(attribute = "name")]` attribute
+/// For example:
+///
+///  - `#[pasture(BUILTIN_POSITION_3D)]` will only set the name of the point attribute and infer its type from the attribute type. (Basically equivalent to `#[pasture(rename = "xxx")]` but with predefined attribute names.)
+///  - `#[pasture(pasture_core::layout::attributes::POSITION_3D)]` will set the name of the point attribute and also check that the field type matches the point attribute datatype (VEC3F64).
+///
+/// # Example
+///
+/// ```
+/// use pasture_derive::PointType;
+/// use pasture_core::layout::{PointAttributeDefinition, PointAttributeDataType};
+/// use std::borrow::Cow;
+/// use nalgebra::Vector3;
+///
+/// const EXTRA_BYTES_8: PointAttributeDefinition = PointAttributeDefinition::custom(
+///     Cow::Borrowed("ExtraBytes"),
+///     PointAttributeDataType::byte_array(8),
+/// );
+///
+/// #[repr(C)]
+/// #[derive(PointType, Copy, Clone, bytemuck::NoUninit, bytemuck::AnyBitPattern)]
+/// struct ExamplePoint {
+///
+///     #[pasture(BUILTIN_POSITION_3D)]
+///     pub position: Vector3<f64>,
+///
+///     pub classification: u8,
+///
+///     #[pasture(ignore)]
+///     pub _padding: [u8; 3],
+///
+///     #[pasture(rename = "ClassificationConfidence")]
+///     pub confidence: f32,
+///
+///     #[pasture(EXTRA_BYTES_8)]
+///     pub custom: [u8; 8],
+/// }
+/// ```
+///
+/// The point layout for the `ExamplePoint` struct will then have the following point attributes:
+///
+/// | Bytes  | Attribute name           | Attribute Type                        |
+/// | ------ | ------------------------ | ------------------------------------- |
+/// | 0..24  | Position3D               | PointAttributeDataType::VEC3F64       |
+/// | 24..25 | classification           | PointAttributeDataType::U8            |
+/// | 25..28 | -                        | -                                     |
+/// | 28..32 | ClassificationConfidence | PointAttributeDataType::F32           |
+/// | 32..40 | ExtraBytes               | PointAttributeDataType::byte_array(8) |
+///
 #[proc_macro_derive(PointType, attributes(pasture))]
 pub fn derive_point_type(item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
@@ -206,26 +315,49 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
             .into();
     }
 
-    let name = &input.ident;
+    let struct_name = &input.ident;
 
-    let fields = match field_parameters(&input.data, name) {
+    let fields = match field_parameters(&input.data, struct_name) {
         Ok(inner) => inner,
         Err(why) => {
             return why.to_compile_error().into();
         }
     };
 
-    let attribute_descriptions = fields.iter().map(|field| {
+    let attribute_descriptions = fields.iter().filter_map(|field| {
         let FieldLayoutDescription {
-            attribute_name,
-            ty,
             ident,
+            point_attribute,
         } = field;
-        quote! {
-            pasture_core::layout::PointAttributeDefinition::custom(
-                std::borrow::Cow::Borrowed(#attribute_name),
-                <#ty as pasture_core::layout::PrimitiveType>::data_type()
-            ).at_offset_in_type(offset_of!(#name, #ident))
+        match point_attribute {
+            PointAttributeInfo::Ignore => None,
+            PointAttributeInfo::FromField { name, ty } => Some(quote! {
+                pasture_core::layout::PointAttributeDefinition::custom(
+                    std::borrow::Cow::Borrowed(#name),
+                    <#ty as pasture_core::layout::PrimitiveType>::DATA_TYPE
+                ).at_offset_in_type(offset_of!(#struct_name, #ident))
+            }),
+            PointAttributeInfo::FromConst { path, ty } => {
+                let field = match ident {
+                    Member::Named(ident) => ident.to_string(),
+                    Member::Unnamed(index) => index.index.to_string(),
+                };
+                let error_message = format!(
+                    "Field {struct_name}::{field} has wrong type for point attribute {}.",
+                    quote! {#path}.to_string()
+                ).replace('{', "{{").replace('}', "}}");
+
+                Some(quote! {
+                const {
+                    let point_attr: pasture_core::layout::PointAttributeDefinition = #path;
+                    let point_attr_datatype = pasture_core::layout::PointAttributeDefinition::datatype(&point_attr);
+                    let struct_member_datatype = <#ty as pasture_core::layout::PrimitiveType>::DATA_TYPE;
+                    if !point_attr_datatype.const_eq(&struct_member_datatype) {
+                        ::core::panic!(#error_message); // panics in const contexts become compile errors.
+                    }
+                    point_attr
+                }.at_offset_in_type(offset_of!(#struct_name, #ident))
+            })},
         }
     });
 
@@ -240,13 +372,13 @@ pub fn derive_point_type(item: TokenStream) -> TokenStream {
     // };
 
     let r#gen = quote! {
-        impl pasture_core::layout::PointType for #name {
+        impl pasture_core::layout::PointType for #struct_name {
             fn layout() -> pasture_core::layout::PointLayout {
                 use core::mem::{align_of, offset_of};
 
                 pasture_core::layout::PointLayout::from_members_and_alignment(&[
                     #(#attribute_descriptions ,)*
-                ], align_of::<#name>())
+                ], align_of::<#struct_name>())
             }
         }
     };

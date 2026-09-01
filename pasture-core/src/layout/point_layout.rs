@@ -63,7 +63,7 @@ impl ScalarDataType {
     }
 
     /// Minimum required alignment of the data type
-    pub fn min_alignment(&self) -> usize {
+    pub const fn min_alignment(&self) -> usize {
         match self {
             ScalarDataType::U8 => std::mem::align_of::<u8>(),
             ScalarDataType::I8 => std::mem::align_of::<i8>(),
@@ -240,8 +240,49 @@ impl PointAttributeDataType {
     }
 
     /// Minimum required alignment of the associated `PointAttributeDataType`
-    pub fn min_alignment(&self) -> usize {
+    pub const fn min_alignment(&self) -> usize {
         self.scalar.min_alignment()
+    }
+
+    /// Compares if the two PointAttributeDatatypes are the same.
+    ///
+    /// In contrast to PartialEq::eq, this works in const contexts.
+    /// It should probably not be used in non-const contexts (PartialEq::eq / a==b is probably better optimizeable).
+    ///
+    /// Needed as a workaround as long as the const_cmp feature is still unstable.
+    /// https://github.com/rust-lang/rust/issues/143800
+    pub const fn const_eq(&self, other: &Self) -> bool {
+        if self.components != other.components {
+            return false;
+        }
+        match self.scalar {
+            ScalarDataType::U8 => matches!(other.scalar, ScalarDataType::U8),
+            ScalarDataType::I8 => matches!(other.scalar, ScalarDataType::I8),
+            ScalarDataType::U16 => matches!(other.scalar, ScalarDataType::U16),
+            ScalarDataType::I16 => matches!(other.scalar, ScalarDataType::I16),
+            ScalarDataType::U32 => matches!(other.scalar, ScalarDataType::U32),
+            ScalarDataType::I32 => matches!(other.scalar, ScalarDataType::I32),
+            ScalarDataType::U64 => matches!(other.scalar, ScalarDataType::U64),
+            ScalarDataType::I64 => matches!(other.scalar, ScalarDataType::I64),
+            ScalarDataType::F32 => matches!(other.scalar, ScalarDataType::F32),
+            ScalarDataType::F64 => matches!(other.scalar, ScalarDataType::F64),
+            ScalarDataType::Custom {
+                size,
+                min_alignment,
+                name,
+            } => match other.scalar {
+                ScalarDataType::Custom {
+                    size: other_size,
+                    min_alignment: other_min_alignment,
+                    name: other_name,
+                } => {
+                    name.as_u128() == other_name.as_u128()
+                        && size == other_size
+                        && min_alignment == other_min_alignment
+                }
+                _ => false,
+            },
+        }
     }
 }
 
@@ -258,98 +299,72 @@ impl Display for PointAttributeDataType {
 }
 
 trait ScalarType: Copy + bytemuck::Pod {
-    fn scalar_type() -> ScalarDataType;
+    const SCALAR_TYPE: ScalarDataType;
 }
 
 impl ScalarType for u8 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::U8
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::U8;
 }
 impl ScalarType for u16 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::U16
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::U16;
 }
 impl ScalarType for u32 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::U32
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::U32;
 }
 impl ScalarType for u64 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::U64
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::U64;
 }
 impl ScalarType for i8 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::I8
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::I8;
 }
 impl ScalarType for i16 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::I16
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::I16;
 }
 impl ScalarType for i32 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::I32
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::I32;
 }
 impl ScalarType for i64 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::I64
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::I64;
 }
 impl ScalarType for f32 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::F32
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::F32;
 }
 impl ScalarType for f64 {
-    fn scalar_type() -> ScalarDataType {
-        ScalarDataType::F64
-    }
+    const SCALAR_TYPE: ScalarDataType = ScalarDataType::F64;
 }
 
 /// Marker trait for all types that can be used as primitive types within a `PointAttributeDefinition`. It provides a mapping
 /// between Rust types and the `PointAttributeDataType` enum.
 pub trait PrimitiveType: Copy + bytemuck::Pod {
-    /// Returns the corresponding `PointAttributeDataType` for the implementing type
-    fn data_type() -> PointAttributeDataType;
+    /// The corresponding `PointAttributeDataType` for the implementing type
+    const DATA_TYPE: PointAttributeDataType;
 }
 
 impl<T> PrimitiveType for T
 where
     T: ScalarType,
 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType::scalar(T::scalar_type())
-    }
+    const DATA_TYPE: PointAttributeDataType = PointAttributeDataType::scalar(T::SCALAR_TYPE);
 }
 
 impl<T, const D: usize> PrimitiveType for SVector<T, D>
 where
     T: ScalarType + nalgebra::Scalar,
 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType {
-            components: D,
-            scalar: T::scalar_type(),
-        }
-    }
+    const DATA_TYPE: PointAttributeDataType = PointAttributeDataType {
+        components: D,
+        scalar: T::SCALAR_TYPE,
+    };
 }
 
 impl<T, const D: usize> PrimitiveType for Point<T, D>
 where
     T: ScalarType + nalgebra::Scalar,
 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType {
-            components: D,
-            scalar: T::scalar_type(),
-        }
-    }
+    const DATA_TYPE: PointAttributeDataType = PointAttributeDataType {
+        components: D,
+        scalar: T::SCALAR_TYPE,
+    };
 }
 
 impl<T, const D: usize> PrimitiveType for [T; D]
@@ -357,12 +372,10 @@ where
     T: ScalarType,
     Self: bytemuck::Pod,
 {
-    fn data_type() -> PointAttributeDataType {
-        PointAttributeDataType {
-            components: D,
-            scalar: T::scalar_type(),
-        }
-    }
+    const DATA_TYPE: PointAttributeDataType = PointAttributeDataType {
+        components: D,
+        scalar: T::SCALAR_TYPE,
+    };
 }
 
 // Assert sizes of vector types are as we expect. Primitive types always are the same size, but we don't know
@@ -1191,21 +1204,21 @@ mod tests {
         fn testcase<T: PrimitiveType>() {
             let rust_size = size_of::<T>();
             let rust_align = align_of::<T>();
-            let pasture_size = T::data_type().size();
-            let pasture_align = T::data_type().min_alignment();
+            let pasture_size = T::DATA_TYPE.size();
+            let pasture_align = T::DATA_TYPE.min_alignment();
             assert_eq!(
                 rust_size,
                 pasture_size,
                 "Size missmatch between rust type ({}) and point attribute datatype ({}).",
                 type_name::<T>(),
-                T::data_type()
+                T::DATA_TYPE
             );
             assert_eq!(
                 rust_align,
                 pasture_align,
                 "Alignment missmatch between rust type ({}) and point attribute datatype ({}).",
                 type_name::<T>(),
-                T::data_type()
+                T::DATA_TYPE
             );
         }
 

@@ -108,9 +108,9 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
                 std::mem::size_of::<T>(),
             )
         };
-        if T::data_type() != attribute.datatype() {
+        if T::DATA_TYPE != attribute.datatype() {
             let target_attribute_definition =
-                PointAttributeDefinition::with_custom_datatype(attribute, T::data_type());
+                PointAttributeDefinition::with_custom_datatype(attribute, T::DATA_TYPE);
             let converter = match get_converter_for_attributes(
                 attribute,
                 &target_attribute_definition,
@@ -137,11 +137,11 @@ impl UntypedPoint for UntypedPointBuffer<'_> {
         let ptr = value as *const _;
         let value_byte_slice =
             unsafe { std::slice::from_raw_parts(ptr as *mut u8, std::mem::size_of::<T>()) };
-        if T::data_type() != attribute.datatype() {
+        if T::DATA_TYPE != attribute.datatype() {
             let source_attribute_definition =
-                PointAttributeDefinition::with_custom_datatype(attribute, T::data_type());
+                PointAttributeDefinition::with_custom_datatype(attribute, T::DATA_TYPE);
             let converter = get_converter_for_attributes(&source_attribute_definition, attribute)
-                    .ok_or_else(|| anyhow::anyhow!("Can't convert from attribute {} to attribute {} because no valid conversion exists", 
+                    .ok_or_else(|| anyhow::anyhow!("Can't convert from attribute {} to attribute {} because no valid conversion exists",
                     attribute, source_attribute_definition))?;
             unsafe { converter(value_byte_slice, self.get_raw_attribute_mut(attribute)?) };
         } else {
@@ -190,9 +190,9 @@ impl UntypedPoint for UntypedPointSlice<'_> {
                 std::mem::size_of::<T>(),
             )
         };
-        if T::data_type() != attribute.datatype() {
+        if T::DATA_TYPE != attribute.datatype() {
             let target_attribute_definition =
-                PointAttributeDefinition::with_custom_datatype(attribute, T::data_type());
+                PointAttributeDefinition::with_custom_datatype(attribute, T::DATA_TYPE);
             let converter = match get_converter_for_attributes(
                 attribute,
                 &target_attribute_definition,
@@ -281,11 +281,11 @@ impl UntypedPoint for UntypedPointSlice<'_> {
         let ptr = value as *const _;
         let value_byte_slice =
             unsafe { std::slice::from_raw_parts(ptr as *mut u8, std::mem::size_of::<T>()) };
-        if T::data_type() != attribute.datatype() {
+        if T::DATA_TYPE != attribute.datatype() {
             let source_attribute_definition =
-                PointAttributeDefinition::with_custom_datatype(attribute, T::data_type());
+                PointAttributeDefinition::with_custom_datatype(attribute, T::DATA_TYPE);
             let converter = get_converter_for_attributes(&source_attribute_definition, attribute)
-                    .ok_or_else(|| anyhow::anyhow!("Can't convert from attribute {} to attribute {} because no valid conversion exists", 
+                    .ok_or_else(|| anyhow::anyhow!("Can't convert from attribute {} to attribute {} because no valid conversion exists",
                     attribute, source_attribute_definition))?;
             unsafe { converter(value_byte_slice, self.get_raw_attribute_mut(attribute)?) };
         } else {
